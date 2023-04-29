@@ -294,6 +294,8 @@ static __cold struct io_ring_ctx *io_ring_ctx_alloc(struct io_uring_params *p)
 	io_napi_init(ctx);
 	mutex_init(&ctx->mmap_lock);
 
+	/* -EINVAL implies nothing is registered with this ring */
+	ctx->dev_qid = -EINVAL;
 	return ctx;
 
 free_ref:
@@ -2142,6 +2144,47 @@ static __cold void __io_req_caches_free(struct io_ring_ctx *ctx)
 	}
 }
 
+int io_register_queue(struct io_ring_ctx *ctx, void __user *arg)
+{
+	struct io_rsrc_node *node;
+	struct file *file;
+	__s32 __user *fds = arg;
+	int fd, qid;
+
+	if (ctx->dev_qid != -EINVAL)
+		return -EINVAL;
+	if (copy_from_user(&fd, fds, sizeof(*fds)))
+		return -EFAULT;
+	node = io_rsrc_node_lookup(&ctx->file_table.data, fd);
+	if (!node || !node->file_ptr)
+		return -EBADF;
+	file = io_slot_file(node);
+	qid = file_register_queue(file);
+	if (qid < 0)
+		return qid;
+	ctx->dev_fd = fd;
+	ctx->dev_qid = qid;
+	return 0;
+}
+
+int io_unregister_queue(struct io_ring_ctx *ctx)
+{
+	struct io_rsrc_node *node;
+	struct file *file;
+	int ret;
+
+	if (ctx->dev_qid == -EINVAL)
+		return 0;
+	node = io_rsrc_node_lookup(&ctx->file_table.data, ctx->dev_fd);
+	if (!node || !node->file_ptr)
+		return -EBADF;
+	file = io_slot_file(node);
+	ret = file_unregister_queue(file, ctx->dev_qid);
+	if (!ret)
+		ctx->dev_qid = -EINVAL;
+	return ret;
+}
+
 static __cold void io_req_caches_free(struct io_ring_ctx *ctx)
 {
 	guard(mutex)(&ctx->uring_lock);
@@ -2154,6 +2197,7 @@ static __cold void io_ring_ctx_free(struct io_ring_ctx *ctx)
 	io_sq_thread_finish(ctx);
 
 	mutex_lock(&ctx->uring_lock);
+	io_unregister_queue(ctx);
 	io_sqe_buffers_unregister(ctx);
 	io_sqe_files_unregister(ctx);
 	io_unregister_zcrx(ctx);

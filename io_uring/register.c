@@ -958,6 +958,18 @@ static int __io_uring_register(struct io_ring_ctx *ctx, unsigned opcode,
 			WRITE_ONCE(ctx->bpf_filters,
 				   ctx->restrictions.bpf_filters->filters);
 		break;
+	case IORING_REGISTER_QUEUE:
+		ret = -EINVAL;
+		if (!arg || nr_args != 1)
+			break;
+		ret = io_register_queue(ctx, arg);
+		break;
+	case IORING_UNREGISTER_QUEUE:
+		ret = -EINVAL;
+		if (arg || nr_args)
+			break;
+		ret = io_unregister_queue(ctx);
+		break;
 	default:
 		ret = -EINVAL;
 		break;

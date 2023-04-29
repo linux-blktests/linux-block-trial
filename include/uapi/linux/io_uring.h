@@ -723,6 +723,10 @@ enum io_uring_register_op {
 	/* register bpf filtering programs */
 	IORING_REGISTER_BPF_FILTER		= 37,
 
+	/* register a device-queue with the ring */
+	IORING_REGISTER_QUEUE			= 38,
+	IORING_UNREGISTER_QUEUE			= 39,
+
 	/* this goes last */
 	IORING_REGISTER_LAST,
 

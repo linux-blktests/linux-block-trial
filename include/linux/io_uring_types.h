@@ -504,6 +504,10 @@ struct io_ring_ctx {
 	struct io_mapped_region		ring_region;
 	/* used for optimised request parameter and wait argument passing  */
 	struct io_mapped_region		param_region;
+
+	/* for io_uring attached device queue */
+	int				dev_qid;
+	int				dev_fd;
 };
 
 /*

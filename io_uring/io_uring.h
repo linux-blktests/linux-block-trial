@@ -172,6 +172,9 @@ static inline bool io_should_wake(struct io_wait_queue *iowq)
 
 int io_prepare_config(struct io_ctx_config *config);
 
+int io_register_queue(struct io_ring_ctx *ctx, void __user *arg);
+int io_unregister_queue(struct io_ring_ctx *ctx);
+
 bool io_cqe_cache_refill(struct io_ring_ctx *ctx, bool overflow, bool cqe32);
 void io_req_defer_failed(struct io_kiocb *req, s32 res);
 bool io_post_aux_cqe(struct io_ring_ctx *ctx, u64 user_data, s32 res, u32 cflags);
