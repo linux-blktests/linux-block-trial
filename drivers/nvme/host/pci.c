@@ -3135,7 +3135,8 @@ static bool nvme_pci_update_nr_queues(struct nvme_dev *dev)
 {
 	if (!dev->ctrl.tagset) {
 		nvme_alloc_io_tag_set(&dev->ctrl, &dev->tagset, &nvme_mq_ops,
-				nvme_pci_nr_maps(dev), sizeof(struct nvme_iod));
+				nvme_pci_nr_maps(dev), sizeof(struct nvme_iod),
+				dev->ctrl.queue_count);
 		return true;
 	}
 
@@ -3776,7 +3777,8 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	if (dev->online_queues > 1) {
 		nvme_alloc_io_tag_set(&dev->ctrl, &dev->tagset, &nvme_mq_ops,
-				nvme_pci_nr_maps(dev), sizeof(struct nvme_iod));
+				nvme_pci_nr_maps(dev), sizeof(struct nvme_iod),
+				dev->ctrl.queue_count);
 		nvme_dbbuf_set(dev);
 	}
 
