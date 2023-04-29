@@ -251,6 +251,14 @@ struct nvme_request {
 	struct nvme_ctrl	*ctrl;
 };
 
+struct nvme_uring_data {
+	__u64	metadata;
+	__u64	addr;
+	__u32	data_len;
+	__u32	metadata_len;
+	__u32	timeout_ms;
+};
+
 /*
  * Mark a bio as coming in through the mpath node.
  */
@@ -963,6 +971,9 @@ enum {
 	NVME_SUBMIT_RETRY = (__force nvme_submit_flags_t)(1 << 3),
 };
 
+int nvme_prep_cmd_from_ioucmd(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
+		struct io_uring_cmd *ioucmd, struct nvme_command *c,
+		struct nvme_uring_data *d);
 int nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
 		void *buf, unsigned bufflen);
 int __nvme_submit_sync_cmd(struct request_queue *q, struct nvme_command *cmd,
