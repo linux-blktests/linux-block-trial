@@ -551,6 +551,23 @@ static bool is_ctrl_ioctl(unsigned int cmd)
 	return false;
 }
 
+static int nvme_uring_cmd_io_direct(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
+		struct io_uring_cmd *ioucmd, unsigned int issue_flags)
+{
+	struct request_queue *q = ns ? ns->queue : ctrl->admin_q;
+	int qid = io_uring_cmd_import_qid(ioucmd);
+	struct nvme_uring_direct_pdu *pdu =
+		(struct nvme_uring_direct_pdu *)&ioucmd->pdu;
+
+	if ((issue_flags & IO_URING_F_IOPOLL) != IO_URING_F_IOPOLL)
+		return -EOPNOTSUPP;
+
+	pdu->ns = ns;
+	if (q->mq_ops && q->mq_ops->queue_uring_cmd)
+		return q->mq_ops->queue_uring_cmd(ioucmd, qid);
+	return -EOPNOTSUPP;
+}
+
 static int nvme_ctrl_ioctl(struct nvme_ctrl *ctrl, unsigned int cmd,
 		void __user *argp, bool open_for_write)
 {
@@ -662,6 +679,14 @@ static int nvme_ns_uring_cmd(struct nvme_ns *ns, struct io_uring_cmd *ioucmd,
 
 	switch (ioucmd->cmd_op) {
 	case NVME_URING_CMD_IO:
+		if (ioucmd->flags & IORING_URING_CMD_DIRECT) {
+			ret = nvme_uring_cmd_io_direct(ctrl, ns, ioucmd,
+					issue_flags);
+			if (ret == -EIOCBQUEUED)
+				return ret;
+			/* in case of any error, just fallback */
+			ioucmd->flags &= ~(IORING_URING_CMD_DIRECT);
+		}
 		ret = nvme_uring_cmd_io(ctrl, ns, ioucmd, issue_flags, false);
 		break;
 	case NVME_URING_CMD_IO_VEC:
@@ -682,12 +707,62 @@ int nvme_ns_chr_uring_cmd(struct io_uring_cmd *ioucmd, unsigned int issue_flags)
 	return nvme_ns_uring_cmd(ns, ioucmd, issue_flags);
 }
 
+/* similar to blk_mq_poll; may be possible to unify */
+int nvme_uring_cmd_iopoll_qid(struct request_queue *q,
+				 struct io_uring_cmd *ioucmd, int qid,
+				 struct io_comp_batch *iob,
+				 unsigned int flags)
+{
+	long state = get_current_state();
+	int ret;
+
+	if (!(q->mq_ops && q->mq_ops->poll_uring_cmd))
+		return 0;
+	do {
+		ret = q->mq_ops->poll_uring_cmd(ioucmd, qid, iob);
+		if (ret > 0) {
+			__set_current_state(TASK_RUNNING);
+			return ret;
+		}
+		if (signal_pending_state(state, current))
+			__set_current_state(TASK_RUNNING);
+		if (task_is_running(current))
+			return 1;
+
+		if (ret < 0 || (flags & BLK_POLL_ONESHOT))
+			break;
+		cpu_relax();
+
+	} while (!need_resched());
+
+	__set_current_state(TASK_RUNNING);
+	return 0;
+}
+
 int nvme_ns_chr_uring_cmd_iopoll(struct io_uring_cmd *ioucmd,
 				 struct io_comp_batch *iob,
 				 unsigned int poll_flags)
 {
 	struct nvme_uring_cmd_pdu *pdu = nvme_uring_cmd_pdu(ioucmd);
 	struct request *req = pdu->req;
+
+	if (ioucmd->flags & IORING_URING_CMD_DIRECT) {
+		struct nvme_uring_direct_pdu *dpdu =
+			(struct nvme_uring_direct_pdu *)&ioucmd->pdu;
+		struct nvme_ns *ns = dpdu->ns;
+		struct request_queue *q;
+		int qid = io_uring_cmd_import_qid(ioucmd);
+		int ret;
+
+		if (!ns || qid <= 0)
+			return 0;
+		q = ns->queue;
+		if (!percpu_ref_tryget(&q->q_usage_counter))
+			return 0;
+		ret = nvme_uring_cmd_iopoll_qid(q, ioucmd, qid, iob, poll_flags);
+		percpu_ref_put(&q->q_usage_counter);
+		return ret;
+	}
 
 	if (req && blk_rq_is_poll(req))
 		return blk_rq_poll(req, iob, poll_flags);
