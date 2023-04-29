@@ -7,6 +7,7 @@
 #include <uapi/linux/io_uring.h>
 
 #if defined(CONFIG_IO_URING)
+int io_uring_cmd_import_qid(void *ioucmd);
 void __io_uring_cancel(bool cancel_all);
 void __io_uring_free(struct task_struct *tsk);
 void io_uring_unreg_ringfd(void);
@@ -37,6 +38,10 @@ static inline int io_uring_fork(struct task_struct *tsk)
 	return 0;
 }
 #else
+static inline int io_uring_cmd_import_qid(void *ioucmd)
+{
+	return -EOPNOTSUPP;
+}
 static inline void io_uring_task_cancel(void)
 {
 }

@@ -193,6 +193,9 @@ int io_uring_cmd_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 	if (ioucmd->flags & ~IORING_URING_CMD_MASK)
 		return -EINVAL;
 
+	if (ioucmd->flags & IORING_URING_CMD_DIRECT &&
+			req->ctx->dev_qid == -EINVAL)
+		return -EINVAL;
 	if (ioucmd->flags & IORING_URING_CMD_FIXED) {
 		if (ioucmd->flags & IORING_URING_CMD_MULTISHOT)
 			return -EINVAL;
@@ -406,3 +409,12 @@ bool io_uring_mshot_cmd_post_cqe(struct io_uring_cmd *ioucmd,
 	return true;
 }
 EXPORT_SYMBOL_GPL(io_uring_mshot_cmd_post_cqe);
+
+int io_uring_cmd_import_qid(void *ioucmd)
+{
+	struct io_kiocb *req = cmd_to_io_kiocb(ioucmd);
+	struct io_ring_ctx *ctx = req->ctx;
+
+	return ctx->dev_qid;
+}
+EXPORT_SYMBOL_GPL(io_uring_cmd_import_qid);

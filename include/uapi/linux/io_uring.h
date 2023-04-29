@@ -330,10 +330,14 @@ enum io_uring_op {
  * IORING_URING_CMD_MULTISHOT	must be used with buffer select, like other
  *				multishot commands. Not compatible with
  *				IORING_URING_CMD_FIXED, for now.
+ * IORING_URING_CMD_DIRECT	use registered queue for this cmd.
  */
-#define IORING_URING_CMD_FIXED	(1U << 0)
+#define IORING_URING_CMD_FIXED		(1U << 0)
 #define IORING_URING_CMD_MULTISHOT	(1U << 1)
-#define IORING_URING_CMD_MASK	(IORING_URING_CMD_FIXED | IORING_URING_CMD_MULTISHOT)
+#define IORING_URING_CMD_DIRECT		(1U << 2)
+#define IORING_URING_CMD_MASK	(IORING_URING_CMD_FIXED | \
+				 IORING_URING_CMD_MULTISHOT | \
+				 IORING_URING_CMD_DIRECT)
 
 
 /*
