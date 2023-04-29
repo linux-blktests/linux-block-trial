@@ -685,7 +685,8 @@ struct blk_mq_ops {
 	void (*show_rq)(struct seq_file *m, struct request *rq);
 	int (*register_queue)(void *data);
 	int (*unregister_queue)(void *data, int qid);
-	int (*queue_uring_cmd)(struct io_uring_cmd *ioucmd, int qid);
+	int (*queue_uring_cmd)(struct io_uring_cmd *ioucmd, int qid,
+			       unsigned int issue_flags);
 	int (*poll_uring_cmd)(struct io_uring_cmd *ioucmd, int qid,
 			      struct io_comp_batch *);
 #endif

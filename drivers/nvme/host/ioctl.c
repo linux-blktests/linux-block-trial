@@ -6,6 +6,7 @@
 #include <linux/blk-integrity.h>
 #include <linux/ptrace.h>	/* for force_successful_syscall_return */
 #include <linux/nvme_ioctl.h>
+#include <linux/io_uring.h>
 #include <linux/io_uring/cmd.h>
 #include "nvme.h"
 
@@ -564,7 +565,7 @@ static int nvme_uring_cmd_io_direct(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
 
 	pdu->ns = ns;
 	if (q->mq_ops && q->mq_ops->queue_uring_cmd)
-		return q->mq_ops->queue_uring_cmd(ioucmd, qid);
+		return q->mq_ops->queue_uring_cmd(ioucmd, qid, issue_flags);
 	return -EOPNOTSUPP;
 }
 
@@ -708,7 +709,7 @@ int nvme_ns_chr_uring_cmd(struct io_uring_cmd *ioucmd, unsigned int issue_flags)
 }
 
 /* similar to blk_mq_poll; may be possible to unify */
-int nvme_uring_cmd_iopoll_qid(struct request_queue *q,
+static int nvme_uring_cmd_iopoll_qid(struct request_queue *q,
 				 struct io_uring_cmd *ioucmd, int qid,
 				 struct io_comp_batch *iob,
 				 unsigned int flags)

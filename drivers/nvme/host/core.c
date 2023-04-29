@@ -3890,7 +3890,7 @@ static int nvme_ns_chr_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-int nvme_register_queue(struct file *file)
+static int nvme_register_queue(struct file *file)
 {
 	struct nvme_ns *ns = container_of(file_inode(file)->i_cdev,
 			struct nvme_ns, cdev);
@@ -3902,7 +3902,7 @@ int nvme_register_queue(struct file *file)
 	return -EINVAL;
 }
 
-int nvme_unregister_queue(struct file *file, int qid)
+static int nvme_unregister_queue(struct file *file, int qid)
 {
 	struct nvme_ns *ns = container_of(file_inode(file)->i_cdev,
 			struct nvme_ns, cdev);
