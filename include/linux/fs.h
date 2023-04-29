@@ -1967,6 +1967,8 @@ struct file_operations {
 	int (*uring_cmd_iopoll)(struct io_uring_cmd *, struct io_comp_batch *,
 				unsigned int poll_flags);
 	int (*mmap_prepare)(struct vm_area_desc *);
+	int (*register_queue)(struct file *f);
+	int (*unregister_queue)(struct file *f, int qid);
 } __randomize_layout;
 
 /* Supports async buffered reads */
