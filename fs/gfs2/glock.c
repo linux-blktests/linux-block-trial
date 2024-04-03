@@ -2634,7 +2634,7 @@ static int gfs2_glstats_open(struct inode *inode, struct file *file)
 static const struct file_operations gfs2_glocks_fops = {
 	.owner   = THIS_MODULE,
 	.open    = gfs2_glocks_open,
-	.read    = seq_read,
+	.read_iter    = seq_read_iter,
 	.llseek  = seq_lseek,
 	.release = gfs2_glocks_release,
 };
@@ -2642,7 +2642,7 @@ static const struct file_operations gfs2_glocks_fops = {
 static const struct file_operations gfs2_glstats_fops = {
 	.owner   = THIS_MODULE,
 	.open    = gfs2_glstats_open,
-	.read    = seq_read,
+	.read_iter    = seq_read_iter,
 	.llseek  = seq_lseek,
 	.release = gfs2_glocks_release,
 };
@@ -2804,7 +2804,7 @@ static int gfs2_glockfd_open(struct inode *inode, struct file *file)
 static const struct file_operations gfs2_glockfd_fops = {
 	.owner   = THIS_MODULE,
 	.open    = gfs2_glockfd_open,
-	.read    = seq_read,
+	.read_iter    = seq_read_iter,
 	.llseek  = seq_lseek,
 	.release = seq_release_private,
 };

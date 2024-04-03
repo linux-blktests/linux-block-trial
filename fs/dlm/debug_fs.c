@@ -558,7 +558,7 @@ static int table_open4(struct inode *inode, struct file *file)
 static const struct file_operations format1_fops = {
 	.owner   = THIS_MODULE,
 	.open    = table_open1,
-	.read    = seq_read,
+	.read_iter    = seq_read_iter,
 	.llseek  = seq_lseek,
 	.release = seq_release
 };
@@ -566,7 +566,7 @@ static const struct file_operations format1_fops = {
 static const struct file_operations format2_fops = {
 	.owner   = THIS_MODULE,
 	.open    = table_open2,
-	.read    = seq_read,
+	.read_iter    = seq_read_iter,
 	.write   = table_write2,
 	.llseek  = seq_lseek,
 	.release = seq_release
@@ -575,7 +575,7 @@ static const struct file_operations format2_fops = {
 static const struct file_operations format3_fops = {
 	.owner   = THIS_MODULE,
 	.open    = table_open3,
-	.read    = seq_read,
+	.read_iter    = seq_read_iter,
 	.llseek  = seq_lseek,
 	.release = seq_release
 };
@@ -583,7 +583,7 @@ static const struct file_operations format3_fops = {
 static const struct file_operations format4_fops = {
 	.owner   = THIS_MODULE,
 	.open    = table_open4,
-	.read    = seq_read,
+	.read_iter    = seq_read_iter,
 	.llseek  = seq_lseek,
 	.release = seq_release
 };
