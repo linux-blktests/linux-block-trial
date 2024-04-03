@@ -772,6 +772,7 @@ static ssize_t port_fops_read(struct file *filp, char __user *ubuf,
 
 	return fill_readbuf(port, ubuf, count, true);
 }
+FOPS_READ_ITER_HELPER(port_fops_read);
 
 static int wait_port_writable(struct port *port, bool nonblock)
 {
@@ -845,6 +846,7 @@ free_buf:
 out:
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(port_fops_write);
 
 struct sg_list {
 	unsigned int n;
@@ -1088,8 +1090,8 @@ static int port_fops_fasync(int fd, struct file *filp, int mode)
 static const struct file_operations port_fops = {
 	.owner = THIS_MODULE,
 	.open  = port_fops_open,
-	.read  = port_fops_read,
-	.write = port_fops_write,
+	.read_iter  = port_fops_read_iter,
+	.write_iter = port_fops_write_iter,
 	.splice_write = port_fops_splice_write,
 	.poll  = port_fops_poll,
 	.release = port_fops_release,
