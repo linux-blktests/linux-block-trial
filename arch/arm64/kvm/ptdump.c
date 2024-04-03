@@ -205,7 +205,7 @@ static int kvm_ptdump_guest_close(struct inode *m, struct file *file)
 
 static const struct file_operations kvm_ptdump_guest_fops = {
 	.open		= kvm_ptdump_guest_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= kvm_ptdump_guest_close,
 };
@@ -264,14 +264,14 @@ static int kvm_pgtable_debugfs_close(struct inode *m, struct file *file)
 
 static const struct file_operations kvm_pgtable_range_fops = {
 	.open		= kvm_pgtable_range_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= kvm_pgtable_debugfs_close,
 };
 
 static const struct file_operations kvm_pgtable_levels_fops = {
 	.open		= kvm_pgtable_levels_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= kvm_pgtable_debugfs_close,
 };

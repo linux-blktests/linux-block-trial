@@ -439,7 +439,7 @@ static int sched_fair_server_runtime_open(struct inode *inode, struct file *filp
 static const struct file_operations fair_server_runtime_fops = {
 	.open		= sched_fair_server_runtime_open,
 	.write		= sched_fair_server_runtime_write,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
@@ -505,7 +505,7 @@ static int sched_fair_server_period_open(struct inode *inode, struct file *filp)
 static const struct file_operations fair_server_period_fops = {
 	.open		= sched_fair_server_period_open,
 	.write		= sched_fair_server_period_write,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
