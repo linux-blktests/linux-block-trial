@@ -12,7 +12,7 @@ struct blk_mq_debugfs_attr {
 	const char *name;
 	umode_t mode;
 	int (*show)(void *, struct seq_file *);
-	ssize_t (*write)(void *, const char __user *, size_t, loff_t *);
+	ssize_t (*write)(void *, struct kiocb *, struct iov_iter *);
 	/* Set either .show or .seq_ops. */
 	const struct seq_operations *seq_ops;
 };

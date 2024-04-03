@@ -7,6 +7,7 @@
 #include <linux/blkdev.h>
 #include <linux/build_bug.h>
 #include <linux/debugfs.h>
+#include <linux/uio.h>
 
 #include "blk.h"
 #include "blk-mq.h"
@@ -111,9 +112,10 @@ static int queue_state_show(void *data, struct seq_file *m)
 	return 0;
 }
 
-static ssize_t queue_state_write(void *data, const char __user *buf,
-				 size_t count, loff_t *ppos)
+static ssize_t queue_state_write(void *data, struct kiocb *iocb,
+				 struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct request_queue *q = data;
 	char opbuf[16] = { }, *op;
 
@@ -129,7 +131,7 @@ static ssize_t queue_state_write(void *data, const char __user *buf,
 		goto inval;
 	}
 
-	if (copy_from_user(opbuf, buf, count))
+	if (!copy_from_iter_full(opbuf, count, from))
 		return -EFAULT;
 	op = strstrip(opbuf);
 	if (strcmp(op, "run") == 0) {
@@ -528,12 +530,11 @@ static int blk_mq_debugfs_show(struct seq_file *m, void *v)
 	return attr->show(data, m);
 }
 
-static ssize_t blk_mq_debugfs_write(struct file *file, const char __user *buf,
-				    size_t count, loff_t *ppos)
+static ssize_t blk_mq_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	const struct blk_mq_debugfs_attr *attr = m->private;
-	void *data = debugfs_get_aux(file);
+	void *data = debugfs_get_aux(iocb->ki_filp);
 
 	/*
 	 * Attributes that only implement .seq_ops are read-only and 'attr' is
@@ -542,7 +543,7 @@ static ssize_t blk_mq_debugfs_write(struct file *file, const char __user *buf,
 	if (attr == data || !attr->write)
 		return -EPERM;
 
-	return attr->write(data, buf, count, ppos);
+	return attr->write(data, iocb, from);
 }
 
 static int blk_mq_debugfs_open(struct inode *inode, struct file *file)
@@ -579,8 +580,8 @@ static int blk_mq_debugfs_release(struct inode *inode, struct file *file)
 
 static const struct file_operations blk_mq_debugfs_fops = {
 	.open		= blk_mq_debugfs_open,
-	.read		= seq_read,
-	.write		= blk_mq_debugfs_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= blk_mq_debugfs_write,
 	.llseek		= seq_lseek,
 	.release	= blk_mq_debugfs_release,
 };
