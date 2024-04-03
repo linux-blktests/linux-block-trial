@@ -2144,12 +2144,13 @@ static void ceph_d_prune(struct dentry *dentry)
  * read() on a dir.  This weird interface hack only works if mounted
  * with '-o dirstat'.
  */
-static ssize_t ceph_read_dir(struct file *file, char __user *buf, size_t size,
-			     loff_t *ppos)
+static ssize_t ceph_read_dir(struct kiocb *iocb, struct iov_iter *to)
 {
+	struct file *file = iocb->ki_filp;
 	struct ceph_dir_file_info *dfi = file->private_data;
 	struct inode *inode = file_inode(file);
 	struct ceph_inode_info *ci = ceph_inode(inode);
+	size_t size;
 	int left;
 	const int bufsize = 1024;
 
@@ -2180,13 +2181,13 @@ static ssize_t ceph_read_dir(struct file *file, char __user *buf, size_t size,
 				&ci->i_rctime);
 	}
 
-	if (*ppos >= dfi->dir_info_len)
+	if (iocb->ki_pos >= dfi->dir_info_len)
 		return 0;
-	size = min_t(unsigned, size, dfi->dir_info_len-*ppos);
-	left = copy_to_user(buf, dfi->dir_info + *ppos, size);
+	size = min_t(unsigned, iov_iter_count(to), dfi->dir_info_len-iocb->ki_pos);
+	left = copy_to_iter(dfi->dir_info + iocb->ki_pos, size, to);
 	if (left == size)
 		return -EFAULT;
-	*ppos += (size - left);
+	iocb->ki_pos += (size - left);
 	return size - left;
 }
 
@@ -2217,7 +2218,7 @@ unsigned ceph_dentry_hash(struct inode *dir, struct dentry *dn)
 
 WRAP_DIR_ITER(ceph_readdir) // FIXME!
 const struct file_operations ceph_dir_fops = {
-	.read = ceph_read_dir,
+	.read_iter = ceph_read_dir,
 	.iterate_shared = shared_ceph_readdir,
 	.llseek = ceph_dir_llseek,
 	.open = ceph_open,
