@@ -39,9 +39,7 @@ static bool __read_mostly sched_itmt_capable;
  */
 bool __read_mostly sysctl_sched_itmt_enabled;
 
-static ssize_t sched_itmt_enabled_write(struct file *filp,
-					const char __user *ubuf,
-					size_t cnt, loff_t *ppos)
+static ssize_t sched_itmt_enabled_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	ssize_t result;
 	bool orig;
@@ -49,7 +47,7 @@ static ssize_t sched_itmt_enabled_write(struct file *filp,
 	guard(mutex)(&itmt_update_mutex);
 
 	orig = sysctl_sched_itmt_enabled;
-	result = debugfs_write_file_bool(filp, ubuf, cnt, ppos);
+	result = debugfs_write_file_bool(iocb, from);
 
 	if (sysctl_sched_itmt_enabled != orig) {
 		x86_topology_update = true;
@@ -72,8 +70,8 @@ static int sched_core_priority_show(struct seq_file *s, void *unused)
 DEFINE_SHOW_ATTRIBUTE(sched_core_priority);
 
 static const struct file_operations dfs_sched_itmt_fops = {
-	.read =         debugfs_read_file_bool,
-	.write =        sched_itmt_enabled_write,
+	.read_iter =    debugfs_read_file_bool,
+	.write_iter =        sched_itmt_enabled_write,
 	.open =         simple_open,
 	.llseek =       default_llseek,
 };

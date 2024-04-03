@@ -133,17 +133,15 @@ static int mei_dbgfs_devstate_show(struct seq_file *m, void *unused)
 }
 DEFINE_SHOW_ATTRIBUTE(mei_dbgfs_devstate);
 
-static ssize_t mei_dbgfs_write_allow_fa(struct file *file,
-					const char __user *user_buf,
-					size_t count, loff_t *ppos)
+static ssize_t mei_dbgfs_write_allow_fa(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct mei_device *dev;
 	int ret;
 
-	dev = container_of(file->private_data,
+	dev = container_of(iocb->ki_filp->private_data,
 			   struct mei_device, allow_fixed_address);
 
-	ret = debugfs_write_file_bool(file, user_buf, count, ppos);
+	ret = debugfs_write_file_bool(iocb, from);
 	if (ret < 0)
 		return ret;
 	dev->override_fixed_address = true;
@@ -152,8 +150,8 @@ static ssize_t mei_dbgfs_write_allow_fa(struct file *file,
 
 static const struct file_operations mei_dbgfs_allow_fa_fops = {
 	.open = simple_open,
-	.read = debugfs_read_file_bool,
-	.write = mei_dbgfs_write_allow_fa,
+	.read_iter = debugfs_read_file_bool,
+	.write_iter = mei_dbgfs_write_allow_fa,
 	.llseek = generic_file_llseek,
 };
 

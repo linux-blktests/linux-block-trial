@@ -1219,16 +1219,15 @@ ssize_t simple_copy_to_iter(const void *from, loff_t *ppos, size_t count,
 
 	if (pos < 0)
 		return -EINVAL;
-	if (pos >= available || !count)
+	if (pos >= count || !available)
 		return 0;
-	if (count > available - pos)
-		count = available - pos;
-	ret = copy_to_iter(from + pos, count, to);
+	if (available > count - pos)
+		available = count - pos;
+	ret = copy_to_iter(from + pos, available, to);
 	if (!ret)
 		return -EFAULT;
-	count -= ret;
-	*ppos = pos + count;
-	return count;
+	*ppos = pos + ret;
+	return ret;
 }
 EXPORT_SYMBOL(simple_copy_to_iter);
 
@@ -1451,6 +1450,93 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(simple_attr_read);
+
+/* read from the buffer that is filled with the get function */
+ssize_t simple_attr_read_iter(struct kiocb *iocb, struct iov_iter *to)
+{
+	struct simple_attr *attr;
+	size_t size;
+	ssize_t ret;
+
+	attr = iocb->ki_filp->private_data;
+
+	if (!attr->get)
+		return -EACCES;
+
+	ret = mutex_lock_interruptible(&attr->mutex);
+	if (ret)
+		return ret;
+
+	if (iocb->ki_pos && attr->get_buf[0]) {
+		/* continued read */
+		size = strlen(attr->get_buf);
+	} else {
+		/* first read */
+		u64 val;
+		ret = attr->get(attr->data, &val);
+		if (ret)
+			goto out;
+
+		size = scnprintf(attr->get_buf, sizeof(attr->get_buf),
+				 attr->fmt, (unsigned long long)val);
+	}
+
+	ret = simple_copy_to_iter(attr->get_buf, &iocb->ki_pos, size, to);
+out:
+	mutex_unlock(&attr->mutex);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(simple_attr_read_iter);
+
+static ssize_t __simple_write_iter(struct kiocb *iocb, struct iov_iter *from,
+				   bool is_signed)
+{
+	struct simple_attr *attr;
+	unsigned long long val;
+	size_t len = iov_iter_count(from);
+	size_t size;
+	ssize_t ret;
+
+	attr = iocb->ki_filp->private_data;
+	if (!attr->set)
+		return -EACCES;
+
+	ret = mutex_lock_interruptible(&attr->mutex);
+	if (ret)
+		return ret;
+
+	ret = -EFAULT;
+	size = min(sizeof(attr->set_buf) - 1, len);
+	if (!copy_from_iter(attr->set_buf, size, from))
+		goto out;
+
+	attr->set_buf[size] = '\0';
+	if (is_signed)
+		ret = kstrtoll(attr->set_buf, 0, &val);
+	else
+		ret = kstrtoull(attr->set_buf, 0, &val);
+	if (ret)
+		goto out;
+	ret = attr->set(attr->data, val);
+	if (ret == 0)
+		ret = len; /* on success, claim we got the whole input */
+out:
+	mutex_unlock(&attr->mutex);
+	return ret;
+}
+
+ssize_t simple_attr_write_iter(struct kiocb *iocb, struct iov_iter *from)
+{
+	return __simple_write_iter(iocb, from, false);
+}
+EXPORT_SYMBOL_GPL(simple_attr_write_iter);
+
+ssize_t simple_attr_write_iter_signed(struct kiocb *iocb, struct iov_iter *from)
+
+{
+	return __simple_write_iter(iocb, from, true);
+}
+EXPORT_SYMBOL_GPL(simple_attr_write_iter_signed);
 
 /* interpret the buffer as a number to call the set function with */
 static ssize_t simple_attr_write_xsigned(struct file *file, const char __user *buf,

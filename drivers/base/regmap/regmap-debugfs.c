@@ -456,9 +456,9 @@ static int regmap_access_show(struct seq_file *s, void *ignored)
 
 DEFINE_SHOW_ATTRIBUTE(regmap_access);
 
-static ssize_t regmap_cache_only_write_file(struct file *file,
-					    const char __user *user_buf,
-					    size_t count, loff_t *ppos)
+static ssize_t __regmap_cache_only_write_file(struct file *file,
+					      const char __user *user_buf,
+					      size_t count, loff_t *ppos)
 {
 	struct regmap *map = container_of(file->private_data,
 					  struct regmap, cache_only);
@@ -492,15 +492,21 @@ static ssize_t regmap_cache_only_write_file(struct file *file,
 	return count;
 }
 
+static ssize_t regmap_cache_only_write_file(struct kiocb *iocb,
+					    struct iov_iter *from)
+{
+	return vfs_write_iter(iocb, from, __regmap_cache_only_write_file);
+}
+
 static const struct file_operations regmap_cache_only_fops = {
 	.open = simple_open,
-	.read = debugfs_read_file_bool,
-	.write = regmap_cache_only_write_file,
+	.read_iter = debugfs_read_file_bool,
+	.write_iter = regmap_cache_only_write_file,
 };
 
-static ssize_t regmap_cache_bypass_write_file(struct file *file,
-					      const char __user *user_buf,
-					      size_t count, loff_t *ppos)
+static ssize_t __regmap_cache_bypass_write_file(struct file *file,
+						const char __user *user_buf,
+						size_t count, loff_t *ppos)
 {
 	struct regmap *map = container_of(file->private_data,
 					  struct regmap, cache_bypass);
@@ -527,10 +533,16 @@ static ssize_t regmap_cache_bypass_write_file(struct file *file,
 	return count;
 }
 
+static ssize_t regmap_cache_bypass_write_file(struct kiocb *iocb,
+					      struct iov_iter *from)
+{
+	return vfs_write_iter(iocb, from, __regmap_cache_bypass_write_file);
+}
+
 static const struct file_operations regmap_cache_bypass_fops = {
 	.open = simple_open,
-	.read = debugfs_read_file_bool,
-	.write = regmap_cache_bypass_write_file,
+	.read_iter = debugfs_read_file_bool,
+	.write_iter = regmap_cache_bypass_write_file,
 };
 
 void regmap_debugfs_init(struct regmap *map)

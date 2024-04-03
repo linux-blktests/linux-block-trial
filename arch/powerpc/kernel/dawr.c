@@ -59,9 +59,7 @@ static void disable_dawrs_cb(void *info)
 		set_dawr(i, &null_brk);
 }
 
-static ssize_t dawr_write_file_bool(struct file *file,
-				    const char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t dawr_write_file_bool(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct arch_hw_breakpoint null_brk = {0};
 	size_t rc;
@@ -72,7 +70,7 @@ static ssize_t dawr_write_file_bool(struct file *file,
 	    set_dawr(0, &null_brk) != H_SUCCESS)
 		return -ENODEV;
 
-	rc = debugfs_write_file_bool(file, user_buf, count, ppos);
+	rc = debugfs_write_file_bool(iocb, from);
 	if (rc)
 		return rc;
 
@@ -84,8 +82,8 @@ static ssize_t dawr_write_file_bool(struct file *file,
 }
 
 static const struct file_operations dawr_enable_fops = {
-	.read =		debugfs_read_file_bool,
-	.write =	dawr_write_file_bool,
+	.read_iter =	debugfs_read_file_bool,
+	.write_iter =	dawr_write_file_bool,
 	.open =		simple_open,
 	.llseek =	default_llseek,
 };

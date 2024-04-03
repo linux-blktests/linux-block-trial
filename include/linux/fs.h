@@ -3524,8 +3524,8 @@ static const struct file_operations __fops = {				\
 	.owner	 = THIS_MODULE,						\
 	.open	 = __fops ## _open,					\
 	.release = simple_attr_release,					\
-	.read	 = simple_attr_read,					\
-	.write	 = (__is_signed) ? simple_attr_write_signed : simple_attr_write,	\
+	.read_iter = simple_attr_read_iter,				\
+	.write_iter = (__is_signed) ? simple_attr_write_iter_signed : simple_attr_write_iter,	\
 	.llseek	 = generic_file_llseek,					\
 }
 
@@ -3551,6 +3551,9 @@ ssize_t simple_attr_write(struct file *file, const char __user *buf,
 			  size_t len, loff_t *ppos);
 ssize_t simple_attr_write_signed(struct file *file, const char __user *buf,
 				 size_t len, loff_t *ppos);
+ssize_t simple_attr_read_iter(struct kiocb *iocb, struct iov_iter *to);
+ssize_t simple_attr_write_iter(struct kiocb *iocb, struct iov_iter *from);
+ssize_t simple_attr_write_iter_signed(struct kiocb *iocb, struct iov_iter *from);
 
 int __init list_bdev_fs_names(char *buf, size_t size);
 

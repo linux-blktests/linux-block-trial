@@ -279,8 +279,7 @@ __read_mostly bool sched_debug_verbose;
 static struct dentry           *sd_dentry;
 
 
-static ssize_t sched_verbose_write(struct file *filp, const char __user *ubuf,
-				  size_t cnt, loff_t *ppos)
+static ssize_t sched_verbose_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	ssize_t result;
 	bool orig;
@@ -289,7 +288,7 @@ static ssize_t sched_verbose_write(struct file *filp, const char __user *ubuf,
 	sched_domains_mutex_lock();
 
 	orig = sched_debug_verbose;
-	result = debugfs_write_file_bool(filp, ubuf, cnt, ppos);
+	result = debugfs_write_file_bool(iocb, from);
 
 	if (sched_debug_verbose && !orig)
 		update_sched_domain_debugfs();
@@ -305,8 +304,8 @@ static ssize_t sched_verbose_write(struct file *filp, const char __user *ubuf,
 }
 
 static const struct file_operations sched_verbose_fops = {
-	.read =         debugfs_read_file_bool,
-	.write =        sched_verbose_write,
+	.read_iter =         debugfs_read_file_bool,
+	.write_iter =        sched_verbose_write,
 	.open =         simple_open,
 	.llseek =       default_llseek,
 };
