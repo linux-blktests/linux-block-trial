@@ -2830,7 +2830,7 @@ const struct file_operations ocfs2_fops = {
 WRAP_DIR_ITER(ocfs2_readdir) // FIXME!
 const struct file_operations ocfs2_dops = {
 	.llseek		= ocfs2_dir_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= shared_ocfs2_readdir,
 	.fsync		= ocfs2_sync_file,
 	.release	= ocfs2_dir_release,
@@ -2879,7 +2879,7 @@ const struct file_operations ocfs2_fops_no_plocks = {
 
 const struct file_operations ocfs2_dops_no_plocks = {
 	.llseek		= ocfs2_dir_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= shared_ocfs2_readdir,
 	.fsync		= ocfs2_sync_file,
 	.release	= ocfs2_dir_release,

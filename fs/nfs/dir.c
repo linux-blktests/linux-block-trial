@@ -61,7 +61,7 @@ static int nfs_do_create(struct inode *dir, struct dentry *dentry,
 
 const struct file_operations nfs_dir_operations = {
 	.llseek		= nfs_llseek_dir,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= nfs_readdir,
 	.open		= nfs_opendir,
 	.release	= nfs_closedir,

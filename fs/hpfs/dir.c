@@ -322,7 +322,7 @@ end_add:
 const struct file_operations hpfs_dir_ops =
 {
 	.llseek		= hpfs_dir_lseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= hpfs_readdir,
 	.release	= hpfs_dir_release,
 	.fsync		= hpfs_file_fsync,

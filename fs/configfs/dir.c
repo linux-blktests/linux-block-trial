@@ -1737,7 +1737,7 @@ const struct file_operations configfs_dir_operations = {
 	.open		= configfs_dir_open,
 	.release	= configfs_dir_close,
 	.llseek		= configfs_dir_lseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= configfs_readdir,
 };
 

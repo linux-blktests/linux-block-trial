@@ -253,7 +253,7 @@ error:
 }
 
 static const struct file_operations romfs_dir_operations = {
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= romfs_readdir,
 	.llseek		= generic_file_llseek,
 };

@@ -2422,7 +2422,7 @@ static const struct inode_operations fuse_dir_inode_operations = {
 
 static const struct file_operations fuse_dir_operations = {
 	.llseek		= generic_file_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= fuse_readdir,
 	.open		= fuse_dir_open,
 	.release	= fuse_dir_release,

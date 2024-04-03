@@ -650,7 +650,7 @@ static loff_t ufs_dir_llseek(struct file *file, loff_t offset, int whence)
 const struct file_operations ufs_dir_operations = {
 	.open		= ufs_dir_open,
 	.release	= ufs_dir_release,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= ufs_readdir,
 	.fsync		= generic_file_fsync,
 	.llseek		= ufs_dir_llseek,

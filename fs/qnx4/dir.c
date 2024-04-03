@@ -69,7 +69,7 @@ static int qnx4_readdir(struct file *file, struct dir_context *ctx)
 const struct file_operations qnx4_dir_operations =
 {
 	.llseek		= generic_file_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= qnx4_readdir,
 	.fsync		= generic_file_fsync,
 	.setlease	= generic_setlease,

@@ -426,7 +426,7 @@ static int proc_root_readdir(struct file *file, struct dir_context *ctx)
  * directory handling functions for that..
  */
 static const struct file_operations proc_root_operations = {
-	.read		 = generic_read_dir,
+	.read_iter	 = generic_read_dir,
 	.iterate_shared	 = proc_root_readdir,
 	.llseek		= generic_file_llseek,
 };

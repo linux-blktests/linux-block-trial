@@ -871,7 +871,7 @@ static long fat_compat_dir_ioctl(struct file *filp, unsigned cmd,
 
 const struct file_operations fat_dir_operations = {
 	.llseek		= generic_file_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= fat_readdir,
 	.unlocked_ioctl	= fat_dir_ioctl,
 #ifdef CONFIG_COMPAT

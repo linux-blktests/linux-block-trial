@@ -358,7 +358,7 @@ static int afs_dynroot_readdir(struct file *file, struct dir_context *ctx)
 
 static const struct file_operations afs_dynroot_file_operations = {
 	.llseek		= generic_file_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= afs_dynroot_readdir,
 	.fsync		= noop_fsync,
 };

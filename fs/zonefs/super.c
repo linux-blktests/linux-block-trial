@@ -839,7 +839,7 @@ const struct inode_operations zonefs_dir_inode_operations = {
 
 const struct file_operations zonefs_dir_operations = {
 	.llseek		= generic_file_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= zonefs_readdir,
 };
 

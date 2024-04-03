@@ -107,7 +107,7 @@ static const struct inode_operations proc_fdinfo_file_inode_operations = {
 
 static const struct file_operations proc_fdinfo_file_operations = {
 	.open		= seq_fdinfo_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
@@ -313,7 +313,7 @@ static int proc_fd_iterate(struct file *file, struct dir_context *ctx)
 }
 
 const struct file_operations proc_fd_operations = {
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= proc_fd_iterate,
 	.llseek		= generic_file_llseek,
 };
@@ -406,7 +406,7 @@ const struct inode_operations proc_fdinfo_inode_operations = {
 };
 
 const struct file_operations proc_fdinfo_operations = {
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= proc_fdinfo_iterate,
 	.llseek		= generic_file_llseek,
 };

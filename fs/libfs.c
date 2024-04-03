@@ -222,7 +222,7 @@ int dcache_readdir(struct file *file, struct dir_context *ctx)
 }
 EXPORT_SYMBOL(dcache_readdir);
 
-ssize_t generic_read_dir(struct file *filp, char __user *buf, size_t siz, loff_t *ppos)
+ssize_t generic_read_dir(struct kiocb *iocb, struct iov_iter *to)
 {
 	return -EISDIR;
 }
@@ -232,7 +232,7 @@ const struct file_operations simple_dir_operations = {
 	.open		= dcache_dir_open,
 	.release	= dcache_dir_close,
 	.llseek		= dcache_dir_lseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= dcache_readdir,
 	.fsync		= noop_fsync,
 };
@@ -569,7 +569,7 @@ static int offset_readdir(struct file *file, struct dir_context *ctx)
 const struct file_operations simple_offset_dir_operations = {
 	.llseek		= offset_dir_llseek,
 	.iterate_shared	= offset_readdir,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.fsync		= noop_fsync,
 	.setlease	= generic_setlease,
 };
@@ -1921,7 +1921,7 @@ static int empty_dir_readdir(struct file *file, struct dir_context *ctx)
 
 static const struct file_operations empty_dir_operations = {
 	.llseek		= empty_dir_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= empty_dir_readdir,
 	.fsync		= noop_fsync,
 };

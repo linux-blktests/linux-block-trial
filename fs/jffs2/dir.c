@@ -44,7 +44,7 @@ static int jffs2_rename (struct mnt_idmap *, struct inode *,
 
 const struct file_operations jffs2_dir_operations =
 {
-	.read =		generic_read_dir,
+	.read_iter =	generic_read_dir,
 	.iterate_shared=jffs2_readdir,
 	.unlocked_ioctl=jffs2_ioctl,
 	.fsync =	jffs2_fsync,

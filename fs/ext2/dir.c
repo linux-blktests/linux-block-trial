@@ -728,7 +728,7 @@ const struct file_operations ext2_dir_operations = {
 	.open		= ext2_dir_open,
 	.release	= ext2_dir_release,
 	.llseek		= ext2_dir_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= ext2_readdir,
 	.unlocked_ioctl = ext2_ioctl,
 #ifdef CONFIG_COMPAT

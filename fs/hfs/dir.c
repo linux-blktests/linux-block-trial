@@ -314,7 +314,7 @@ static int hfs_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 }
 
 const struct file_operations hfs_dir_operations = {
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= hfs_readdir,
 	.llseek		= generic_file_llseek,
 	.release	= hfs_dir_release,

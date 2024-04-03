@@ -51,7 +51,7 @@ static int affs_dir_release(struct inode *inode, struct file *file)
 
 const struct file_operations affs_dir_operations = {
 	.open		= affs_dir_open,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.llseek		= affs_dir_llseek,
 	.iterate_shared	= affs_readdir,
 	.fsync		= affs_file_fsync,

@@ -937,7 +937,7 @@ static const struct address_space_operations cramfs_aops = {
  */
 static const struct file_operations cramfs_directory_operations = {
 	.llseek		= generic_file_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= cramfs_readdir,
 	.setlease	= generic_setlease,
 };

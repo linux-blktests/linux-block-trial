@@ -184,7 +184,7 @@ const struct file_operations vboxsf_dir_fops = {
 	.open = vboxsf_dir_open,
 	.iterate_shared = shared_vboxsf_dir_iterate,
 	.release = vboxsf_dir_release,
-	.read = generic_read_dir,
+	.read_iter = generic_read_dir,
 	.llseek = generic_file_llseek,
 };
 

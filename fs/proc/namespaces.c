@@ -142,7 +142,7 @@ out:
 }
 
 const struct file_operations proc_ns_dir_operations = {
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= proc_ns_dir_readdir,
 	.llseek		= generic_file_llseek,
 };

@@ -574,7 +574,7 @@ const struct inode_operations coda_dir_inode_operations = {
 WRAP_DIR_ITER(coda_readdir) // FIXME!
 const struct file_operations coda_dir_operations = {
 	.llseek		= generic_file_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= shared_coda_readdir,
 	.open		= coda_open,
 	.release	= coda_release,

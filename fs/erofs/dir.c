@@ -122,7 +122,7 @@ static int erofs_readdir(struct file *f, struct dir_context *ctx)
 
 const struct file_operations erofs_dir_fops = {
 	.llseek		= generic_file_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= erofs_readdir,
 	.unlocked_ioctl = erofs_ioctl,
 #ifdef CONFIG_COMPAT

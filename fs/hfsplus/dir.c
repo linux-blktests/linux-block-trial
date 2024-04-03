@@ -624,7 +624,7 @@ const struct inode_operations hfsplus_dir_inode_operations = {
 
 const struct file_operations hfsplus_dir_operations = {
 	.fsync		= hfsplus_file_fsync,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= hfsplus_readdir,
 	.unlocked_ioctl = hfsplus_ioctl,
 	.llseek		= generic_file_llseek,

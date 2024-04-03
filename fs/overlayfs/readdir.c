@@ -1065,7 +1065,7 @@ static int ovl_dir_open(struct inode *inode, struct file *file)
 
 WRAP_DIR_ITER(ovl_iterate) // FIXME!
 const struct file_operations ovl_dir_operations = {
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.open		= ovl_dir_open,
 	.iterate_shared	= shared_ovl_iterate,
 	.llseek		= ovl_dir_llseek,

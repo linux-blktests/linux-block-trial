@@ -77,7 +77,7 @@ static const struct super_operations befs_sops = {
 static struct kmem_cache *befs_inode_cachep;
 
 static const struct file_operations befs_dir_operations = {
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= befs_readdir,
 	.llseek		= generic_file_llseek,
 	.setlease	= generic_setlease,

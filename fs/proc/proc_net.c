@@ -341,7 +341,7 @@ static int proc_tgid_net_readdir(struct file *file, struct dir_context *ctx)
 
 const struct file_operations proc_net_operations = {
 	.llseek		= generic_file_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= proc_tgid_net_readdir,
 };
 

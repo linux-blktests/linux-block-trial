@@ -666,7 +666,7 @@ bool dir_is_empty(struct inode *dir)
 // clang-format off
 const struct file_operations ntfs_dir_operations = {
 	.llseek		= generic_file_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= ntfs_readdir,
 	.fsync		= ntfs_file_fsync,
 	.open		= ntfs_file_open,
@@ -680,7 +680,7 @@ const struct file_operations ntfs_dir_operations = {
 #if IS_ENABLED(CONFIG_NTFS_FS)
 const struct file_operations ntfs_legacy_dir_operations = {
 	.llseek		= generic_file_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= ntfs_readdir,
 	.open		= ntfs_file_open,
 	.setlease	= generic_setlease,

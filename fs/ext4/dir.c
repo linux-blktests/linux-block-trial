@@ -682,7 +682,7 @@ static int ext4_dir_open(struct inode *inode, struct file *file)
 const struct file_operations ext4_dir_operations = {
 	.open		= ext4_dir_open,
 	.llseek		= ext4_dir_llseek,
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= ext4_readdir,
 	.unlocked_ioctl = ext4_ioctl,
 #ifdef CONFIG_COMPAT

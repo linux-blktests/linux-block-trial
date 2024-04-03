@@ -240,7 +240,7 @@ static const struct inode_operations eventfs_file_inode_operations = {
 };
 
 static const struct file_operations eventfs_file_operations = {
-	.read		= generic_read_dir,
+	.read_iter	= generic_read_dir,
 	.iterate_shared	= eventfs_iterate,
 	.llseek		= generic_file_llseek,
 };
