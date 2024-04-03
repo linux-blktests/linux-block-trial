@@ -217,6 +217,7 @@ static ssize_t vme_user_read(struct file *file, char __user *buf, size_t count,
 
 	return retval;
 }
+FOPS_READ_ITER_HELPER(vme_user_read);
 
 static ssize_t vme_user_write(struct file *file, const char __user *buf,
 			      size_t count, loff_t *ppos)
@@ -260,6 +261,7 @@ static ssize_t vme_user_write(struct file *file, const char __user *buf,
 
 	return retval;
 }
+FOPS_WRITE_ITER_HELPER(vme_user_write);
 
 static loff_t vme_user_llseek(struct file *file, loff_t off, int whence)
 {
@@ -493,8 +495,8 @@ static int vme_user_mmap(struct file *file, struct vm_area_struct *vma)
 }
 
 static const struct file_operations vme_user_fops = {
-	.read = vme_user_read,
-	.write = vme_user_write,
+	.read_iter = vme_user_read_iter,
+	.write_iter = vme_user_write_iter,
 	.llseek = vme_user_llseek,
 	.unlocked_ioctl = vme_user_unlocked_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,

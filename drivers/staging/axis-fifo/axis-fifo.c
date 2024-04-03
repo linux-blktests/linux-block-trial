@@ -194,6 +194,7 @@ end_unlock:
 
 	return ret;
 }
+FOPS_READ_ITER_HELPER(axis_fifo_read);
 
 /**
  * axis_fifo_write() - Write buffer to AXIS-FIFO character device.
@@ -269,6 +270,7 @@ end_unlock:
 
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(axis_fifo_write);
 
 static __poll_t axis_fifo_poll(struct file *f, poll_table *wait)
 {
@@ -348,8 +350,8 @@ static int axis_fifo_open(struct inode *inod, struct file *f)
 static const struct file_operations fops = {
 	.owner = THIS_MODULE,
 	.open = axis_fifo_open,
-	.read = axis_fifo_read,
-	.write = axis_fifo_write,
+	.read_iter = axis_fifo_read_iter,
+	.write_iter = axis_fifo_write_iter,
 	.poll = axis_fifo_poll,
 };
 
