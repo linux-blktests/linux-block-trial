@@ -626,10 +626,9 @@ static int mqueue_unlink(struct inode *dir, struct dentry *dentry)
 *	that are interesting from user point of view and aren't accessible
 *	through std routines)
 */
-static ssize_t mqueue_read_file(struct file *filp, char __user *u_data,
-				size_t count, loff_t *off)
+static ssize_t mqueue_read_file(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct inode *inode = file_inode(filp);
+	struct inode *inode = file_inode(iocb->ki_filp);
 	struct mqueue_inode_info *info = MQUEUE_I(inode);
 	char buffer[FILENT_SIZE];
 	ssize_t ret;
@@ -646,8 +645,7 @@ static ssize_t mqueue_read_file(struct file *filp, char __user *u_data,
 	spin_unlock(&info->lock);
 	buffer[sizeof(buffer)-1] = '\0';
 
-	ret = simple_read_from_buffer(u_data, count, off, buffer,
-				strlen(buffer));
+	ret = simple_copy_to_iter(buffer, &iocb->ki_pos, strlen(buffer), to);
 	if (ret <= 0)
 		return ret;
 
@@ -1594,7 +1592,7 @@ static const struct inode_operations mqueue_dir_inode_operations = {
 static const struct file_operations mqueue_file_operations = {
 	.flush = mqueue_flush_file,
 	.poll = mqueue_poll_file,
-	.read = mqueue_read_file,
+	.read_iter = mqueue_read_file,
 	.llseek = default_llseek,
 };
 
