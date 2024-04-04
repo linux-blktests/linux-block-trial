@@ -1363,6 +1363,16 @@ ssize_t simple_transaction_read(struct file *file, char __user *buf, size_t size
 }
 EXPORT_SYMBOL(simple_transaction_read);
 
+ssize_t simple_transaction_read_iter(struct kiocb *iocb, struct iov_iter *to)
+{
+	struct simple_transaction_argresp *ar = iocb->ki_filp->private_data;
+
+	if (!ar)
+		return 0;
+	return simple_copy_to_iter(ar->data, &iocb->ki_pos, ar->size, to);
+}
+EXPORT_SYMBOL(simple_transaction_read_iter);
+
 int simple_transaction_release(struct inode *inode, struct file *file)
 {
 	free_page((unsigned long)file->private_data);
