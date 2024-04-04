@@ -153,11 +153,12 @@ static ssize_t shrinker_debugfs_scan_write(struct file *file,
 
 	return size;
 }
+FOPS_WRITE_ITER_HELPER(shrinker_debugfs_scan_write);
 
 static const struct file_operations shrinker_debugfs_scan_fops = {
 	.owner	 = THIS_MODULE,
 	.open	 = shrinker_debugfs_scan_open,
-	.write	 = shrinker_debugfs_scan_write,
+	.write_iter	 = shrinker_debugfs_scan_write_iter,
 };
 
 int shrinker_debugfs_add(struct shrinker *shrinker)

@@ -2182,12 +2182,13 @@ out:
 	*ppos += size;
 	return size;
 }
+FOPS_WRITE_ITER_HELPER(kmemleak_write);
 
 static const struct file_operations kmemleak_fops = {
 	.owner		= THIS_MODULE,
 	.open		= kmemleak_open,
-	.read		= seq_read,
-	.write		= kmemleak_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= kmemleak_write_iter,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };

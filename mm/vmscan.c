@@ -5551,8 +5551,7 @@ done:
 }
 
 /* see Documentation/admin-guide/mm/multigen_lru.rst for details */
-static ssize_t lru_gen_seq_write(struct file *file, const char __user *src,
-				 size_t len, loff_t *pos)
+static ssize_t lru_gen_seq_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	void *buf;
 	char *cur, *next;
@@ -5567,12 +5566,13 @@ static ssize_t lru_gen_seq_write(struct file *file, const char __user *src,
 		.gfp_mask = GFP_KERNEL,
 		.proactive = true,
 	};
+	size_t len = iov_iter_count(from);
 
 	buf = kvmalloc(len + 1, GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
 
-	if (copy_from_user(buf, src, len)) {
+	if (!copy_from_iter_full(buf, len, from)) {
 		kvfree(buf);
 		return -EFAULT;
 	}
@@ -5642,15 +5642,15 @@ static int lru_gen_seq_open(struct inode *inode, struct file *file)
 
 static const struct file_operations lru_gen_rw_fops = {
 	.open = lru_gen_seq_open,
-	.read = seq_read,
-	.write = lru_gen_seq_write,
+	.read_iter = seq_read_iter,
+	.write_iter = lru_gen_seq_write_iter,
 	.llseek = seq_lseek,
 	.release = seq_release,
 };
 
 static const struct file_operations lru_gen_ro_fops = {
 	.open = lru_gen_seq_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = seq_release,
 };
