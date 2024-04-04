@@ -139,28 +139,27 @@ static int debugfs_run_open(struct inode *inode, struct file *file)
  *
  * Note: what is written to this file will not be saved.
  */
-static ssize_t debugfs_run(struct file *file,
-		const char __user *buf, size_t count, loff_t *ppos)
+static ssize_t debugfs_run(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct inode *f_inode = file->f_inode;
+	struct inode *f_inode = iocb->ki_filp->f_inode;
 	struct kunit_suite *suite = (struct kunit_suite *) f_inode->i_private;
 
 	__kunit_test_suites_init(&suite, 1, true);
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations debugfs_results_fops = {
 	.open = debugfs_results_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = debugfs_release,
 };
 
 static const struct file_operations debugfs_run_fops = {
 	.open = debugfs_run_open,
-	.read = seq_read,
-	.write = debugfs_run,
+	.read_iter = seq_read_iter,
+	.write_iter = debugfs_run,
 	.llseek = seq_lseek,
 	.release = debugfs_release,
 };

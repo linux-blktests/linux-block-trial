@@ -98,9 +98,9 @@ static int xz_dec_test_release(struct inode *i, struct file *f)
  * The .xz file must have exactly one Stream and no Stream Padding. The data
  * after the first Stream is considered to be garbage.
  */
-static ssize_t xz_dec_test_write(struct file *file, const char __user *buf,
-				 size_t size, loff_t *pos)
+static ssize_t xz_dec_test_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t size = iov_iter_count(from);
 	size_t remaining;
 
 	if (ret != XZ_OK) {
@@ -121,10 +121,9 @@ static ssize_t xz_dec_test_write(struct file *file, const char __user *buf,
 		if (buffers.in_pos == buffers.in_size) {
 			buffers.in_pos = 0;
 			buffers.in_size = min(remaining, sizeof(buffer_in));
-			if (copy_from_user(buffer_in, buf, buffers.in_size))
+			if (!copy_from_iter_full(buffer_in, buffers.in_size, from))
 				return -EFAULT;
 
-			buf += buffers.in_size;
 			remaining -= buffers.in_size;
 		}
 
@@ -178,7 +177,7 @@ static int __init xz_dec_test_init(void)
 		.owner = THIS_MODULE,
 		.open = &xz_dec_test_open,
 		.release = &xz_dec_test_release,
-		.write = &xz_dec_test_write
+		.write_iter = &xz_dec_test_write
 	};
 
 	state = xz_dec_init(XZ_PREALLOC, DICT_MAX);

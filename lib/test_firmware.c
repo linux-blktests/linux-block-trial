@@ -148,23 +148,21 @@ static struct test_firmware_upload *upload_lookup_name(const char *name)
 	return NULL;
 }
 
-static ssize_t test_fw_misc_read(struct file *f, char __user *buf,
-				 size_t size, loff_t *offset)
+static ssize_t test_fw_misc_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	ssize_t rc = 0;
 
 	mutex_lock(&test_fw_mutex);
 	if (test_firmware)
-		rc = simple_read_from_buffer(buf, size, offset,
-					     test_firmware->data,
-					     test_firmware->size);
+		rc = simple_copy_to_iter(test_firmware->data, &iocb->ki_pos,
+					     test_firmware->size, to);
 	mutex_unlock(&test_fw_mutex);
 	return rc;
 }
 
 static const struct file_operations test_fw_fops = {
 	.owner          = THIS_MODULE,
-	.read           = test_fw_misc_read,
+	.read_iter      = test_fw_misc_read,
 };
 
 static void __test_release_all_firmware(void)

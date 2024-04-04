@@ -1027,6 +1027,7 @@ static ssize_t ddebug_proc_write(struct file *file, const char __user *ubuf,
 	*offp += len;
 	return len;
 }
+FOPS_WRITE_ITER_HELPER(ddebug_proc_write);
 
 /*
  * Set the iterator to point to the first _ddebug object
@@ -1187,10 +1188,10 @@ static int ddebug_proc_open(struct inode *inode, struct file *file)
 static const struct file_operations ddebug_proc_fops = {
 	.owner = THIS_MODULE,
 	.open = ddebug_proc_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = seq_release_private,
-	.write = ddebug_proc_write
+	.write_iter = ddebug_proc_write_iter
 };
 
 static const struct proc_ops proc_fops = {
