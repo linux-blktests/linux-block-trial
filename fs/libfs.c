@@ -1198,6 +1198,77 @@ ssize_t simple_write_to_buffer(void *to, size_t available, loff_t *ppos,
 EXPORT_SYMBOL(simple_write_to_buffer);
 
 /**
+ * simple_copy_to_iter - copy data userspace to iter
+ * @from: the buffer to read from
+ * @ppos: the current position in the buffer
+ * @count: the maximum number of bytes to copy
+ * @to: the iov_iter to copy to
+ *
+ * The simple_copy_to_iter() function reads up to @count bytes from the
+ * buffer @from at offset @ppos into the user space address starting at @to.
+ *
+ * On success, the number of bytes copied is returned, or negative value is
+ * returned on error.
+ **/
+ssize_t simple_copy_to_iter(const void *from, loff_t *ppos, size_t count,
+			    struct iov_iter *to)
+{
+	size_t available = iov_iter_count(to);
+	loff_t pos = *ppos;
+	size_t ret;
+
+	if (pos < 0)
+		return -EINVAL;
+	if (pos >= available || !count)
+		return 0;
+	if (count > available - pos)
+		count = available - pos;
+	ret = copy_to_iter(from + pos, count, to);
+	if (!ret)
+		return -EFAULT;
+	count -= ret;
+	*ppos = pos + count;
+	return count;
+}
+EXPORT_SYMBOL(simple_copy_to_iter);
+
+/**
+ * simple_copy_from_iter - copy data from iter to user space buffer
+ * @to: the buffer to write to
+ * @available: the size of the buffer
+ * @ppos: the current position in the buffer
+ * @from: the user space buffer to read from
+ * @count: the maximum number of bytes to read
+ *
+ * The simple_write_to_buffer() function reads up to @count bytes from the user
+ * space address starting at @from into the buffer @to at offset @ppos.
+ *
+ * On success, the number of bytes written is returned and the offset @ppos is
+ * advanced by this number, or negative value is returned on error.
+ **/
+ssize_t simple_copy_from_iter(void *to, loff_t *ppos, size_t count,
+			      struct iov_iter *from)
+{
+	size_t available = iov_iter_count(to);
+	loff_t pos = *ppos;
+	size_t res;
+
+	if (pos < 0)
+		return -EINVAL;
+	if (pos >= available || !count)
+		return 0;
+	if (count > available - pos)
+		count = available - pos;
+	res = copy_from_iter(to + pos, count, from);
+	if (!res)
+		return -EFAULT;
+	count -= res;
+	*ppos = pos + count;
+	return count;
+}
+EXPORT_SYMBOL(simple_copy_from_iter);
+
+/**
  * memory_read_from_buffer - copy data from the buffer
  * @to: the kernel space buffer to read to
  * @count: the maximum number of bytes to read

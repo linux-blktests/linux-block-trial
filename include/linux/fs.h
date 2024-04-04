@@ -3298,6 +3298,11 @@ extern ssize_t simple_read_from_buffer(void __user *to, size_t count,
 extern ssize_t simple_write_to_buffer(void *to, size_t available, loff_t *ppos,
 		const void __user *from, size_t count);
 
+ssize_t simple_copy_to_iter(const void *from, loff_t *ppos, size_t count,
+			    struct iov_iter *to);
+ssize_t simple_copy_from_iter(void *to, loff_t *ppos, size_t count,
+			      struct iov_iter *from);
+
 struct offset_ctx {
 	struct maple_tree	mt;
 	unsigned long		next_offset;
