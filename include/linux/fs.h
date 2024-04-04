@@ -2079,6 +2079,12 @@ extern ssize_t vfs_read(struct file *, char __user *, size_t, loff_t *);
 extern ssize_t vfs_write(struct file *, const char __user *, size_t, loff_t *);
 extern ssize_t vfs_copy_file_range(struct file *, loff_t , struct file *,
 				   loff_t, size_t, unsigned int);
+ssize_t vfs_write_iter(struct kiocb *iocb, struct iov_iter *from,
+		       ssize_t (*write)(struct file *, const char __user *,
+				        size_t, loff_t *));
+ssize_t vfs_read_iter(struct kiocb *iocb, struct iov_iter *to,
+		      ssize_t (*read)(struct file *, char __user *,
+				      size_t, loff_t *));
 int remap_verify_area(struct file *file, loff_t pos, loff_t len, bool write);
 int __generic_remap_file_range_prep(struct file *file_in, loff_t pos_in,
 				    struct file *file_out, loff_t pos_out,

@@ -890,6 +890,28 @@ static ssize_t do_loop_writev(struct file *file, struct iov_iter *iter,
 	return ret;
 }
 
+/* generic read side helper for drivers converting to ->read_iter() */
+ssize_t vfs_read_iter(struct kiocb *iocb, struct iov_iter *to,
+		      ssize_t (*read)(struct file *, char __user *,
+				     size_t, loff_t *))
+{
+	if (WARN_ON_ONCE(!user_backed_iter(to)))
+		return -EINVAL;
+	return do_loop_readv(iocb->ki_filp, to, &iocb->ki_pos, 0, read);
+}
+EXPORT_SYMBOL(vfs_read_iter);
+
+/* generic write side helper for drivers converting to ->write_iter() */
+ssize_t vfs_write_iter(struct kiocb *iocb, struct iov_iter *from,
+		       ssize_t (*write)(struct file *, const char __user *,
+				       size_t, loff_t *))
+{
+	if (WARN_ON_ONCE(!user_backed_iter(from)))
+		return -EINVAL;
+	return do_loop_writev(iocb->ki_filp, from, &iocb->ki_pos, 0, write);
+}
+EXPORT_SYMBOL(vfs_write_iter);
+
 ssize_t vfs_iocb_iter_read(struct file *file, struct kiocb *iocb,
 			   struct iov_iter *iter)
 {
