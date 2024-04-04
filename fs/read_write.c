@@ -834,8 +834,10 @@ static ssize_t do_iter_readv_writev(struct file *filp, struct iov_iter *iter,
 }
 
 /* Do it by hand, with file-ops */
-static ssize_t do_loop_readv_writev(struct file *filp, struct iov_iter *iter,
-		loff_t *ppos, int type, rwf_t flags)
+static ssize_t do_loop_readv(struct file *file, struct iov_iter *iter,
+			     loff_t *ppos, rwf_t flags,
+			     ssize_t (*read)(struct file *, char __user *,
+					     size_t, loff_t *))
 {
 	ssize_t ret = 0;
 
@@ -845,14 +847,35 @@ static ssize_t do_loop_readv_writev(struct file *filp, struct iov_iter *iter,
 	while (iov_iter_count(iter)) {
 		ssize_t nr;
 
-		if (type == READ) {
-			nr = filp->f_op->read(filp, iter_iov_addr(iter),
-						iter_iov_len(iter), ppos);
-		} else {
-			nr = filp->f_op->write(filp, iter_iov_addr(iter),
-						iter_iov_len(iter), ppos);
+		nr = read(file, iter_iov_addr(iter), iter_iov_len(iter), ppos);
+		if (nr < 0) {
+			if (!ret)
+				ret = nr;
+			break;
 		}
+		ret += nr;
+		if (nr != iter_iov_len(iter))
+			break;
+		iov_iter_advance(iter, nr);
+	}
 
+	return ret;
+}
+
+static ssize_t do_loop_writev(struct file *file, struct iov_iter *iter,
+			      loff_t *ppos, rwf_t flags,
+			      ssize_t (*write)(struct file *, const char __user *,
+					       size_t, loff_t *))
+{
+	ssize_t ret = 0;
+
+	if (flags & ~RWF_HIPRI)
+		return -EOPNOTSUPP;
+
+	while (iov_iter_count(iter)) {
+		ssize_t nr;
+
+		nr = write(file, iter_iov_addr(iter), iter_iov_len(iter), ppos);
 		if (nr < 0) {
 			if (!ret)
 				ret = nr;
@@ -1019,7 +1042,7 @@ static ssize_t vfs_readv(struct file *file, const struct iovec __user *vec,
 	if (file->f_op->read_iter)
 		ret = do_iter_readv_writev(file, &iter, pos, READ, flags);
 	else
-		ret = do_loop_readv_writev(file, &iter, pos, READ, flags);
+		ret = do_loop_readv(file, &iter, pos, flags, file->f_op->read);
 out:
 	if (ret >= 0)
 		fsnotify_access(file);
@@ -1058,7 +1081,7 @@ static ssize_t vfs_writev(struct file *file, const struct iovec __user *vec,
 	if (file->f_op->write_iter)
 		ret = do_iter_readv_writev(file, &iter, pos, WRITE, flags);
 	else
-		ret = do_loop_readv_writev(file, &iter, pos, WRITE, flags);
+		ret = do_loop_writev(file, &iter, pos, flags, file->f_op->write);
 	if (ret > 0)
 		fsnotify_modify(file);
 	file_end_write(file);
