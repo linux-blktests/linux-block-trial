@@ -168,10 +168,10 @@ static int vol_cdev_fsync(struct file *file, loff_t start, loff_t end,
 }
 
 
-static ssize_t vol_cdev_read(struct file *file, __user char *buf, size_t count,
-			     loff_t *offp)
+static ssize_t vol_cdev_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ubi_volume_desc *desc = file->private_data;
+	struct ubi_volume_desc *desc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	struct ubi_volume *vol = desc->vol;
 	struct ubi_device *ubi = vol->ubi;
 	int err, lnum, off, len,  tbuf_size;
@@ -179,7 +179,7 @@ static ssize_t vol_cdev_read(struct file *file, __user char *buf, size_t count,
 	void *tbuf;
 
 	dbg_gen("read %zd bytes from offset %lld of volume %d",
-		count, *offp, vol->vol_id);
+		count, iocb->ki_pos, vol->vol_id);
 
 	if (vol->updating) {
 		ubi_err(vol->ubi, "updating");
@@ -189,14 +189,14 @@ static ssize_t vol_cdev_read(struct file *file, __user char *buf, size_t count,
 		ubi_err(vol->ubi, "damaged volume, update marker is set");
 		return -EBADF;
 	}
-	if (*offp == vol->used_bytes || count == 0)
+	if (iocb->ki_pos == vol->used_bytes || count == 0)
 		return 0;
 
 	if (vol->corrupted)
 		dbg_gen("read from corrupted volume %d", vol->vol_id);
 
-	if (*offp + count > vol->used_bytes)
-		count_save = count = vol->used_bytes - *offp;
+	if (iocb->ki_pos + count > vol->used_bytes)
+		count_save = count = vol->used_bytes - iocb->ki_pos;
 
 	tbuf_size = vol->usable_leb_size;
 	if (count < tbuf_size)
@@ -206,7 +206,7 @@ static ssize_t vol_cdev_read(struct file *file, __user char *buf, size_t count,
 		return -ENOMEM;
 
 	len = count > tbuf_size ? tbuf_size : count;
-	lnum = div_u64_rem(*offp, vol->usable_leb_size, &off);
+	lnum = div_u64_rem(iocb->ki_pos, vol->usable_leb_size, &off);
 
 	do {
 		cond_resched();
@@ -225,15 +225,14 @@ static ssize_t vol_cdev_read(struct file *file, __user char *buf, size_t count,
 		}
 
 		count -= len;
-		*offp += len;
+		iocb->ki_pos += len;
 
-		err = copy_to_user(buf, tbuf, len);
+		err = !copy_to_iter_full(tbuf, len, to);
 		if (err) {
 			err = -EFAULT;
 			break;
 		}
 
-		buf += len;
 		len = count > tbuf_size ? tbuf_size : count;
 	} while (count);
 
@@ -245,10 +244,10 @@ static ssize_t vol_cdev_read(struct file *file, __user char *buf, size_t count,
  * This function allows to directly write to dynamic UBI volumes, without
  * issuing the volume update operation.
  */
-static ssize_t vol_cdev_direct_write(struct file *file, const char __user *buf,
-				     size_t count, loff_t *offp)
+static ssize_t vol_cdev_direct_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ubi_volume_desc *desc = file->private_data;
+	struct ubi_volume_desc *desc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct ubi_volume *vol = desc->vol;
 	struct ubi_device *ubi = vol->ubi;
 	int lnum, off, len, tbuf_size, err = 0;
@@ -259,19 +258,19 @@ static ssize_t vol_cdev_direct_write(struct file *file, const char __user *buf,
 		return -EPERM;
 
 	dbg_gen("requested: write %zd bytes to offset %lld of volume %u",
-		count, *offp, vol->vol_id);
+		count, iocb->ki_pos, vol->vol_id);
 
 	if (vol->vol_type == UBI_STATIC_VOLUME)
 		return -EROFS;
 
-	lnum = div_u64_rem(*offp, vol->usable_leb_size, &off);
+	lnum = div_u64_rem(iocb->ki_pos, vol->usable_leb_size, &off);
 	if (off & (ubi->min_io_size - 1)) {
 		ubi_err(ubi, "unaligned position");
 		return -EINVAL;
 	}
 
-	if (*offp + count > vol->used_bytes)
-		count_save = count = vol->used_bytes - *offp;
+	if (iocb->ki_pos + count > vol->used_bytes)
+		count_save = count = vol->used_bytes - iocb->ki_pos;
 
 	/* We can write only in fractions of the minimum I/O unit */
 	if (count & (ubi->min_io_size - 1)) {
@@ -294,7 +293,7 @@ static ssize_t vol_cdev_direct_write(struct file *file, const char __user *buf,
 		if (off + len >= vol->usable_leb_size)
 			len = vol->usable_leb_size - off;
 
-		err = copy_from_user(tbuf, buf, len);
+		err = !copy_from_iter_full(tbuf, len, from);
 		if (err) {
 			err = -EFAULT;
 			break;
@@ -311,8 +310,7 @@ static ssize_t vol_cdev_direct_write(struct file *file, const char __user *buf,
 		}
 
 		count -= len;
-		*offp += len;
-		buf += len;
+		iocb->ki_pos += len;
 		len = count > tbuf_size ? tbuf_size : count;
 	}
 
@@ -320,25 +318,25 @@ static ssize_t vol_cdev_direct_write(struct file *file, const char __user *buf,
 	return err ? err : count_save - count;
 }
 
-static ssize_t vol_cdev_write(struct file *file, const char __user *buf,
-			      size_t count, loff_t *offp)
+static ssize_t vol_cdev_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int err = 0;
-	struct ubi_volume_desc *desc = file->private_data;
+	struct ubi_volume_desc *desc = iocb->ki_filp->private_data;
 	struct ubi_volume *vol = desc->vol;
 	struct ubi_device *ubi = vol->ubi;
+	size_t count = iov_iter_count(from);
 
 	if (!vol->updating && !vol->changing_leb)
-		return vol_cdev_direct_write(file, buf, count, offp);
+		return vol_cdev_direct_write(iocb, from);
 
 	if (vol->updating)
-		err = ubi_more_update_data(ubi, vol, buf, count);
+		err = ubi_more_update_data(ubi, vol, from);
 	else
-		err = ubi_more_leb_change_data(ubi, vol, buf, count);
+		err = ubi_more_leb_change_data(ubi, vol, from);
 
 	if (err < 0) {
 		ubi_err(ubi, "cannot accept more %zd bytes of data, error %d",
-			count, err);
+			iov_iter_count(from), err);
 		return err;
 	}
 
@@ -1155,8 +1153,8 @@ const struct file_operations ubi_vol_cdev_operations = {
 	.open           = vol_cdev_open,
 	.release        = vol_cdev_release,
 	.llseek         = vol_cdev_llseek,
-	.read           = vol_cdev_read,
-	.write          = vol_cdev_write,
+	.read_iter      = vol_cdev_read,
+	.write_iter     = vol_cdev_write,
 	.fsync		= vol_cdev_fsync,
 	.unlocked_ioctl = vol_cdev_ioctl,
 	.compat_ioctl   = compat_ptr_ioctl,

@@ -325,11 +325,11 @@ void ubi_debugfs_exit(void)
 }
 
 /* Read an UBI debugfs file */
-static ssize_t dfs_file_read(struct file *file, char __user *user_buf,
-			     size_t count, loff_t *ppos)
+static ssize_t dfs_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	unsigned long ubi_num = (unsigned long)file->private_data;
-	struct dentry *dent = file->f_path.dentry;
+	unsigned long ubi_num = (unsigned long)iocb->ki_filp->private_data;
+	struct dentry *dent = iocb->ki_filp->f_path.dentry;
+	size_t count = iov_iter_count(to);
 	struct ubi_device *ubi;
 	struct ubi_debug_info *d;
 	char buf[16];
@@ -354,23 +354,19 @@ static ssize_t dfs_file_read(struct file *file, char __user *user_buf,
 		val = d->emulate_io_failures;
 	else if (dent == d->dfs_emulate_failures) {
 		snprintf(buf, sizeof(buf), "0x%04x\n", d->emulate_failures);
-		count = simple_read_from_buffer(user_buf, count, ppos,
-						buf, strlen(buf));
+		count = simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 		goto out;
 	} else if (dent == d->dfs_emulate_power_cut) {
 		snprintf(buf, sizeof(buf), "%u\n", d->emulate_power_cut);
-		count = simple_read_from_buffer(user_buf, count, ppos,
-						buf, strlen(buf));
+		count = simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 		goto out;
 	} else if (dent == d->dfs_power_cut_min) {
 		snprintf(buf, sizeof(buf), "%u\n", d->power_cut_min);
-		count = simple_read_from_buffer(user_buf, count, ppos,
-						buf, strlen(buf));
+		count = simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 		goto out;
 	} else if (dent == d->dfs_power_cut_max) {
 		snprintf(buf, sizeof(buf), "%u\n", d->power_cut_max);
-		count = simple_read_from_buffer(user_buf, count, ppos,
-						buf, strlen(buf));
+		count = simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 		goto out;
 	} else {
 		count = -EINVAL;
@@ -384,7 +380,7 @@ static ssize_t dfs_file_read(struct file *file, char __user *user_buf,
 	buf[1] = '\n';
 	buf[2] = 0x00;
 
-	count = simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	count = simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 
 out:
 	ubi_put_device(ubi);
@@ -392,11 +388,11 @@ out:
 }
 
 /* Write an UBI debugfs file */
-static ssize_t dfs_file_write(struct file *file, const char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t dfs_file_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	unsigned long ubi_num = (unsigned long)file->private_data;
-	struct dentry *dent = file->f_path.dentry;
+	unsigned long ubi_num = (unsigned long)iocb->ki_filp->private_data;
+	struct dentry *dent = iocb->ki_filp->f_path.dentry;
+	size_t count = iov_iter_count(from);
 	struct ubi_device *ubi;
 	struct ubi_debug_info *d;
 	size_t buf_size;
@@ -409,7 +405,7 @@ static ssize_t dfs_file_write(struct file *file, const char __user *user_buf,
 	d = &ubi->dbg;
 
 	buf_size = min_t(size_t, count, (sizeof(buf) - 1));
-	if (copy_from_user(buf, user_buf, buf_size)) {
+	if (!copy_from_iter_full(buf, buf_size, from)) {
 		count = -EFAULT;
 		goto out;
 	}
@@ -467,8 +463,8 @@ out:
  * detailed_erase_block_info
  */
 static const struct file_operations dfs_fops = {
-	.read   = dfs_file_read,
-	.write  = dfs_file_write,
+	.read_iter   = dfs_file_read,
+	.write_iter  = dfs_file_write,
 	.open	= simple_open,
 	.owner  = THIS_MODULE,
 };
@@ -575,7 +571,7 @@ static int eraseblk_count_release(struct inode *inode, struct file *f)
 static const struct file_operations eraseblk_count_fops = {
 	.owner = THIS_MODULE,
 	.open = eraseblk_count_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = eraseblk_count_release,
 };

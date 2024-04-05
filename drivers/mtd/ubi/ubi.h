@@ -851,11 +851,11 @@ void ubi_free_volume(struct ubi_device *ubi, struct ubi_volume *vol);
 int ubi_start_update(struct ubi_device *ubi, struct ubi_volume *vol,
 		     long long bytes);
 int ubi_more_update_data(struct ubi_device *ubi, struct ubi_volume *vol,
-			 const void __user *buf, int count);
+			 struct iov_iter *from);
 int ubi_start_leb_change(struct ubi_device *ubi, struct ubi_volume *vol,
 			 const struct ubi_leb_change_req *req);
 int ubi_more_leb_change_data(struct ubi_device *ubi, struct ubi_volume *vol,
-			     const void __user *buf, int count);
+			     struct iov_iter *from);
 
 /* misc.c */
 int ubi_calc_data_len(const struct ubi_device *ubi, const void *buf,

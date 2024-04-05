@@ -124,10 +124,10 @@ static int mtdchar_close(struct inode *inode, struct file *file)
  * alignment requirements are not met in the NAND subdriver.
  */
 
-static ssize_t mtdchar_read(struct file *file, char __user *buf, size_t count,
-			loff_t *ppos)
+static ssize_t mtdchar_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mtd_file_info *mfi = file->private_data;
+	struct mtd_file_info *mfi = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	struct mtd_info *mtd = mfi->mtd;
 	size_t retlen;
 	size_t total_retlen=0;
@@ -138,9 +138,9 @@ static ssize_t mtdchar_read(struct file *file, char __user *buf, size_t count,
 
 	pr_debug("MTD_read\n");
 
-	if (*ppos + count > mtd->size) {
-		if (*ppos < mtd->size)
-			count = mtd->size - *ppos;
+	if (iocb->ki_pos + count > mtd->size) {
+		if (iocb->ki_pos < mtd->size)
+			count = mtd->size - iocb->ki_pos;
 		else
 			count = 0;
 	}
@@ -157,11 +157,11 @@ static ssize_t mtdchar_read(struct file *file, char __user *buf, size_t count,
 
 		switch (mfi->mode) {
 		case MTD_FILE_MODE_OTP_FACTORY:
-			ret = mtd_read_fact_prot_reg(mtd, *ppos, len,
+			ret = mtd_read_fact_prot_reg(mtd, iocb->ki_pos, len,
 						     &retlen, kbuf);
 			break;
 		case MTD_FILE_MODE_OTP_USER:
-			ret = mtd_read_user_prot_reg(mtd, *ppos, len,
+			ret = mtd_read_user_prot_reg(mtd, iocb->ki_pos, len,
 						     &retlen, kbuf);
 			break;
 		case MTD_FILE_MODE_RAW:
@@ -173,12 +173,12 @@ static ssize_t mtdchar_read(struct file *file, char __user *buf, size_t count,
 			ops.oobbuf = NULL;
 			ops.len = len;
 
-			ret = mtd_read_oob(mtd, *ppos, &ops);
+			ret = mtd_read_oob(mtd, iocb->ki_pos, &ops);
 			retlen = ops.retlen;
 			break;
 		}
 		default:
-			ret = mtd_read(mtd, *ppos, len, &retlen, kbuf);
+			ret = mtd_read(mtd, iocb->ki_pos, len, &retlen, kbuf);
 		}
 		/* Nand returns -EBADMSG on ECC errors, but it returns
 		 * the data. For our userspace tools it is important
@@ -190,8 +190,8 @@ static ssize_t mtdchar_read(struct file *file, char __user *buf, size_t count,
 		 * must be aware of the fact that it deals with NAND
 		 */
 		if (!ret || mtd_is_bitflip_or_eccerr(ret)) {
-			*ppos += retlen;
-			if (copy_to_user(buf, kbuf, retlen)) {
+			iocb->ki_pos += retlen;
+			if (!copy_to_iter_full(kbuf, retlen, to)) {
 				kfree(kbuf);
 				return -EFAULT;
 			}
@@ -199,7 +199,6 @@ static ssize_t mtdchar_read(struct file *file, char __user *buf, size_t count,
 				total_retlen += retlen;
 
 			count -= retlen;
-			buf += retlen;
 			if (retlen == 0)
 				count = 0;
 		}
@@ -214,10 +213,10 @@ static ssize_t mtdchar_read(struct file *file, char __user *buf, size_t count,
 	return total_retlen;
 } /* mtdchar_read */
 
-static ssize_t mtdchar_write(struct file *file, const char __user *buf, size_t count,
-			loff_t *ppos)
+static ssize_t mtdchar_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mtd_file_info *mfi = file->private_data;
+	struct mtd_file_info *mfi = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct mtd_info *mtd = mfi->mtd;
 	size_t size = count;
 	char *kbuf;
@@ -228,11 +227,11 @@ static ssize_t mtdchar_write(struct file *file, const char __user *buf, size_t c
 
 	pr_debug("MTD_write\n");
 
-	if (*ppos >= mtd->size)
+	if (iocb->ki_pos >= mtd->size)
 		return -ENOSPC;
 
-	if (*ppos + count > mtd->size)
-		count = mtd->size - *ppos;
+	if (iocb->ki_pos + count > mtd->size)
+		count = mtd->size - iocb->ki_pos;
 
 	if (!count)
 		return 0;
@@ -244,7 +243,7 @@ static ssize_t mtdchar_write(struct file *file, const char __user *buf, size_t c
 	while (count) {
 		len = min_t(size_t, count, size);
 
-		if (copy_from_user(kbuf, buf, len)) {
+		if (!copy_from_iter_full(kbuf, len, from)) {
 			kfree(kbuf);
 			return -EFAULT;
 		}
@@ -254,7 +253,7 @@ static ssize_t mtdchar_write(struct file *file, const char __user *buf, size_t c
 			ret = -EROFS;
 			break;
 		case MTD_FILE_MODE_OTP_USER:
-			ret = mtd_write_user_prot_reg(mtd, *ppos, len,
+			ret = mtd_write_user_prot_reg(mtd, iocb->ki_pos, len,
 						      &retlen, kbuf);
 			break;
 
@@ -268,13 +267,13 @@ static ssize_t mtdchar_write(struct file *file, const char __user *buf, size_t c
 			ops.ooboffs = 0;
 			ops.len = len;
 
-			ret = mtd_write_oob(mtd, *ppos, &ops);
+			ret = mtd_write_oob(mtd, iocb->ki_pos, &ops);
 			retlen = ops.retlen;
 			break;
 		}
 
 		default:
-			ret = mtd_write(mtd, *ppos, len, &retlen, kbuf);
+			ret = mtd_write(mtd, iocb->ki_pos, len, &retlen, kbuf);
 		}
 
 		/*
@@ -286,10 +285,9 @@ static ssize_t mtdchar_write(struct file *file, const char __user *buf, size_t c
 			break;
 
 		if (!ret) {
-			*ppos += retlen;
+			iocb->ki_pos += retlen;
 			total_retlen += retlen;
 			count -= retlen;
-			buf += retlen;
 		}
 		else {
 			kfree(kbuf);
@@ -1403,8 +1401,8 @@ static int mtdchar_mmap(struct file *file, struct vm_area_struct *vma)
 static const struct file_operations mtd_fops = {
 	.owner		= THIS_MODULE,
 	.llseek		= mtdchar_lseek,
-	.read		= mtdchar_read,
-	.write		= mtdchar_write,
+	.read_iter	= mtdchar_read,
+	.write_iter	= mtdchar_write,
 	.unlocked_ioctl	= mtdchar_unlocked_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= mtdchar_compat_ioctl,

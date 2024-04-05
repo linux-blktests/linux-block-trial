@@ -253,8 +253,7 @@ static int write_leb(struct ubi_device *ubi, struct ubi_volume *vol, int lnum,
  * ubi_more_update_data - write more update data.
  * @ubi: UBI device description object
  * @vol: volume description object
- * @buf: write data (user-space memory buffer)
- * @count: how much bytes to write
+ * @from: write data (user-space memory buffer)
  *
  * This function writes more data to the volume which is being updated. It may
  * be called arbitrary number of times until all the update data arriveis. This
@@ -263,11 +262,12 @@ static int write_leb(struct ubi_device *ubi, struct ubi_volume *vol, int lnum,
  * negative error code in case of failure.
  */
 int ubi_more_update_data(struct ubi_device *ubi, struct ubi_volume *vol,
-			 const void __user *buf, int count)
+			 struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	int lnum, offs, err = 0, len, to_write = count;
 
-	dbg_gen("write %d of %lld bytes, %lld already passed",
+	dbg_gen("write %zd of %lld bytes, %lld already passed",
 		count, vol->upd_bytes, vol->upd_received);
 
 	if (ubi->ro_mode)
@@ -293,7 +293,7 @@ int ubi_more_update_data(struct ubi_device *ubi, struct ubi_volume *vol,
 		if (len > count)
 			len = count;
 
-		err = copy_from_user(vol->upd_buf + offs, buf, len);
+		err = !copy_from_iter_full(vol->upd_buf + offs, len, from);
 		if (err)
 			return -EFAULT;
 
@@ -314,7 +314,6 @@ int ubi_more_update_data(struct ubi_device *ubi, struct ubi_volume *vol,
 
 		vol->upd_received += len;
 		count -= len;
-		buf += len;
 		lnum += 1;
 	}
 
@@ -328,7 +327,7 @@ int ubi_more_update_data(struct ubi_device *ubi, struct ubi_volume *vol,
 		else
 			len = count;
 
-		err = copy_from_user(vol->upd_buf, buf, len);
+		err = !copy_from_iter_full(vol->upd_buf, len, from);
 		if (err)
 			return -EFAULT;
 
@@ -343,7 +342,6 @@ int ubi_more_update_data(struct ubi_device *ubi, struct ubi_volume *vol,
 		vol->upd_received += len;
 		count -= len;
 		lnum += 1;
-		buf += len;
 	}
 
 	ubi_assert(vol->upd_received <= vol->upd_bytes);
@@ -367,8 +365,7 @@ int ubi_more_update_data(struct ubi_device *ubi, struct ubi_volume *vol,
  * ubi_more_leb_change_data - accept more data for atomic LEB change.
  * @ubi: UBI device description object
  * @vol: volume description object
- * @buf: write data (user-space memory buffer)
- * @count: how much bytes to write
+ * @from: write data (user-space memory buffer)
  *
  * This function accepts more data to the volume which is being under the
  * "atomic LEB change" operation. It may be called arbitrary number of times
@@ -378,11 +375,12 @@ int ubi_more_update_data(struct ubi_device *ubi, struct ubi_volume *vol,
  * of failure.
  */
 int ubi_more_leb_change_data(struct ubi_device *ubi, struct ubi_volume *vol,
-			     const void __user *buf, int count)
+			     struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	int err;
 
-	dbg_gen("write %d of %lld bytes, %lld already passed",
+	dbg_gen("write %zd of %lld bytes, %lld already passed",
 		count, vol->upd_bytes, vol->upd_received);
 
 	if (ubi->ro_mode)
@@ -391,7 +389,7 @@ int ubi_more_leb_change_data(struct ubi_device *ubi, struct ubi_volume *vol,
 	if (vol->upd_received + count > vol->upd_bytes)
 		count = vol->upd_bytes - vol->upd_received;
 
-	err = copy_from_user(vol->upd_buf + vol->upd_received, buf, count);
+	err = !copy_from_iter_full(vol->upd_buf + vol->upd_received, count, from);
 	if (err)
 		return -EFAULT;
 
