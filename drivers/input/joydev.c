@@ -23,6 +23,7 @@
 #include <linux/init.h>
 #include <linux/device.h>
 #include <linux/cdev.h>
+#include <linux/uio.h>
 
 MODULE_AUTHOR("Vojtech Pavlik <vojtech@ucw.cz>");
 MODULE_DESCRIPTION("Joystick device interfaces");
@@ -338,8 +339,7 @@ static int joydev_fetch_next_event(struct joydev_client *client,
  * Old joystick interface
  */
 static ssize_t joydev_0x_read(struct joydev_client *client,
-			      struct input_dev *input,
-			      char __user *buf)
+			      struct input_dev *input, struct iov_iter *to)
 {
 	struct joydev *joydev = client->joydev;
 	struct JS_DATA_TYPE data;
@@ -366,7 +366,7 @@ static ssize_t joydev_0x_read(struct joydev_client *client,
 
 	spin_unlock_irq(&input->event_lock);
 
-	if (copy_to_user(buf, &data, sizeof(struct JS_DATA_TYPE)))
+	if (!copy_to_iter(&data, sizeof(struct JS_DATA_TYPE), to))
 		return -EFAULT;
 
 	return sizeof(struct JS_DATA_TYPE);
@@ -380,12 +380,12 @@ static inline int joydev_data_pending(struct joydev_client *client)
 		client->head != client->tail;
 }
 
-static ssize_t joydev_read(struct file *file, char __user *buf,
-			   size_t count, loff_t *ppos)
+static ssize_t joydev_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct joydev_client *client = file->private_data;
+	struct joydev_client *client = iocb->ki_filp->private_data;
 	struct joydev *joydev = client->joydev;
 	struct input_dev *input = joydev->handle.dev;
+	size_t count = iov_iter_count(to);
 	struct js_event event;
 	int retval;
 
@@ -396,9 +396,9 @@ static ssize_t joydev_read(struct file *file, char __user *buf,
 		return -EINVAL;
 
 	if (count == sizeof(struct JS_DATA_TYPE))
-		return joydev_0x_read(client, input, buf);
+		return joydev_0x_read(client, input, to);
 
-	if (!joydev_data_pending(client) && (file->f_flags & O_NONBLOCK))
+	if (!joydev_data_pending(client) && (iocb->ki_filp->f_flags & O_NONBLOCK))
 		return -EAGAIN;
 
 	retval = wait_event_interruptible(joydev->wait,
@@ -412,7 +412,7 @@ static ssize_t joydev_read(struct file *file, char __user *buf,
 	while (retval + sizeof(struct js_event) <= count &&
 	       joydev_generate_startup_event(client, input, &event)) {
 
-		if (copy_to_user(buf + retval, &event, sizeof(struct js_event)))
+		if (!copy_to_iter_full(&event, sizeof(struct js_event), to))
 			return -EFAULT;
 
 		retval += sizeof(struct js_event);
@@ -421,7 +421,7 @@ static ssize_t joydev_read(struct file *file, char __user *buf,
 	while (retval + sizeof(struct js_event) <= count &&
 	       joydev_fetch_next_event(client, &event)) {
 
-		if (copy_to_user(buf + retval, &event, sizeof(struct js_event)))
+		if (!copy_to_iter_full(&event, sizeof(struct js_event), to))
 			return -EFAULT;
 
 		retval += sizeof(struct js_event);
@@ -709,7 +709,7 @@ static long joydev_ioctl(struct file *file,
 
 static const struct file_operations joydev_fops = {
 	.owner		= THIS_MODULE,
-	.read		= joydev_read,
+	.read_iter	= joydev_read,
 	.poll		= joydev_poll,
 	.open		= joydev_open,
 	.release	= joydev_release,

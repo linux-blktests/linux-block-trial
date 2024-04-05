@@ -24,6 +24,7 @@
 #include <linux/device.h>
 #include <linux/cdev.h>
 #include <linux/kernel.h>
+#include <linux/uio.h>
 
 MODULE_AUTHOR("Vojtech Pavlik <vojtech@ucw.cz>");
 MODULE_DESCRIPTION("Mouse (ExplorerPS/2) device interfaces");
@@ -712,17 +713,18 @@ static ssize_t mousedev_write(struct file *file, const char __user *buffer,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(mousedev_write);
 
-static ssize_t mousedev_read(struct file *file, char __user *buffer,
-			     size_t count, loff_t *ppos)
+static ssize_t mousedev_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mousedev_client *client = file->private_data;
+	struct mousedev_client *client = iocb->ki_filp->private_data;
 	struct mousedev *mousedev = client->mousedev;
+	size_t count = iov_iter_count(to);
 	u8 data[sizeof(client->ps2)];
 	int retval = 0;
 
 	if (!client->ready && !client->buffer && mousedev->exist &&
-	    (file->f_flags & O_NONBLOCK))
+	    (iocb->ki_filp->f_flags & O_NONBLOCK))
 		return -EAGAIN;
 
 	retval = wait_event_interruptible(mousedev->wait,
@@ -748,7 +750,7 @@ static ssize_t mousedev_read(struct file *file, char __user *buffer,
 
 	spin_unlock_irq(&client->packet_lock);
 
-	if (copy_to_user(buffer, data, count))
+	if (!copy_to_iter_full(data, count, to))
 		return -EFAULT;
 
 	return count;
@@ -772,8 +774,8 @@ static __poll_t mousedev_poll(struct file *file, poll_table *wait)
 
 static const struct file_operations mousedev_fops = {
 	.owner		= THIS_MODULE,
-	.read		= mousedev_read,
-	.write		= mousedev_write,
+	.read_iter	= mousedev_read,
+	.write_iter	= mousedev_write_iter,
 	.poll		= mousedev_poll,
 	.open		= mousedev_open,
 	.release	= mousedev_release,

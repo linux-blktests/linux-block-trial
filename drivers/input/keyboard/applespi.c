@@ -976,19 +976,18 @@ static int applespi_tp_dim_open(struct inode *inode, struct file *file)
 	return nonseekable_open(inode, file);
 }
 
-static ssize_t applespi_tp_dim_read(struct file *file, char __user *buf,
-				    size_t len, loff_t *off)
+static ssize_t applespi_tp_dim_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct applespi_data *applespi = file->private_data;
+	struct applespi_data *applespi = iocb->ki_filp->private_data;
 
-	return simple_read_from_buffer(buf, len, off, applespi->tp_dim_val,
-				       strlen(applespi->tp_dim_val));
+	return simple_copy_to_iter(applespi->tp_dim_val, &iocb->ki_pos,
+				       strlen(applespi->tp_dim_val), to);
 }
 
 static const struct file_operations applespi_tp_dim_fops = {
 	.owner = THIS_MODULE,
 	.open = applespi_tp_dim_open,
-	.read = applespi_tp_dim_read,
+	.read_iter = applespi_tp_dim_read,
 };
 
 static void report_finger_data(struct input_dev *input, int slot,

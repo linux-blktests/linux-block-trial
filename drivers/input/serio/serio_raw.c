@@ -179,6 +179,7 @@ static ssize_t serio_raw_read(struct file *file, char __user *buffer,
 
 	return read;
 }
+FOPS_READ_ITER_HELPER(serio_raw_read);
 
 static ssize_t serio_raw_write(struct file *file, const char __user *buffer,
 			       size_t count, loff_t *ppos)
@@ -212,6 +213,7 @@ static ssize_t serio_raw_write(struct file *file, const char __user *buffer,
 
 	return -EINTR;
 }
+FOPS_WRITE_ITER_HELPER(serio_raw_write);
 
 static __poll_t serio_raw_poll(struct file *file, poll_table *wait)
 {
@@ -232,8 +234,8 @@ static const struct file_operations serio_raw_fops = {
 	.owner		= THIS_MODULE,
 	.open		= serio_raw_open,
 	.release	= serio_raw_release,
-	.read		= serio_raw_read,
-	.write		= serio_raw_write,
+	.read_iter	= serio_raw_read_iter,
+	.write_iter	= serio_raw_write_iter,
 	.poll		= serio_raw_poll,
 	.fasync		= serio_raw_fasync,
 	.llseek		= noop_llseek,

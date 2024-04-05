@@ -665,6 +665,7 @@ static ssize_t uinput_write(struct file *file, const char __user *buffer,
 
 	return retval;
 }
+FOPS_WRITE_ITER_HELPER(uinput_write);
 
 static bool uinput_fetch_next_event(struct uinput_device *udev,
 				    struct input_event *event)
@@ -737,6 +738,7 @@ static ssize_t uinput_read(struct file *file, char __user *buffer,
 
 	return retval;
 }
+FOPS_READ_ITER_HELPER(uinput_read);
 
 static __poll_t uinput_poll(struct file *file, poll_table *wait)
 {
@@ -1126,8 +1128,8 @@ static const struct file_operations uinput_fops = {
 	.owner		= THIS_MODULE,
 	.open		= uinput_open,
 	.release	= uinput_release,
-	.read		= uinput_read,
-	.write		= uinput_write,
+	.read_iter	= uinput_read_iter,
+	.write_iter	= uinput_write_iter,
 	.poll		= uinput_poll,
 	.unlocked_ioctl	= uinput_ioctl,
 #ifdef CONFIG_COMPAT

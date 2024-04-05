@@ -31,6 +31,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 
 #include <linux/unaligned.h>
 
@@ -734,20 +735,20 @@ static int edt_ft5x06_debugfs_mode_set(void *data, u64 mode)
 DEFINE_SIMPLE_ATTRIBUTE(debugfs_mode_fops, edt_ft5x06_debugfs_mode_get,
 			edt_ft5x06_debugfs_mode_set, "%llu\n");
 
-static ssize_t edt_ft5x06_debugfs_raw_data_read(struct file *file,
-						char __user *buf, size_t count,
-						loff_t *off)
+static ssize_t edt_ft5x06_debugfs_raw_data_read(struct kiocb *iocb,
+						struct iov_iter *to)
 {
-	struct edt_ft5x06_ts_data *tsdata = file->private_data;
+	struct edt_ft5x06_ts_data *tsdata = iocb->ki_filp->private_data;
 	struct i2c_client *client = tsdata->client;
 	int retries  = EDT_RAW_DATA_RETRIES;
+	size_t count = iov_iter_count(to);
 	unsigned int val;
 	int i, error;
 	size_t read = 0;
 	int colbytes;
 	u8 *rdbuf;
 
-	if (*off < 0 || *off >= tsdata->raw_bufsize)
+	if (iocb->ki_pos < 0 || iocb->ki_pos >= tsdata->raw_bufsize)
 		return 0;
 
 	mutex_lock(&tsdata->mutex);
@@ -797,13 +798,13 @@ static ssize_t edt_ft5x06_debugfs_raw_data_read(struct file *file,
 		rdbuf += colbytes;
 	}
 
-	read = min_t(size_t, count, tsdata->raw_bufsize - *off);
-	if (copy_to_user(buf, tsdata->raw_buffer + *off, read)) {
+	read = min_t(size_t, count, tsdata->raw_bufsize - iocb->ki_pos);
+	if (!copy_to_iter_full(tsdata->raw_buffer + iocb->ki_pos, read, to)) {
 		error = -EFAULT;
 		goto out;
 	}
 
-	*off += read;
+	iocb->ki_pos += read;
 out:
 	mutex_unlock(&tsdata->mutex);
 	return error ?: read;
@@ -811,7 +812,7 @@ out:
 
 static const struct file_operations debugfs_raw_data_fops = {
 	.open = simple_open,
-	.read = edt_ft5x06_debugfs_raw_data_read,
+	.read_iter = edt_ft5x06_debugfs_raw_data_read,
 };
 
 static void edt_ft5x06_ts_prepare_debugfs(struct edt_ft5x06_ts_data *tsdata)

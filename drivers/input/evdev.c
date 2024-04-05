@@ -534,6 +534,7 @@ static ssize_t evdev_write(struct file *file, const char __user *buffer,
 	mutex_unlock(&evdev->mutex);
 	return retval;
 }
+FOPS_WRITE_ITER_HELPER(evdev_write);
 
 static int evdev_fetch_next_event(struct evdev_client *client,
 				  struct input_event *event)
@@ -603,6 +604,7 @@ static ssize_t evdev_read(struct file *file, char __user *buffer,
 
 	return read;
 }
+FOPS_READ_ITER_HELPER(evdev_read);
 
 /* No kernel lock - fine */
 static __poll_t evdev_poll(struct file *file, poll_table *wait)
@@ -1289,8 +1291,8 @@ static long evdev_ioctl_compat(struct file *file,
 
 static const struct file_operations evdev_fops = {
 	.owner		= THIS_MODULE,
-	.read		= evdev_read,
-	.write		= evdev_write,
+	.read_iter	= evdev_read_iter,
+	.write_iter	= evdev_write_iter,
 	.poll		= evdev_poll,
 	.open		= evdev_open,
 	.release	= evdev_release,
