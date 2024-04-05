@@ -951,7 +951,7 @@ static int fmpm_open(struct inode *inode, struct file *file)
 static const struct file_operations fmpm_fops = {
 	.open		= fmpm_open,
 	.release	= seq_release,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 };
 
