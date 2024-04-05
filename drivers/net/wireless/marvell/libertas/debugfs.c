@@ -22,18 +22,16 @@ static char *szStates[] = {
 static void lbs_debug_init(struct lbs_private *priv);
 #endif
 
-static ssize_t write_file_dummy(struct file *file, const char __user *buf,
-                                size_t count, loff_t *ppos)
+static ssize_t write_file_dummy(struct kiocb *iocb, struct iov_iter *from)
 {
         return -EINVAL;
 }
 
 static const size_t len = PAGE_SIZE;
 
-static ssize_t lbs_dev_info(struct file *file, char __user *userbuf,
-				  size_t count, loff_t *ppos)
+static ssize_t lbs_dev_info(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
 	size_t pos = 0;
 	unsigned long addr = get_zeroed_page(GFP_KERNEL);
 	char *buf = (char *)addr;
@@ -46,23 +44,22 @@ static ssize_t lbs_dev_info(struct file *file, char __user *userbuf,
 	pos += snprintf(buf+pos, len-pos, "region_code = %02x\n",
 				(u32) priv->regioncode);
 
-	res = simple_read_from_buffer(userbuf, count, ppos, buf, pos);
+	res = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 
 	free_page(addr);
 	return res;
 }
 
-static ssize_t lbs_sleepparams_write(struct file *file,
-				const char __user *user_buf, size_t count,
-				loff_t *ppos)
+static ssize_t lbs_sleepparams_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	ssize_t ret;
 	struct sleep_params sp;
 	int p1, p2, p3, p4, p5, p6;
 	char *buf;
 
-	buf = memdup_user_nul(user_buf, min(count, len - 1));
+	buf = iterdup_nul(from, min(count, len - 1));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -89,10 +86,9 @@ out_unlock:
 	return ret;
 }
 
-static ssize_t lbs_sleepparams_read(struct file *file, char __user *userbuf,
-				  size_t count, loff_t *ppos)
+static ssize_t lbs_sleepparams_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
 	ssize_t ret;
 	size_t pos = 0;
 	struct sleep_params sp;
@@ -110,23 +106,22 @@ static ssize_t lbs_sleepparams_read(struct file *file, char __user *userbuf,
 			sp.sp_calcontrol, sp.sp_extsleepclk,
 			sp.sp_reserved);
 
-	ret = simple_read_from_buffer(userbuf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 
 out_unlock:
 	free_page(addr);
 	return ret;
 }
 
-static ssize_t lbs_host_sleep_write(struct file *file,
-				const char __user *user_buf, size_t count,
-				loff_t *ppos)
+static ssize_t lbs_host_sleep_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	ssize_t ret;
 	int host_sleep;
 	char *buf;
 
-	buf = memdup_user_nul(user_buf, min(count, len - 1));
+	buf = iterdup_nul(from, min(count, len - 1));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -159,10 +154,9 @@ out_unlock:
 	return ret;
 }
 
-static ssize_t lbs_host_sleep_read(struct file *file, char __user *userbuf,
-				  size_t count, loff_t *ppos)
+static ssize_t lbs_host_sleep_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
 	ssize_t ret;
 	size_t pos = 0;
 	unsigned long addr = get_zeroed_page(GFP_KERNEL);
@@ -172,7 +166,7 @@ static ssize_t lbs_host_sleep_read(struct file *file, char __user *userbuf,
 
 	pos += snprintf(buf, len, "%d\n", priv->is_host_sleep_activated);
 
-	ret = simple_read_from_buffer(userbuf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 
 	free_page(addr);
 	return ret;
@@ -215,12 +209,11 @@ static void *lbs_tlv_find(uint16_t tlv_type, const uint8_t *tlv, uint16_t size)
 
 
 static ssize_t lbs_threshold_read(uint16_t tlv_type, uint16_t event_mask,
-				  struct file *file, char __user *userbuf,
-				  size_t count, loff_t *ppos)
+				  struct kiocb *iocb, struct iov_iter *to)
 {
 	struct cmd_ds_802_11_subscribe_event *subscribed;
 	struct mrvl_ie_thresholds *got;
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
 	ssize_t ret = 0;
 	size_t pos = 0;
 	char *buf;
@@ -255,7 +248,7 @@ static ssize_t lbs_threshold_read(uint16_t tlv_type, uint16_t event_mask,
 				!!(events & event_mask));
 	}
 
-	ret = simple_read_from_buffer(userbuf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 
  out_cmd:
 	kfree(subscribed);
@@ -267,19 +260,18 @@ static ssize_t lbs_threshold_read(uint16_t tlv_type, uint16_t event_mask,
 
 
 static ssize_t lbs_threshold_write(uint16_t tlv_type, uint16_t event_mask,
-				   struct file *file,
-				   const char __user *userbuf, size_t count,
-				   loff_t *ppos)
+				   struct kiocb *iocb, struct iov_iter *from)
 {
 	struct cmd_ds_802_11_subscribe_event *events;
 	struct mrvl_ie_thresholds *tlv;
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int value, freq, new_mask;
 	uint16_t curr_mask;
 	char *buf;
 	int ret;
 
-	buf = memdup_user_nul(userbuf, min(count, len - 1));
+	buf = iterdup_nul(from, min(count, len - 1));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -335,105 +327,81 @@ static ssize_t lbs_threshold_write(uint16_t tlv_type, uint16_t event_mask,
 }
 
 
-static ssize_t lbs_lowrssi_read(struct file *file, char __user *userbuf,
-				size_t count, loff_t *ppos)
+static ssize_t lbs_lowrssi_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return lbs_threshold_read(TLV_TYPE_RSSI_LOW, CMD_SUBSCRIBE_RSSI_LOW,
-				  file, userbuf, count, ppos);
+				  iocb, to);
 }
 
-
-static ssize_t lbs_lowrssi_write(struct file *file, const char __user *userbuf,
-				 size_t count, loff_t *ppos)
+static ssize_t lbs_lowrssi_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return lbs_threshold_write(TLV_TYPE_RSSI_LOW, CMD_SUBSCRIBE_RSSI_LOW,
-				   file, userbuf, count, ppos);
+				   iocb, from);
 }
 
-
-static ssize_t lbs_lowsnr_read(struct file *file, char __user *userbuf,
-			       size_t count, loff_t *ppos)
+static ssize_t lbs_lowsnr_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return lbs_threshold_read(TLV_TYPE_SNR_LOW, CMD_SUBSCRIBE_SNR_LOW,
-				  file, userbuf, count, ppos);
+				  iocb, to);
 }
 
-
-static ssize_t lbs_lowsnr_write(struct file *file, const char __user *userbuf,
-				size_t count, loff_t *ppos)
+static ssize_t lbs_lowsnr_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return lbs_threshold_write(TLV_TYPE_SNR_LOW, CMD_SUBSCRIBE_SNR_LOW,
-				   file, userbuf, count, ppos);
+				   iocb, from);
 }
 
-
-static ssize_t lbs_failcount_read(struct file *file, char __user *userbuf,
-				  size_t count, loff_t *ppos)
+static ssize_t lbs_failcount_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return lbs_threshold_read(TLV_TYPE_FAILCOUNT, CMD_SUBSCRIBE_FAILCOUNT,
-				  file, userbuf, count, ppos);
+				  iocb, to);
 }
 
-
-static ssize_t lbs_failcount_write(struct file *file, const char __user *userbuf,
-				   size_t count, loff_t *ppos)
+static ssize_t lbs_failcount_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return lbs_threshold_write(TLV_TYPE_FAILCOUNT, CMD_SUBSCRIBE_FAILCOUNT,
-				   file, userbuf, count, ppos);
+				   iocb, from);
 }
 
-
-static ssize_t lbs_highrssi_read(struct file *file, char __user *userbuf,
-				 size_t count, loff_t *ppos)
+static ssize_t lbs_highrssi_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return lbs_threshold_read(TLV_TYPE_RSSI_HIGH, CMD_SUBSCRIBE_RSSI_HIGH,
-				  file, userbuf, count, ppos);
+				  iocb, to);
 }
 
-
-static ssize_t lbs_highrssi_write(struct file *file, const char __user *userbuf,
-				  size_t count, loff_t *ppos)
+static ssize_t lbs_highrssi_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return lbs_threshold_write(TLV_TYPE_RSSI_HIGH, CMD_SUBSCRIBE_RSSI_HIGH,
-				   file, userbuf, count, ppos);
+				   iocb, from);
 }
 
-
-static ssize_t lbs_highsnr_read(struct file *file, char __user *userbuf,
-				size_t count, loff_t *ppos)
+static ssize_t lbs_highsnr_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return lbs_threshold_read(TLV_TYPE_SNR_HIGH, CMD_SUBSCRIBE_SNR_HIGH,
-				  file, userbuf, count, ppos);
+				  iocb, to);
 }
 
-
-static ssize_t lbs_highsnr_write(struct file *file, const char __user *userbuf,
-				 size_t count, loff_t *ppos)
+static ssize_t lbs_highsnr_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return lbs_threshold_write(TLV_TYPE_SNR_HIGH, CMD_SUBSCRIBE_SNR_HIGH,
-				   file, userbuf, count, ppos);
+				   iocb, from);
 }
 
-static ssize_t lbs_bcnmiss_read(struct file *file, char __user *userbuf,
-				size_t count, loff_t *ppos)
+static ssize_t lbs_bcnmiss_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return lbs_threshold_read(TLV_TYPE_BCNMISS, CMD_SUBSCRIBE_BCNMISS,
-				  file, userbuf, count, ppos);
+				  iocb, to);
 }
 
-
-static ssize_t lbs_bcnmiss_write(struct file *file, const char __user *userbuf,
-				 size_t count, loff_t *ppos)
+static ssize_t lbs_bcnmiss_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return lbs_threshold_write(TLV_TYPE_BCNMISS, CMD_SUBSCRIBE_BCNMISS,
-				   file, userbuf, count, ppos);
+				   iocb, from);
 }
 
-
-static ssize_t lbs_rdmac_read(struct file *file, char __user *userbuf,
-				  size_t count, loff_t *ppos)
+static ssize_t lbs_rdmac_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
 	ssize_t pos = 0;
 	int ret;
 	unsigned long addr = get_zeroed_page(GFP_KERNEL);
@@ -448,20 +416,19 @@ static ssize_t lbs_rdmac_read(struct file *file, char __user *userbuf,
 	if (!ret) {
 		pos = snprintf(buf, len, "MAC[0x%x] = 0x%08x\n",
 				priv->mac_offset, val);
-		ret = simple_read_from_buffer(userbuf, count, ppos, buf, pos);
+		ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	}
 	free_page(addr);
 	return ret;
 }
 
-static ssize_t lbs_rdmac_write(struct file *file,
-				    const char __user *userbuf,
-				    size_t count, loff_t *ppos)
+static ssize_t lbs_rdmac_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char *buf;
 
-	buf = memdup_user_nul(userbuf, min(count, len - 1));
+	buf = iterdup_nul(from, min(count, len - 1));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -470,17 +437,15 @@ static ssize_t lbs_rdmac_write(struct file *file,
 	return count;
 }
 
-static ssize_t lbs_wrmac_write(struct file *file,
-				    const char __user *userbuf,
-				    size_t count, loff_t *ppos)
+static ssize_t lbs_wrmac_write(struct kiocb *iocb, struct iov_iter *from)
 {
-
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	ssize_t res;
 	u32 offset, value;
 	char *buf;
 
-	buf = memdup_user_nul(userbuf, min(count, len - 1));
+	buf = iterdup_nul(from, min(count, len - 1));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -500,10 +465,9 @@ out_unlock:
 	return res;
 }
 
-static ssize_t lbs_rdbbp_read(struct file *file, char __user *userbuf,
-				  size_t count, loff_t *ppos)
+static ssize_t lbs_rdbbp_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
 	ssize_t pos = 0;
 	int ret;
 	unsigned long addr = get_zeroed_page(GFP_KERNEL);
@@ -518,21 +482,20 @@ static ssize_t lbs_rdbbp_read(struct file *file, char __user *userbuf,
 	if (!ret) {
 		pos = snprintf(buf, len, "BBP[0x%x] = 0x%08x\n",
 				priv->bbp_offset, val);
-		ret = simple_read_from_buffer(userbuf, count, ppos, buf, pos);
+		ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	}
 	free_page(addr);
 
 	return ret;
 }
 
-static ssize_t lbs_rdbbp_write(struct file *file,
-				    const char __user *userbuf,
-				    size_t count, loff_t *ppos)
+static ssize_t lbs_rdbbp_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char *buf;
 
-	buf = memdup_user_nul(userbuf, min(count, len - 1));
+	buf = iterdup_nul(from, min(count, len - 1));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -542,17 +505,15 @@ static ssize_t lbs_rdbbp_write(struct file *file,
 	return count;
 }
 
-static ssize_t lbs_wrbbp_write(struct file *file,
-				    const char __user *userbuf,
-				    size_t count, loff_t *ppos)
+static ssize_t lbs_wrbbp_write(struct kiocb *iocb, struct iov_iter *from)
 {
-
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	ssize_t res;
 	u32 offset, value;
 	char *buf;
 
-	buf = memdup_user_nul(userbuf, min(count, len - 1));
+	buf = iterdup_nul(from, min(count, len - 1));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -572,10 +533,9 @@ out_unlock:
 	return res;
 }
 
-static ssize_t lbs_rdrf_read(struct file *file, char __user *userbuf,
-				  size_t count, loff_t *ppos)
+static ssize_t lbs_rdrf_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
 	ssize_t pos = 0;
 	int ret;
 	unsigned long addr = get_zeroed_page(GFP_KERNEL);
@@ -590,21 +550,20 @@ static ssize_t lbs_rdrf_read(struct file *file, char __user *userbuf,
 	if (!ret) {
 		pos = snprintf(buf, len, "RF[0x%x] = 0x%08x\n",
 				priv->rf_offset, val);
-		ret = simple_read_from_buffer(userbuf, count, ppos, buf, pos);
+		ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	}
 	free_page(addr);
 
 	return ret;
 }
 
-static ssize_t lbs_rdrf_write(struct file *file,
-				    const char __user *userbuf,
-				    size_t count, loff_t *ppos)
+static ssize_t lbs_rdrf_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char *buf;
 
-	buf = memdup_user_nul(userbuf, min(count, len - 1));
+	buf = iterdup_nul(from, min(count, len - 1));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -613,17 +572,15 @@ static ssize_t lbs_rdrf_write(struct file *file,
 	return count;
 }
 
-static ssize_t lbs_wrrf_write(struct file *file,
-				    const char __user *userbuf,
-				    size_t count, loff_t *ppos)
+static ssize_t lbs_wrrf_write(struct kiocb *iocb, struct iov_iter *from)
 {
-
-	struct lbs_private *priv = file->private_data;
+	struct lbs_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	ssize_t res;
 	u32 offset, value;
 	char *buf;
 
-	buf = memdup_user_nul(userbuf, min(count, len - 1));
+	buf = iterdup_nul(from, min(count, len - 1));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -646,8 +603,8 @@ out_unlock:
 #define FOPS(fread, fwrite) { \
 	.owner = THIS_MODULE, \
 	.open = simple_open, \
-	.read = (fread), \
-	.write = (fwrite), \
+	.read_iter = (fread), \
+	.write_iter = (fwrite), \
 	.llseek = generic_file_llseek, \
 }
 
@@ -796,15 +753,12 @@ static int num_of_items = ARRAY_SIZE(items);
 /**
  * lbs_debugfs_read - proc read function
  *
- * @file:	file to read
- * @userbuf:	pointer to buffer
- * @count:	number of bytes to read
- * @ppos:	read data starting position
+ * @iocb:	metadata for IO
+ * @to:		iov_iter to copy to
  *
  * returns:	amount of data read or negative error code
  */
-static ssize_t lbs_debugfs_read(struct file *file, char __user *userbuf,
-			size_t count, loff_t *ppos)
+static ssize_t lbs_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int val = 0;
 	size_t pos = 0;
@@ -819,7 +773,7 @@ static ssize_t lbs_debugfs_read(struct file *file, char __user *userbuf,
 
 	p = buf;
 
-	d = file->private_data;
+	d = iocb->ki_filp->private_data;
 
 	for (i = 0; i < num_of_items; i++) {
 		if (d[i].size == 1)
@@ -834,7 +788,7 @@ static ssize_t lbs_debugfs_read(struct file *file, char __user *userbuf,
 		pos += sprintf(p + pos, "%s=%d\n", d[i].name, val);
 	}
 
-	res = simple_read_from_buffer(userbuf, count, ppos, p, pos);
+	res = simple_copy_to_iter(p, &iocb->ki_pos, pos, to);
 
 	free_page(addr);
 	return res;
@@ -843,28 +797,26 @@ static ssize_t lbs_debugfs_read(struct file *file, char __user *userbuf,
 /**
  * lbs_debugfs_write - proc write function
  *
- * @f:		file pointer
- * @buf:	pointer to data buffer
- * @cnt:	data number to write
- * @ppos:	file position
+ * @iocb:	metadata for IO
+ * @from:	iov_iter to cooy from
  *
  * returns:	amount of data written
  */
-static ssize_t lbs_debugfs_write(struct file *f, const char __user *buf,
-			    size_t cnt, loff_t *ppos)
+static ssize_t lbs_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t cnt = iov_iter_count(from);
 	int r, i;
 	char *pdata;
 	char *p;
 	char *p0;
 	char *p1;
 	char *p2;
-	struct debug_data *d = f->private_data;
+	struct debug_data *d = iocb->ki_filp->private_data;
 
 	if (cnt == 0)
 		return 0;
 
-	pdata = memdup_user_nul(buf, cnt);
+	pdata = iterdup_nul(from, cnt);
 	if (IS_ERR(pdata))
 		return PTR_ERR(pdata);
 
@@ -902,8 +854,8 @@ static ssize_t lbs_debugfs_write(struct file *f, const char __user *buf,
 static const struct file_operations lbs_debug_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.write = lbs_debugfs_write,
-	.read = lbs_debugfs_read,
+	.write_iter = lbs_debugfs_write,
+	.read_iter = lbs_debugfs_read,
 	.llseek = default_llseek,
 };
 

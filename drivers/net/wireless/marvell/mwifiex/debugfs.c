@@ -58,12 +58,9 @@ static char *bss_modes[] = {
  *      - Multicast count
  *      - Multicast addresses
  */
-static ssize_t
-mwifiex_info_read(struct file *file, char __user *ubuf,
-		  size_t count, loff_t *ppos)
+static ssize_t mwifiex_info_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mwifiex_private *priv =
-		(struct mwifiex_private *) file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
 	struct net_device *netdev = priv->netdev;
 	struct netdev_hw_addr *ha;
 	struct netdev_queue *txq;
@@ -133,8 +130,8 @@ mwifiex_info_read(struct file *file, char __user *ubuf,
 	}
 	p += sprintf(p, "\n");
 
-	ret = simple_read_from_buffer(ubuf, count, ppos, (char *) page,
-				      (unsigned long) p - page);
+	ret = simple_copy_to_iter((char *) page, &iocb->ki_pos,
+				      (unsigned long) p - page, to);
 
 free_and_exit:
 	free_page(page);
@@ -162,12 +159,9 @@ free_and_exit:
  *      - Number of received beacons
  *      - Number of missed beacons
  */
-static ssize_t
-mwifiex_getlog_read(struct file *file, char __user *ubuf,
-		    size_t count, loff_t *ppos)
+static ssize_t mwifiex_getlog_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mwifiex_private *priv =
-		(struct mwifiex_private *) file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
 	unsigned long page = get_zeroed_page(GFP_KERNEL);
 	char *p = (char *) page;
 	ssize_t ret;
@@ -220,8 +214,8 @@ mwifiex_getlog_read(struct file *file, char __user *ubuf,
 		     stats.bcn_miss_cnt);
 
 
-	ret = simple_read_from_buffer(ubuf, count, ppos, (char *) page,
-				      (unsigned long) p - page);
+	ret = simple_copy_to_iter((char *) page, &iocb->ki_pos,
+				      (unsigned long) p - page, to);
 
 free_and_exit:
 	free_page(page);
@@ -238,12 +232,9 @@ free_and_exit:
  *      - Receive packet number of each nosie_flr
  *      - Receive packet number of each signal streath
  */
-static ssize_t
-mwifiex_histogram_read(struct file *file, char __user *ubuf,
-		       size_t count, loff_t *ppos)
+static ssize_t mwifiex_histogram_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mwifiex_private *priv =
-		(struct mwifiex_private *)file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
 	ssize_t ret;
 	struct mwifiex_histogram_data *phist_data;
 	int i, value;
@@ -309,8 +300,8 @@ mwifiex_histogram_read(struct file *file, char __user *ubuf,
 				i, value);
 	}
 
-	ret = simple_read_from_buffer(ubuf, count, ppos, (char *)page,
-				      (unsigned long)p - page);
+	ret = simple_copy_to_iter((char *)page, &iocb->ki_pos,
+				      (unsigned long)p - page, to);
 
 free_and_exit:
 	free_page(page);
@@ -318,10 +309,9 @@ free_and_exit:
 }
 
 static ssize_t
-mwifiex_histogram_write(struct file *file, const char __user *ubuf,
-			size_t count, loff_t *ppos)
+mwifiex_histogram_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mwifiex_private *priv = (void *)file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
 
 	if (priv && priv->hist_data)
 		mwifiex_hist_data_reset(priv);
@@ -377,12 +367,9 @@ static struct mwifiex_debug_info info;
  *      - Tx BA stream table (TID, RA)
  *      - Rx reorder table (TID, TA, Start window, Window size, Buffer)
  */
-static ssize_t
-mwifiex_debug_read(struct file *file, char __user *ubuf,
-		   size_t count, loff_t *ppos)
+static ssize_t mwifiex_debug_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mwifiex_private *priv =
-		(struct mwifiex_private *) file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
 	unsigned long page = get_zeroed_page(GFP_KERNEL);
 	char *p = (char *) page;
 	ssize_t ret;
@@ -396,8 +383,8 @@ mwifiex_debug_read(struct file *file, char __user *ubuf,
 
 	p += mwifiex_debug_info_to_buffer(priv, p, &info);
 
-	ret = simple_read_from_buffer(ubuf, count, ppos, (char *) page,
-				      (unsigned long) p - page);
+	ret = simple_copy_to_iter((char *) page, &iocb->ki_pos,
+				      (unsigned long) p - page, to);
 
 free_and_exit:
 	free_page(page);
@@ -414,14 +401,14 @@ static u32 saved_reg_type, saved_reg_offset, saved_reg_value;
  * This function can be used to write to a register.
  */
 static ssize_t
-mwifiex_regrdwr_write(struct file *file,
-		      const char __user *ubuf, size_t count, loff_t *ppos)
+mwifiex_regrdwr_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char *buf;
 	int ret;
 	u32 reg_type = 0, reg_offset = 0, reg_value = UINT_MAX;
+	size_t count = iov_iter_count(from);
 
-	buf = memdup_user_nul(ubuf, min(count, (size_t)(PAGE_SIZE - 1)));
+	buf = iterdup_nul(from, min(count, (size_t)(PAGE_SIZE - 1)));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -451,12 +438,9 @@ done:
  *
  * This function can be used to read from a register.
  */
-static ssize_t
-mwifiex_regrdwr_read(struct file *file, char __user *ubuf,
-		     size_t count, loff_t *ppos)
+static ssize_t mwifiex_regrdwr_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mwifiex_private *priv =
-		(struct mwifiex_private *) file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
 	unsigned long addr = get_zeroed_page(GFP_KERNEL);
 	char *buf = (char *) addr;
 	int pos = 0, ret = 0;
@@ -479,7 +463,7 @@ mwifiex_regrdwr_read(struct file *file, char __user *ubuf,
 				saved_reg_type, saved_reg_offset,
 				saved_reg_value);
 
-		ret = simple_read_from_buffer(ubuf, count, ppos, buf, pos);
+		ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 
 		goto done;
 	}
@@ -494,7 +478,7 @@ mwifiex_regrdwr_read(struct file *file, char __user *ubuf,
 	pos += snprintf(buf, PAGE_SIZE, "%u 0x%x 0x%x\n", saved_reg_type,
 			saved_reg_offset, reg_value);
 
-	ret = simple_read_from_buffer(ubuf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 
 done:
 	free_page(addr);
@@ -506,11 +490,9 @@ done:
  * This function can be used read driver debugging mask value.
  */
 static ssize_t
-mwifiex_debug_mask_read(struct file *file, char __user *ubuf,
-			size_t count, loff_t *ppos)
+mwifiex_debug_mask_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mwifiex_private *priv =
-		(struct mwifiex_private *)file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
 	unsigned long page = get_zeroed_page(GFP_KERNEL);
 	char *buf = (char *)page;
 	size_t ret = 0;
@@ -521,7 +503,7 @@ mwifiex_debug_mask_read(struct file *file, char __user *ubuf,
 
 	pos += snprintf(buf, PAGE_SIZE, "debug mask=0x%08x\n",
 			priv->adapter->debug_mask);
-	ret = simple_read_from_buffer(ubuf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 
 	free_page(page);
 	return ret;
@@ -532,15 +514,15 @@ mwifiex_debug_mask_read(struct file *file, char __user *ubuf,
  * This function can be used read driver debugging mask value.
  */
 static ssize_t
-mwifiex_debug_mask_write(struct file *file, const char __user *ubuf,
-			 size_t count, loff_t *ppos)
+mwifiex_debug_mask_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int ret;
 	unsigned long debug_mask;
-	struct mwifiex_private *priv = (void *)file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char *buf;
 
-	buf = memdup_user_nul(ubuf, min(count, (size_t)(PAGE_SIZE - 1)));
+	buf = iterdup_nul(from, min(count, (size_t)(PAGE_SIZE - 1)));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -559,15 +541,14 @@ done:
 /* debugfs verext file write handler.
  * This function is called when the 'verext' file is opened for write
  */
-static ssize_t
-mwifiex_verext_write(struct file *file, const char __user *ubuf,
-		     size_t count, loff_t *ppos)
+static ssize_t mwifiex_verext_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int ret;
 	u32 versionstrsel;
-	struct mwifiex_private *priv = (void *)file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 
-	ret = kstrtou32_from_user(ubuf, count, 10, &versionstrsel);
+	ret = kstrtou32_from_iter(from, count, 10, &versionstrsel);
 	if (ret)
 		return ret;
 
@@ -581,11 +562,9 @@ mwifiex_verext_write(struct file *file, const char __user *ubuf,
  * This function can be used read driver exteneed verion string.
  */
 static ssize_t
-mwifiex_verext_read(struct file *file, char __user *ubuf,
-		    size_t count, loff_t *ppos)
+mwifiex_verext_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mwifiex_private *priv =
-		(struct mwifiex_private *)file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
 	char buf[256];
 	int ret;
 
@@ -593,25 +572,24 @@ mwifiex_verext_read(struct file *file, char __user *ubuf,
 	ret = snprintf(buf, sizeof(buf), "version string: %s\n",
 		       priv->version_str);
 
-	return simple_read_from_buffer(ubuf, count, ppos, buf, ret);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, ret, to);
 }
 
 /* Proc memrw file write handler.
  * This function is called when the 'memrw' file is opened for writing
  * This function can be used to write to a memory location.
  */
-static ssize_t
-mwifiex_memrw_write(struct file *file, const char __user *ubuf, size_t count,
-		    loff_t *ppos)
+static ssize_t mwifiex_memrw_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int ret;
 	char cmd;
 	struct mwifiex_ds_mem_rw mem_rw;
 	u16 cmd_action;
-	struct mwifiex_private *priv = (void *)file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char *buf;
 
-	buf = memdup_user_nul(ubuf, min(count, (size_t)(PAGE_SIZE - 1)));
+	buf = iterdup_nul(from, min(count, (size_t)(PAGE_SIZE - 1)));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -647,11 +625,9 @@ done:
  * This function is called when the 'memrw' file is opened for reading
  * This function can be used to read from a memory location.
  */
-static ssize_t
-mwifiex_memrw_read(struct file *file, char __user *ubuf,
-		   size_t count, loff_t *ppos)
+static ssize_t mwifiex_memrw_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mwifiex_private *priv = (void *)file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
 	unsigned long addr = get_zeroed_page(GFP_KERNEL);
 	char *buf = (char *)addr;
 	int ret, pos = 0;
@@ -661,7 +637,7 @@ mwifiex_memrw_read(struct file *file, char __user *ubuf,
 
 	pos += snprintf(buf, PAGE_SIZE, "0x%x 0x%x\n", priv->mem_rw.addr,
 			priv->mem_rw.value);
-	ret = simple_read_from_buffer(ubuf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 
 	free_page(addr);
 	return ret;
@@ -676,15 +652,14 @@ static u32 saved_offset = -1, saved_bytes = -1;
  *
  * This function can be used to write to a RDEEPROM location.
  */
-static ssize_t
-mwifiex_rdeeprom_write(struct file *file,
-		       const char __user *ubuf, size_t count, loff_t *ppos)
+static ssize_t mwifiex_rdeeprom_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char *buf;
 	int ret = 0;
 	int offset = -1, bytes = -1;
+	size_t count = iov_iter_count(from);
 
-	buf = memdup_user_nul(ubuf, min(count, (size_t)(PAGE_SIZE - 1)));
+	buf = iterdup_nul(from, min(count, (size_t)(PAGE_SIZE - 1)));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -713,12 +688,9 @@ done:
  *
  * This function can be used to read from a RDEEPROM location.
  */
-static ssize_t
-mwifiex_rdeeprom_read(struct file *file, char __user *ubuf,
-		      size_t count, loff_t *ppos)
+static ssize_t mwifiex_rdeeprom_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mwifiex_private *priv =
-		(struct mwifiex_private *) file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
 	unsigned long addr = get_zeroed_page(GFP_KERNEL);
 	char *buf = (char *) addr;
 	int pos, ret, i;
@@ -747,7 +719,7 @@ mwifiex_rdeeprom_read(struct file *file, char __user *ubuf,
 		pos += scnprintf(buf + pos, PAGE_SIZE - pos, "%d ", value[i]);
 
 done:
-	ret = simple_read_from_buffer(ubuf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 out_free:
 	free_page(addr);
 	return ret;
@@ -756,18 +728,17 @@ out_free:
 /* Proc hscfg file write handler
  * This function can be used to configure the host sleep parameters.
  */
-static ssize_t
-mwifiex_hscfg_write(struct file *file, const char __user *ubuf,
-		    size_t count, loff_t *ppos)
+static ssize_t mwifiex_hscfg_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mwifiex_private *priv = (void *)file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char *buf;
 	int ret, arg_num;
 	struct mwifiex_ds_hs_cfg hscfg;
 	int conditions = HS_CFG_COND_DEF;
 	u32 gpio = HS_CFG_GPIO_DEF, gap = HS_CFG_GAP_DEF;
 
-	buf = memdup_user_nul(ubuf, min(count, (size_t)(PAGE_SIZE - 1)));
+	buf = iterdup_nul(from, min(count, (size_t)(PAGE_SIZE - 1)));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -815,11 +786,9 @@ done:
  * This function can be used to read host sleep configuration
  * parameters from driver.
  */
-static ssize_t
-mwifiex_hscfg_read(struct file *file, char __user *ubuf,
-		   size_t count, loff_t *ppos)
+static ssize_t mwifiex_hscfg_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mwifiex_private *priv = (void *)file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
 	unsigned long addr = get_zeroed_page(GFP_KERNEL);
 	char *buf = (char *)addr;
 	int pos, ret;
@@ -834,17 +803,16 @@ mwifiex_hscfg_read(struct file *file, char __user *ubuf,
 	pos = snprintf(buf, PAGE_SIZE, "%u 0x%x 0x%x\n", hscfg.conditions,
 		       hscfg.gpio, hscfg.gap);
 
-	ret = simple_read_from_buffer(ubuf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 
 	free_page(addr);
 	return ret;
 }
 
-static ssize_t
-mwifiex_timeshare_coex_read(struct file *file, char __user *ubuf,
-			    size_t count, loff_t *ppos)
+static ssize_t mwifiex_timeshare_coex_read(struct kiocb *iocb,
+					   struct iov_iter *to)
 {
-	struct mwifiex_private *priv = file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
 	char buf[3];
 	bool timeshare_coex;
 	int ret;
@@ -859,21 +827,21 @@ mwifiex_timeshare_coex_read(struct file *file, char __user *ubuf,
 		return ret;
 
 	len = sprintf(buf, "%d\n", timeshare_coex);
-	return simple_read_from_buffer(ubuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static ssize_t
-mwifiex_timeshare_coex_write(struct file *file, const char __user *ubuf,
-			     size_t count, loff_t *ppos)
+mwifiex_timeshare_coex_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	bool timeshare_coex;
-	struct mwifiex_private *priv = file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int ret;
 
 	if (priv->adapter->fw_api_ver != MWIFIEX_FW_V15)
 		return -EOPNOTSUPP;
 
-	ret = kstrtobool_from_user(ubuf, count, &timeshare_coex);
+	ret = kstrtobool_from_iter(from, count, &timeshare_coex);
 	if (ret)
 		return ret;
 
@@ -885,16 +853,15 @@ mwifiex_timeshare_coex_write(struct file *file, const char __user *ubuf,
 		return count;
 }
 
-static ssize_t
-mwifiex_reset_write(struct file *file,
-		    const char __user *ubuf, size_t count, loff_t *ppos)
+static ssize_t mwifiex_reset_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mwifiex_private *priv = file->private_data;
+	struct mwifiex_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct mwifiex_adapter *adapter = priv->adapter;
 	bool result;
 	int rc;
 
-	rc = kstrtobool_from_user(ubuf, count, &result);
+	rc = kstrtobool_from_iter(from, count, &result);
 	if (rc)
 		return rc;
 
@@ -916,20 +883,20 @@ mwifiex_reset_write(struct file *file,
 
 #define MWIFIEX_DFS_FILE_OPS(name)                                      \
 static const struct file_operations mwifiex_dfs_##name##_fops = {       \
-	.read = mwifiex_##name##_read,                                  \
-	.write = mwifiex_##name##_write,                                \
+	.read_iter = mwifiex_##name##_read,                             \
+	.write_iter = mwifiex_##name##_write,                           \
 	.open = simple_open,                                            \
 };
 
 #define MWIFIEX_DFS_FILE_READ_OPS(name)                                 \
 static const struct file_operations mwifiex_dfs_##name##_fops = {       \
-	.read = mwifiex_##name##_read,                                  \
+	.read_iter = mwifiex_##name##_read,                             \
 	.open = simple_open,                                            \
 };
 
 #define MWIFIEX_DFS_FILE_WRITE_OPS(name)                                \
 static const struct file_operations mwifiex_dfs_##name##_fops = {       \
-	.write = mwifiex_##name##_write,                                \
+	.write_iter = mwifiex_##name##_write,                           \
 	.open = simple_open,                                            \
 };
 
