@@ -25,6 +25,7 @@
 #include <linux/module.h>
 #include <linux/of_reserved_mem.h>
 #include <linux/platform_device.h>
+#include <linux/uio.h>
 
 #define DRIVER_NAME "open-dice"
 
@@ -61,26 +62,24 @@ static int open_dice_wipe(struct open_dice_drvdata *drvdata)
 /*
  * Copies the size of the reserved memory region to the user-provided buffer.
  */
-static ssize_t open_dice_read(struct file *filp, char __user *ptr, size_t len,
-			      loff_t *off)
+static ssize_t open_dice_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	unsigned long val = to_open_dice_drvdata(filp)->rmem->size;
+	unsigned long val = to_open_dice_drvdata(iocb->ki_filp)->rmem->size;
 
-	return simple_read_from_buffer(ptr, len, off, &val, sizeof(val));
+	return simple_copy_to_iter(&val, &iocb->ki_pos, sizeof(val), to);
 }
 
 /*
  * Triggers a wipe of the reserved memory region. The user-provided pointer
  * is never dereferenced.
  */
-static ssize_t open_dice_write(struct file *filp, const char __user *ptr,
-			       size_t len, loff_t *off)
+static ssize_t open_dice_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	if (open_dice_wipe(to_open_dice_drvdata(filp)))
+	if (open_dice_wipe(to_open_dice_drvdata(iocb->ki_filp)))
 		return -EIO;
 
 	/* Consume the input buffer. */
-	return len;
+	return iov_iter_count(from);
 }
 
 /*
@@ -106,8 +105,8 @@ static int open_dice_mmap(struct file *filp, struct vm_area_struct *vma)
 
 static const struct file_operations open_dice_fops = {
 	.owner = THIS_MODULE,
-	.read = open_dice_read,
-	.write = open_dice_write,
+	.read_iter = open_dice_read,
+	.write_iter = open_dice_write,
 	.mmap = open_dice_mmap,
 };
 
