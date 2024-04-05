@@ -74,6 +74,7 @@ struct spidev_data {
 	struct list_head	device_entry;
 
 	/* TX/RX buffers are NULL unless this device is open (users > 0) */
+	struct mutex		buf_lock;
 	unsigned		users;
 	u8			*tx_buffer;
 	u8			*rx_buffer;
@@ -101,6 +102,24 @@ spidev_sync_unlocked(struct spi_device *spi, struct spi_message *message)
 	return status;
 }
 
+static ssize_t
+spidev_sync(struct spidev_data *spidev, struct spi_message *message)
+{
+	ssize_t status;
+	struct spi_device *spi;
+
+	mutex_lock(&spidev->spi_lock);
+	spi = spidev->spi;
+
+	if (spi == NULL)
+		status = -ESHUTDOWN;
+	else
+		status = spidev_sync_unlocked(spi, message);
+
+	mutex_unlock(&spidev->spi_lock);
+	return status;
+}
+
 static inline ssize_t
 spidev_sync_write(struct spidev_data *spidev, size_t len)
 {
@@ -113,8 +132,7 @@ spidev_sync_write(struct spidev_data *spidev, size_t len)
 
 	spi_message_init(&m);
 	spi_message_add_tail(&t, &m);
-
-	return spidev_sync_unlocked(spidev->spi, &m);
+	return spidev_sync(spidev, &m);
 }
 
 static inline ssize_t
@@ -129,75 +147,63 @@ spidev_sync_read(struct spidev_data *spidev, size_t len)
 
 	spi_message_init(&m);
 	spi_message_add_tail(&t, &m);
-
-	return spidev_sync_unlocked(spidev->spi, &m);
+	return spidev_sync(spidev, &m);
 }
 
 /*-------------------------------------------------------------------------*/
 
 /* Read-only message with current device setup */
 static ssize_t
-spidev_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
+spidev_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct spidev_data	*spidev;
-	ssize_t			status = -ESHUTDOWN;
+	ssize_t			status;
+	size_t			count = iov_iter_count(to);
 
 	/* chipselect only toggles at start or end of operation */
 	if (count > bufsiz)
 		return -EMSGSIZE;
 
-	spidev = filp->private_data;
+	spidev = iocb->ki_filp->private_data;
 
-	mutex_lock(&spidev->spi_lock);
-
-	if (spidev->spi == NULL)
-		goto err_spi_removed;
-
+	mutex_lock(&spidev->buf_lock);
 	status = spidev_sync_read(spidev, count);
 	if (status > 0) {
-		unsigned long	missing;
+		unsigned long	copied;
 
-		missing = copy_to_user(buf, spidev->rx_buffer, status);
-		if (missing == status)
+		copied = copy_to_iter(spidev->rx_buffer, status, to);
+		if (!copied)
 			status = -EFAULT;
 		else
-			status = status - missing;
+			status = status - copied;
 	}
-
-err_spi_removed:
-	mutex_unlock(&spidev->spi_lock);
+	mutex_unlock(&spidev->buf_lock);
 
 	return status;
 }
 
 /* Write-only message with current device setup */
 static ssize_t
-spidev_write(struct file *filp, const char __user *buf,
-		size_t count, loff_t *f_pos)
+spidev_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct spidev_data	*spidev;
-	ssize_t			status = -ESHUTDOWN;
-	unsigned long		missing;
+	ssize_t			status;
+	unsigned long		copied;
+	size_t			count = iov_iter_count(from);
 
 	/* chipselect only toggles at start or end of operation */
 	if (count > bufsiz)
 		return -EMSGSIZE;
 
-	spidev = filp->private_data;
+	spidev = iocb->ki_filp->private_data;
 
-	mutex_lock(&spidev->spi_lock);
-
-	if (spidev->spi == NULL)
-		goto err_spi_removed;
-
-	missing = copy_from_user(spidev->tx_buffer, buf, count);
-	if (missing == 0)
-		status = spidev_sync_write(spidev, count);
-	else
+	mutex_lock(&spidev->buf_lock);
+	copied = copy_from_iter(spidev->tx_buffer, count, from);
+	if (copied == 0)
 		status = -EFAULT;
-
-err_spi_removed:
-	mutex_unlock(&spidev->spi_lock);
+	else
+		status = spidev_sync_write(spidev, count);
+	mutex_unlock(&spidev->buf_lock);
 
 	return status;
 }
@@ -214,7 +220,7 @@ static int spidev_message(struct spidev_data *spidev,
 	int			status = -EFAULT;
 
 	spi_message_init(&msg);
-	k_xfers = kzalloc_objs(*k_tmp, n_xfers);
+	k_xfers = kcalloc(n_xfers, sizeof(*k_tmp), GFP_KERNEL);
 	if (k_xfers == NULL)
 		return -ENOMEM;
 
@@ -374,6 +380,14 @@ spidev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 	ctlr = spi->controller;
 
+	/* use the buffer lock here for triple duty:
+	 *  - prevent I/O (from us) so calling spi_setup() is safe;
+	 *  - prevent concurrent SPI_IOC_WR_* from morphing
+	 *    data fields while SPI_IOC_RD_* reads them;
+	 *  - SPI_IOC_MESSAGE needs the buffer locked "normally".
+	 */
+	mutex_lock(&spidev->buf_lock);
+
 	switch (cmd) {
 	/* read requests */
 	case SPI_IOC_RD_MODE:
@@ -497,6 +511,7 @@ spidev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		break;
 	}
 
+	mutex_unlock(&spidev->buf_lock);
 	spi_dev_put(spi);
 	mutex_unlock(&spidev->spi_lock);
 	return retval;
@@ -527,6 +542,9 @@ spidev_compat_ioc_message(struct file *filp, unsigned int cmd,
 		return -ESHUTDOWN;
 	}
 
+	/* SPI_IOC_MESSAGE needs the buffer locked "normally" */
+	mutex_lock(&spidev->buf_lock);
+
 	/* Check message and copy into scratch area */
 	ioc = spidev_get_ioc_message(cmd, u_ioc, &n_ioc);
 	if (IS_ERR(ioc)) {
@@ -547,6 +565,7 @@ spidev_compat_ioc_message(struct file *filp, unsigned int cmd,
 	kfree(ioc);
 
 done:
+	mutex_unlock(&spidev->buf_lock);
 	spi_dev_put(spi);
 	mutex_unlock(&spidev->spi_lock);
 	return retval;
@@ -661,8 +680,8 @@ static const struct file_operations spidev_fops = {
 	 * gets more complete API coverage.  It'll simplify things
 	 * too, except for the locking.
 	 */
-	.write =	spidev_write,
-	.read =		spidev_read,
+	.write_iter =	spidev_write,
+	.read_iter =	spidev_read,
 	.unlocked_ioctl = spidev_ioctl,
 	.compat_ioctl = spidev_compat_ioctl,
 	.open =		spidev_open,
@@ -680,27 +699,19 @@ static const struct class spidev_class = {
 	.name = "spidev",
 };
 
-/*
- * The spi device ids are expected to match the device names of the
- * spidev_dt_ids array below. Both arrays are kept in the same ordering.
- */
 static const struct spi_device_id spidev_spi_ids[] = {
-	{ .name = /* abb */ "spi-sensor" },
-	{ .name = /* arduino */ "unoq-mcu" },
-	{ .name = /* cisco */ "spi-petra" },
-	{ .name = /* dh */ "dhcom-board" },
-	{ .name = /* elgin */ "jg10309-01" },
-	{ .name = /* gocontroll */ "moduline-module-slot"},
-	{ .name = /* lineartechnology */ "ltc2488" },
-	{ .name = /* lwn */ "bk4" },
-	{ .name = /* lwn */ "bk4-spi" },
-	{ .name = /* menlo */ "m53cpld" },
-	{ .name = /* micron */ "spi-authenta" },
-	{ .name = /* rohm */ "bh2228fv" },
-	{ .name = /* rohm */ "dh2228fv" },
-	{ .name = /* semtech */ "sx1301" },
-	{ .name = /* silabs */ "em3581" },
-	{ .name = /* silabs */ "si3210" },
+	{ .name = "bh2228fv" },
+	{ .name = "dh2228fv" },
+	{ .name = "jg10309-01" },
+	{ .name = "ltc2488" },
+	{ .name = "sx1301" },
+	{ .name = "bk4" },
+	{ .name = "dhcom-board" },
+	{ .name = "m53cpld" },
+	{ .name = "spi-petra" },
+	{ .name = "spi-authenta" },
+	{ .name = "em3581" },
+	{ .name = "si3210" },
 	{},
 };
 MODULE_DEVICE_TABLE(spi, spidev_spi_ids);
@@ -719,15 +730,11 @@ static int spidev_of_check(struct device *dev)
 }
 
 static const struct of_device_id spidev_dt_ids[] = {
-	{ .compatible = "abb,spi-sensor", .data = &spidev_of_check },
-	{ .compatible = "arduino,unoq-mcu", .data = &spidev_of_check },
 	{ .compatible = "cisco,spi-petra", .data = &spidev_of_check },
 	{ .compatible = "dh,dhcom-board", .data = &spidev_of_check },
 	{ .compatible = "elgin,jg10309-01", .data = &spidev_of_check },
-	{ .compatible = "gocontroll,moduline-module-slot", .data = &spidev_of_check},
 	{ .compatible = "lineartechnology,ltc2488", .data = &spidev_of_check },
 	{ .compatible = "lwn,bk4", .data = &spidev_of_check },
-	{ .compatible = "lwn,bk4-spi", .data = &spidev_of_check },
 	{ .compatible = "menlo,m53cpld", .data = &spidev_of_check },
 	{ .compatible = "micron,spi-authenta", .data = &spidev_of_check },
 	{ .compatible = "rohm,bh2228fv", .data = &spidev_of_check },
@@ -777,13 +784,14 @@ static int spidev_probe(struct spi_device *spi)
 	}
 
 	/* Allocate driver data */
-	spidev = kzalloc_obj(*spidev);
+	spidev = kzalloc(sizeof(*spidev), GFP_KERNEL);
 	if (!spidev)
 		return -ENOMEM;
 
 	/* Initialize the driver data */
 	spidev->spi = spi;
 	mutex_init(&spidev->spi_lock);
+	mutex_init(&spidev->buf_lock);
 
 	INIT_LIST_HEAD(&spidev->device_entry);
 
