@@ -2645,8 +2645,8 @@ done:
 	return mask;
 }
 
-static unsigned int comedi_buf_copy_to_user(struct comedi_subdevice *s,
-	void __user *dest, unsigned int src_offset, unsigned int n)
+static unsigned int comedi_buf_copy_to_iter(struct comedi_subdevice *s,
+	struct iov_iter *to, unsigned int src_offset, unsigned int n)
 {
 	struct comedi_buf_map *bm = s->async->buf_map;
 	struct comedi_buf_page *buf_page_list = bm->page_list;
@@ -2655,16 +2655,14 @@ static unsigned int comedi_buf_copy_to_user(struct comedi_subdevice *s,
 
 	while (n) {
 		unsigned int copy_amount = min(n, PAGE_SIZE - offset);
-		unsigned int uncopied;
+		size_t copied;
 
-		uncopied = copy_to_user(dest, buf_page_list[page].virt_addr +
-					offset, copy_amount);
-		copy_amount -= uncopied;
-		n -= copy_amount;
-		if (uncopied)
+		copied = copy_to_iter(buf_page_list[page].virt_addr +
+				      offset, copy_amount, to);
+		n -= copied;
+		if (copied < copy_amount)
 			break;
 
-		dest += copy_amount;
 		page++;
 		if (page == bm->n_pages)
 			page = 0;	/* buffer wraparound */
@@ -2673,8 +2671,8 @@ static unsigned int comedi_buf_copy_to_user(struct comedi_subdevice *s,
 	return n;
 }
 
-static unsigned int comedi_buf_copy_from_user(struct comedi_subdevice *s,
-	unsigned int dst_offset, const void __user *src, unsigned int n)
+static unsigned int comedi_buf_copy_from_iter(struct comedi_subdevice *s,
+	unsigned int dst_offset, struct iov_iter *from, unsigned int n)
 {
 	struct comedi_buf_map *bm = s->async->buf_map;
 	struct comedi_buf_page *buf_page_list = bm->page_list;
@@ -2683,16 +2681,14 @@ static unsigned int comedi_buf_copy_from_user(struct comedi_subdevice *s,
 
 	while (n) {
 		unsigned int copy_amount = min(n, PAGE_SIZE - offset);
-		unsigned int uncopied;
+		size_t copied;
 
-		uncopied = copy_from_user(buf_page_list[page].virt_addr +
-					  offset, src, copy_amount);
-		copy_amount -= uncopied;
-		n -= copy_amount;
-		if (uncopied)
+		copied = copy_from_iter(buf_page_list[page].virt_addr +
+					offset, copy_amount, from);
+		n -= copied;
+		if (copied < copy_amount)
 			break;
 
-		src += copy_amount;
 		page++;
 		if (page == bm->n_pages)
 			page = 0;	/* buffer wraparound */
@@ -2701,8 +2697,7 @@ static unsigned int comedi_buf_copy_from_user(struct comedi_subdevice *s,
 	return n;
 }
 
-static ssize_t comedi_write(struct file *file, const char __user *buf,
-			    size_t nbytes, loff_t *offset)
+static ssize_t comedi_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct comedi_subdevice *s;
 	struct comedi_async *async;
@@ -2710,7 +2705,9 @@ static ssize_t comedi_write(struct file *file, const char __user *buf,
 	ssize_t count = 0;
 	int retval = 0;
 	DECLARE_WAITQUEUE(wait, current);
+	struct file *file = iocb->ki_filp;
 	struct comedi_file *cfp = file->private_data;
+	size_t nbytes = iov_iter_count(from);
 	struct comedi_device *dev = cfp->dev;
 	bool become_nonbusy = false;
 	bool attach_locked;
@@ -2780,7 +2777,7 @@ static ssize_t comedi_write(struct file *file, const char __user *buf,
 		}
 
 		set_current_state(TASK_RUNNING);
-		m = comedi_buf_copy_from_user(s, async->buf_write_ptr, buf, n);
+		m = comedi_buf_copy_from_iter(s, async->buf_write_ptr, from, n);
 		if (m) {
 			n -= m;
 			retval = -EFAULT;
@@ -2789,8 +2786,6 @@ static ssize_t comedi_write(struct file *file, const char __user *buf,
 
 		count += n;
 		nbytes -= n;
-
-		buf += n;
 	}
 	remove_wait_queue(&async->wait_head, &wait);
 	set_current_state(TASK_RUNNING);
@@ -2829,8 +2824,7 @@ out:
 	return count ? count : retval;
 }
 
-static ssize_t comedi_read(struct file *file, char __user *buf, size_t nbytes,
-			   loff_t *offset)
+static ssize_t comedi_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct comedi_subdevice *s;
 	struct comedi_async *async;
@@ -2838,7 +2832,9 @@ static ssize_t comedi_read(struct file *file, char __user *buf, size_t nbytes,
 	ssize_t count = 0;
 	int retval = 0;
 	DECLARE_WAITQUEUE(wait, current);
+	struct file *file = iocb->ki_filp;
 	struct comedi_file *cfp = file->private_data;
+	size_t nbytes = iov_iter_count(to);
 	struct comedi_device *dev = cfp->dev;
 	unsigned int old_detach_count;
 	bool become_nonbusy = false;
@@ -2905,7 +2901,7 @@ static ssize_t comedi_read(struct file *file, char __user *buf, size_t nbytes,
 		}
 
 		set_current_state(TASK_RUNNING);
-		m = comedi_buf_copy_to_user(s, buf, async->buf_read_ptr, n);
+		m = comedi_buf_copy_to_iter(s, to, async->buf_read_ptr, n);
 		if (m) {
 			n -= m;
 			retval = -EFAULT;
@@ -2916,8 +2912,6 @@ static ssize_t comedi_read(struct file *file, char __user *buf, size_t nbytes,
 
 		count += n;
 		nbytes -= n;
-
-		buf += n;
 	}
 	remove_wait_queue(&async->wait_head, &wait);
 	set_current_state(TASK_RUNNING);
@@ -3433,8 +3427,8 @@ static const struct file_operations comedi_fops = {
 	.compat_ioctl = comedi_compat_ioctl,
 	.open = comedi_open,
 	.release = comedi_close,
-	.read = comedi_read,
-	.write = comedi_write,
+	.read_iter = comedi_read,
+	.write_iter = comedi_write,
 	.mmap = comedi_mmap,
 	.poll = comedi_poll,
 	.fasync = comedi_fasync,
