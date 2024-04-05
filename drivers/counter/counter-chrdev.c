@@ -62,10 +62,10 @@ struct counter_comp_node {
 	comp.count_array_u64_read || \
 	comp.signal_array_u64_read)
 
-static ssize_t counter_chrdev_read(struct file *filp, char __user *buf,
-				   size_t len, loff_t *f_ps)
+static ssize_t counter_chrdev_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct counter_device *const counter = filp->private_data;
+	struct counter_device *const counter = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	int err;
 	unsigned int copied;
 
@@ -77,7 +77,7 @@ static ssize_t counter_chrdev_read(struct file *filp, char __user *buf,
 
 	do {
 		if (kfifo_is_empty(&counter->events)) {
-			if (filp->f_flags & O_NONBLOCK)
+			if (iocb->ki_filp->f_flags & O_NONBLOCK)
 				return -EAGAIN;
 
 			err = wait_event_interruptible(counter->events_wait,
@@ -91,7 +91,7 @@ static ssize_t counter_chrdev_read(struct file *filp, char __user *buf,
 
 		if (mutex_lock_interruptible(&counter->events_out_lock))
 			return -ERESTARTSYS;
-		err = kfifo_to_user(&counter->events, buf, len, &copied);
+		err = kfifo_to_iter(&counter->events, to, len, &copied);
 		mutex_unlock(&counter->events_out_lock);
 		if (err < 0)
 			return err;
@@ -454,7 +454,7 @@ out_unlock:
 
 static const struct file_operations counter_fops = {
 	.owner = THIS_MODULE,
-	.read = counter_chrdev_read,
+	.read_iter = counter_chrdev_read,
 	.poll = counter_chrdev_poll,
 	.unlocked_ioctl = counter_chrdev_ioctl,
 	.open = counter_chrdev_open,
