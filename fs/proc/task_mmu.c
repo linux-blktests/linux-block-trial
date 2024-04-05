@@ -831,7 +831,7 @@ static long procfs_procmap_ioctl(struct file *file, unsigned int cmd, unsigned l
 
 const struct file_operations proc_pid_maps_operations = {
 	.open		= pid_maps_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= proc_map_release,
 	.unlocked_ioctl = procfs_procmap_ioctl,
@@ -1572,14 +1572,14 @@ static int smaps_rollup_release(struct inode *inode, struct file *file)
 
 const struct file_operations proc_pid_smaps_operations = {
 	.open		= pid_smaps_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= proc_map_release,
 };
 
 const struct file_operations proc_pid_smaps_rollup_operations = {
 	.open		= smaps_rollup_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= smaps_rollup_release,
 };
@@ -1765,9 +1765,9 @@ static const struct mm_walk_ops clear_refs_walk_ops = {
 	.walk_lock		= PGWALK_WRLOCK,
 };
 
-static ssize_t clear_refs_write(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t clear_refs_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct task_struct *task;
 	char buffer[PROC_NUMBUF] = {};
 	struct mm_struct *mm;
@@ -1778,7 +1778,7 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 
 	if (count > sizeof(buffer) - 1)
 		count = sizeof(buffer) - 1;
-	if (copy_from_user(buffer, buf, count))
+	if (!copy_from_iter_full(buffer, count, from))
 		return -EFAULT;
 	rv = kstrtoint(strstrip(buffer), 10, &itype);
 	if (rv < 0)
@@ -1787,7 +1787,7 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 	if (type < CLEAR_REFS_ALL || type >= CLEAR_REFS_LAST)
 		return -EINVAL;
 
-	task = get_proc_task(file_inode(file));
+	task = get_proc_task(file_inode(iocb->ki_filp));
 	if (!task)
 		return -ESRCH;
 	mm = get_task_mm(task);
@@ -1841,7 +1841,7 @@ out_mm:
 }
 
 const struct file_operations proc_clear_refs_operations = {
-	.write		= clear_refs_write,
+	.write_iter	= clear_refs_write,
 	.llseek		= noop_llseek,
 };
 
@@ -2211,10 +2211,10 @@ static const struct mm_walk_ops pagemap_ops = {
  * determine which areas of memory are actually mapped and llseek to
  * skip over unmapped regions.
  */
-static ssize_t pagemap_read(struct file *file, char __user *buf,
-			    size_t count, loff_t *ppos)
+static ssize_t pagemap_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mm_struct *mm = file->private_data;
+	struct mm_struct *mm = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	struct pagemapread pm;
 	unsigned long src;
 	unsigned long svpfn;
@@ -2227,7 +2227,7 @@ static ssize_t pagemap_read(struct file *file, char __user *buf,
 
 	ret = -EINVAL;
 	/* file position must be aligned */
-	if ((*ppos % PM_ENTRY_BYTES) || (count % PM_ENTRY_BYTES))
+	if ((iocb->ki_pos % PM_ENTRY_BYTES) || (count % PM_ENTRY_BYTES))
 		goto out_mm;
 
 	ret = 0;
@@ -2235,7 +2235,7 @@ static ssize_t pagemap_read(struct file *file, char __user *buf,
 		goto out_mm;
 
 	/* do not disclose physical addresses: attack vector */
-	pm.show_pfn = file_ns_capable(file, &init_user_ns, CAP_SYS_ADMIN);
+	pm.show_pfn = file_ns_capable(iocb->ki_filp, &init_user_ns, CAP_SYS_ADMIN);
 
 	pm.len = (PAGEMAP_WALK_SIZE >> PAGE_SHIFT);
 	pm.buffer = kmalloc_array(pm.len, PM_ENTRY_BYTES, GFP_KERNEL);
@@ -2243,7 +2243,7 @@ static ssize_t pagemap_read(struct file *file, char __user *buf,
 	if (!pm.buffer)
 		goto out_mm;
 
-	src = *ppos;
+	src = iocb->ki_pos;
 	svpfn = src / PM_ENTRY_BYTES;
 	end_vaddr = mm->task_size;
 
@@ -2285,15 +2285,14 @@ static ssize_t pagemap_read(struct file *file, char __user *buf,
 		start_vaddr = end;
 
 		len = min(count, PM_ENTRY_BYTES * pm.pos);
-		if (copy_to_user(buf, pm.buffer, len)) {
+		if (!copy_to_iter_full(pm.buffer, len, to)) {
 			ret = -EFAULT;
 			goto out_free;
 		}
 		copied += len;
-		buf += len;
 		count -= len;
 	}
-	*ppos += copied;
+	iocb->ki_pos += copied;
 	if (!ret || ret == PM_END_OF_BUFFER)
 		ret = copied;
 
@@ -3107,7 +3106,7 @@ static long do_pagemap_cmd(struct file *file, unsigned int cmd,
 
 const struct file_operations proc_pagemap_operations = {
 	.llseek		= mem_lseek, /* borrow this */
-	.read		= pagemap_read,
+	.read_iter	= pagemap_read,
 	.open		= pagemap_open,
 	.release	= pagemap_release,
 	.unlocked_ioctl = do_pagemap_cmd,
@@ -3387,7 +3386,7 @@ static int pid_numa_maps_open(struct inode *inode, struct file *file)
 
 const struct file_operations proc_pid_numa_maps_operations = {
 	.open		= pid_numa_maps_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= proc_map_release,
 };

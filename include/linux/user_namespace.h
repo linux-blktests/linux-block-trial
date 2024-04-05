@@ -191,13 +191,15 @@ static inline void put_user_ns(struct user_namespace *ns)
 }
 
 struct seq_operations;
+struct kiocb;
+struct iov_iter;
 extern const struct seq_operations proc_uid_seq_operations;
 extern const struct seq_operations proc_gid_seq_operations;
 extern const struct seq_operations proc_projid_seq_operations;
-extern ssize_t proc_uid_map_write(struct file *, const char __user *, size_t, loff_t *);
-extern ssize_t proc_gid_map_write(struct file *, const char __user *, size_t, loff_t *);
-extern ssize_t proc_projid_map_write(struct file *, const char __user *, size_t, loff_t *);
-extern ssize_t proc_setgroups_write(struct file *, const char __user *, size_t, loff_t *);
+ssize_t proc_uid_map_write_iter(struct kiocb *iocb, struct iov_iter *from);
+ssize_t proc_gid_map_write_iter(struct kiocb *iocb, struct iov_iter *from);
+ssize_t proc_projid_map_write_iter(struct kiocb *iocb, struct iov_iter *from);
+ssize_t proc_setgroups_write(struct kiocb *iocb, struct iov_iter *from);
 extern int proc_setgroups_show(struct seq_file *m, void *v);
 extern bool userns_may_setgroups(const struct user_namespace *ns);
 extern bool in_userns(const struct user_namespace *ancestor,

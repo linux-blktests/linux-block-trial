@@ -323,6 +323,11 @@ static ssize_t proc_reg_read(struct file *file, char __user *buf, size_t count, 
 	return rv;
 }
 
+static ssize_t __proc_reg_read_iter(struct kiocb *iocb, struct iov_iter *to)
+{
+	return vfs_read_iter(iocb, to, proc_reg_read);
+}
+
 static ssize_t pde_write(struct proc_dir_entry *pde, struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {
 	const auto write = pde->proc_ops->proc_write;
@@ -344,6 +349,7 @@ static ssize_t proc_reg_write(struct file *file, const char __user *buf, size_t 
 	}
 	return rv;
 }
+FOPS_WRITE_ITER_HELPER(proc_reg_write);
 
 static __poll_t pde_poll(struct proc_dir_entry *pde, struct file *file, struct poll_table_struct *pts)
 {
@@ -553,8 +559,8 @@ static int proc_reg_release(struct inode *inode, struct file *file)
 
 static const struct file_operations proc_reg_file_ops = {
 	.llseek		= proc_reg_llseek,
-	.read		= proc_reg_read,
-	.write		= proc_reg_write,
+	.read_iter	= __proc_reg_read_iter,
+	.write_iter	= proc_reg_write_iter,
 	.poll		= proc_reg_poll,
 	.unlocked_ioctl	= proc_reg_unlocked_ioctl,
 	.mmap		= proc_reg_mmap,
@@ -566,7 +572,7 @@ static const struct file_operations proc_reg_file_ops = {
 static const struct file_operations proc_iter_file_ops = {
 	.llseek		= proc_reg_llseek,
 	.read_iter	= proc_reg_read_iter,
-	.write		= proc_reg_write,
+	.write_iter	= proc_reg_write_iter,
 	.splice_read	= copy_splice_read,
 	.poll		= proc_reg_poll,
 	.unlocked_ioctl	= proc_reg_unlocked_ioctl,
@@ -579,8 +585,8 @@ static const struct file_operations proc_iter_file_ops = {
 #ifdef CONFIG_COMPAT
 static const struct file_operations proc_reg_file_ops_compat = {
 	.llseek		= proc_reg_llseek,
-	.read		= proc_reg_read,
-	.write		= proc_reg_write,
+	.read_iter	= proc_reg_read_iter,
+	.write_iter	= proc_reg_write_iter,
 	.poll		= proc_reg_poll,
 	.unlocked_ioctl	= proc_reg_unlocked_ioctl,
 	.compat_ioctl	= proc_reg_compat_ioctl,
@@ -594,7 +600,7 @@ static const struct file_operations proc_iter_file_ops_compat = {
 	.llseek		= proc_reg_llseek,
 	.read_iter	= proc_reg_read_iter,
 	.splice_read	= copy_splice_read,
-	.write		= proc_reg_write,
+	.write_iter	= proc_reg_write_iter,
 	.poll		= proc_reg_poll,
 	.unlocked_ioctl	= proc_reg_unlocked_ioctl,
 	.compat_ioctl	= proc_reg_compat_ioctl,
