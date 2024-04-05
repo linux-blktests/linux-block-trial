@@ -1062,6 +1062,7 @@ static ssize_t fanotify_read(struct file *file, char __user *buf,
 		ret = buf - start;
 	return ret;
 }
+FOPS_READ_ITER_HELPER(fanotify_read);
 
 static ssize_t fanotify_write(struct file *file, const char __user *buf, size_t count, loff_t *pos)
 {
@@ -1094,6 +1095,7 @@ static ssize_t fanotify_write(struct file *file, const char __user *buf, size_t 
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(fanotify_write);
 
 static int fanotify_release(struct inode *ignored, struct file *file)
 {
@@ -1180,8 +1182,8 @@ static long fanotify_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 static const struct file_operations fanotify_fops = {
 	.show_fdinfo	= fanotify_show_fdinfo,
 	.poll		= fanotify_poll,
-	.read		= fanotify_read,
-	.write		= fanotify_write,
+	.read_iter	= fanotify_read_iter,
+	.write_iter	= fanotify_write_iter,
 	.fasync		= NULL,
 	.release	= fanotify_release,
 	.unlocked_ioctl	= fanotify_ioctl,

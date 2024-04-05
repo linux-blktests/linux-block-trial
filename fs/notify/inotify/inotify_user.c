@@ -297,6 +297,7 @@ static ssize_t inotify_read(struct file *file, char __user *buf,
 		ret = buf - start;
 	return ret;
 }
+FOPS_READ_ITER_HELPER(inotify_read);
 
 static int inotify_release(struct inode *ignored, struct file *file)
 {
@@ -357,7 +358,7 @@ static long inotify_ioctl(struct file *file, unsigned int cmd,
 static const struct file_operations inotify_fops = {
 	.show_fdinfo	= inotify_show_fdinfo,
 	.poll		= inotify_poll,
-	.read		= inotify_read,
+	.read_iter	= inotify_read_iter,
 	.fasync		= fsnotify_fasync,
 	.release	= inotify_release,
 	.unlocked_ioctl	= inotify_ioctl,
