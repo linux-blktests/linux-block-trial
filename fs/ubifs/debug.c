@@ -2677,39 +2677,12 @@ static int dfs_file_open(struct inode *inode, struct file *file)
 	return nonseekable_open(inode, file);
 }
 
-/**
- * provide_user_output - provide output to the user reading a debugfs file.
- * @val: boolean value for the answer
- * @u: the buffer to store the answer at
- * @count: size of the buffer
- * @ppos: position in the @u output buffer
- *
- * This is a simple helper function which stores @val boolean value in the user
- * buffer when the user reads one of UBIFS debugfs files. Returns amount of
- * bytes written to @u in case of success and a negative error code in case of
- * failure.
- */
-static int provide_user_output(int val, char __user *u, size_t count,
-			       loff_t *ppos)
+static ssize_t dfs_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	char buf[3];
-
-	if (val)
-		buf[0] = '1';
-	else
-		buf[0] = '0';
-	buf[1] = '\n';
-	buf[2] = 0x00;
-
-	return simple_read_from_buffer(u, count, ppos, buf, 2);
-}
-
-static ssize_t dfs_file_read(struct file *file, char __user *u, size_t count,
-			     loff_t *ppos)
-{
-	struct dentry *dent = file->f_path.dentry;
-	struct ubifs_info *c = file->private_data;
+	struct dentry *dent = iocb->ki_filp->f_path.dentry;
+	struct ubifs_info *c = iocb->ki_filp->private_data;
 	struct ubifs_debug_info *d = c->dbg;
+	char buf[3];
 	int val;
 
 	if (dent == d->dfs_chk_gen)
@@ -2729,25 +2702,27 @@ static ssize_t dfs_file_read(struct file *file, char __user *u, size_t count,
 	else
 		return -EINVAL;
 
-	return provide_user_output(val, u, count, ppos);
+	buf[0] = val ? '1' : '0';
+	buf[1] = '\n';
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
 /**
  * interpret_user_input - interpret user debugfs file input.
- * @u: user-provided buffer with the input
- * @count: buffer size
+ * @from: iov_iter with the input
  *
  * This is a helper function which interpret user input to a boolean UBIFS
  * debugfs file. Returns %0 or %1 in case of success and a negative error code
  * in case of failure.
  */
-static int interpret_user_input(const char __user *u, size_t count)
+static int interpret_user_input(struct iov_iter *from)
 {
 	size_t buf_size;
+	size_t count = iov_iter_count(from);
 	char buf[8];
 
 	buf_size = min_t(size_t, count, (sizeof(buf) - 1));
-	if (copy_from_user(buf, u, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 
 	if (buf[0] == '1')
@@ -2758,30 +2733,30 @@ static int interpret_user_input(const char __user *u, size_t count)
 	return -EINVAL;
 }
 
-static ssize_t dfs_file_write(struct file *file, const char __user *u,
-			      size_t count, loff_t *ppos)
+static ssize_t dfs_file_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ubifs_info *c = file->private_data;
+	struct ubifs_info *c = iocb->ki_filp->private_data;
 	struct ubifs_debug_info *d = c->dbg;
-	struct dentry *dent = file->f_path.dentry;
+	struct dentry *dent = iocb->ki_filp->f_path.dentry;
+	size_t count = iov_iter_count(from);
 	int val;
 
-	if (file->f_path.dentry == d->dfs_dump_lprops) {
+	if (iocb->ki_filp->f_path.dentry == d->dfs_dump_lprops) {
 		ubifs_dump_lprops(c);
 		return count;
 	}
-	if (file->f_path.dentry == d->dfs_dump_budg) {
+	if (iocb->ki_filp->f_path.dentry == d->dfs_dump_budg) {
 		ubifs_dump_budg(c, &c->bi);
 		return count;
 	}
-	if (file->f_path.dentry == d->dfs_dump_tnc) {
+	if (iocb->ki_filp->f_path.dentry == d->dfs_dump_tnc) {
 		mutex_lock(&c->tnc_mutex);
 		ubifs_dump_tnc(c);
 		mutex_unlock(&c->tnc_mutex);
 		return count;
 	}
 
-	val = interpret_user_input(u, count);
+	val = interpret_user_input(from);
 	if (val < 0)
 		return val;
 
@@ -2807,8 +2782,8 @@ static ssize_t dfs_file_write(struct file *file, const char __user *u,
 
 static const struct file_operations dfs_fops = {
 	.open = dfs_file_open,
-	.read = dfs_file_read,
-	.write = dfs_file_write,
+	.read_iter = dfs_file_read,
+	.write_iter = dfs_file_write,
 	.owner = THIS_MODULE,
 };
 
@@ -2898,10 +2873,10 @@ static struct dentry *dfs_chk_lprops;
 static struct dentry *dfs_chk_fs;
 static struct dentry *dfs_tst_rcvry;
 
-static ssize_t dfs_global_file_read(struct file *file, char __user *u,
-				    size_t count, loff_t *ppos)
+static ssize_t dfs_global_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dentry *dent = file->f_path.dentry;
+	struct dentry *dent = iocb->ki_filp->f_path.dentry;
+	char buf[3];
 	int val;
 
 	if (dent == dfs_chk_gen)
@@ -2919,16 +2894,18 @@ static ssize_t dfs_global_file_read(struct file *file, char __user *u,
 	else
 		return -EINVAL;
 
-	return provide_user_output(val, u, count, ppos);
+	buf[0] = val ? '1' : '0';
+	buf[1] = '\n';
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
-static ssize_t dfs_global_file_write(struct file *file, const char __user *u,
-				     size_t count, loff_t *ppos)
+static ssize_t dfs_global_file_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct dentry *dent = file->f_path.dentry;
+	struct dentry *dent = iocb->ki_filp->f_path.dentry;
+	size_t count = iov_iter_count(from);
 	int val;
 
-	val = interpret_user_input(u, count);
+	val = interpret_user_input(from);
 	if (val < 0)
 		return val;
 
@@ -2951,8 +2928,8 @@ static ssize_t dfs_global_file_write(struct file *file, const char __user *u,
 }
 
 static const struct file_operations dfs_global_fops = {
-	.read = dfs_global_file_read,
-	.write = dfs_global_file_write,
+	.read_iter = dfs_global_file_read,
+	.write_iter = dfs_global_file_write,
 	.owner = THIS_MODULE,
 };
 
