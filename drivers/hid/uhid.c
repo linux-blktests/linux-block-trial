@@ -669,10 +669,10 @@ static int uhid_char_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t uhid_char_read(struct file *file, char __user *buffer,
-				size_t count, loff_t *ppos)
+static ssize_t uhid_char_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct uhid_device *uhid = file->private_data;
+	struct uhid_device *uhid = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	int ret;
 	unsigned long flags;
 	size_t len;
@@ -682,7 +682,7 @@ static ssize_t uhid_char_read(struct file *file, char __user *buffer,
 		return -EINVAL;
 
 try_again:
-	if (file->f_flags & O_NONBLOCK) {
+	if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 		if (uhid->head == uhid->tail)
 			return -EAGAIN;
 	} else {
@@ -701,7 +701,7 @@ try_again:
 		goto try_again;
 	} else {
 		len = min(count, sizeof(**uhid->outq));
-		if (copy_to_user(buffer, uhid->outq[uhid->tail], len)) {
+		if (!copy_to_iter_full(uhid->outq[uhid->tail], len, to)) {
 			ret = -EFAULT;
 		} else {
 			kfree(uhid->outq[uhid->tail]);
@@ -782,6 +782,7 @@ unlock:
 	/* return "count" not "len" to not confuse the caller */
 	return ret ? ret : count;
 }
+FOPS_WRITE_ITER_HELPER(uhid_char_write);
 
 static __poll_t uhid_char_poll(struct file *file, poll_table *wait)
 {
@@ -800,8 +801,8 @@ static const struct file_operations uhid_fops = {
 	.owner		= THIS_MODULE,
 	.open		= uhid_char_open,
 	.release	= uhid_char_release,
-	.read		= uhid_char_read,
-	.write		= uhid_char_write,
+	.read_iter	= uhid_char_read,
+	.write_iter	= uhid_char_write_iter,
 	.poll		= uhid_char_poll,
 };
 

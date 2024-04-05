@@ -3704,10 +3704,10 @@ out:
 	return err;
 }
 
-static ssize_t hid_debug_events_read(struct file *file, char __user *buffer,
-		size_t count, loff_t *ppos)
+static ssize_t hid_debug_events_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hid_debug_list *list = file->private_data;
+	struct hid_debug_list *list = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	int ret = 0, copied;
 	DECLARE_WAITQUEUE(wait, current);
 
@@ -3733,7 +3733,7 @@ static ssize_t hid_debug_events_read(struct file *file, char __user *buffer,
 				goto out;
 			}
 
-			if (file->f_flags & O_NONBLOCK) {
+			if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 				ret = -EAGAIN;
 				break;
 			}
@@ -3755,7 +3755,7 @@ static ssize_t hid_debug_events_read(struct file *file, char __user *buffer,
 	/* pass the fifo content to userspace, locking is not needed with only
 	 * one concurrent reader and one concurrent writer
 	 */
-	ret = kfifo_to_user(&list->hid_debug_fifo, buffer, count, &copied);
+	ret = kfifo_to_iter(&list->hid_debug_fifo, to, count, &copied);
 	if (ret)
 		goto out;
 	ret = copied;
@@ -3797,7 +3797,7 @@ DEFINE_SHOW_ATTRIBUTE(hid_debug_rdesc);
 static const struct file_operations hid_debug_events_fops = {
 	.owner =        THIS_MODULE,
 	.open           = hid_debug_events_open,
-	.read           = hid_debug_events_read,
+	.read_iter      = hid_debug_events_read,
 	.poll		= hid_debug_events_poll,
 	.release        = hid_debug_events_release,
 	.llseek		= noop_llseek,

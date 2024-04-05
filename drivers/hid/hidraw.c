@@ -43,9 +43,10 @@ static inline bool hidraw_is_revoked(struct hidraw_list *list)
 	return list->revoked;
 }
 
-static ssize_t hidraw_read(struct file *file, char __user *buffer, size_t count, loff_t *ppos)
+static ssize_t hidraw_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hidraw_list *list = file->private_data;
+	struct hidraw_list *list = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	int ret = 0, len;
 	DECLARE_WAITQUEUE(wait, current);
 
@@ -68,7 +69,7 @@ static ssize_t hidraw_read(struct file *file, char __user *buffer, size_t count,
 					ret = -EIO;
 					break;
 				}
-				if (file->f_flags & O_NONBLOCK) {
+				if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 					ret = -EAGAIN;
 					break;
 				}
@@ -91,7 +92,7 @@ static ssize_t hidraw_read(struct file *file, char __user *buffer, size_t count,
 			count : list->buffer[list->tail].len;
 
 		if (list->buffer[list->tail].value) {
-			if (copy_to_user(buffer, list->buffer[list->tail].value, len)) {
+			if (!copy_to_iter_full(list->buffer[list->tail].value, len, to)) {
 				ret = -EFAULT;
 				goto out;
 			}
@@ -179,7 +180,7 @@ static ssize_t hidraw_write(struct file *file, const char __user *buffer, size_t
 	up_read(&minors_rwsem);
 	return ret;
 }
-
+FOPS_WRITE_ITER_HELPER(hidraw_write);
 
 /*
  * This function performs a Get_Report transfer over the control endpoint
@@ -556,8 +557,8 @@ out:
 
 static const struct file_operations hidraw_ops = {
 	.owner =        THIS_MODULE,
-	.read =         hidraw_read,
-	.write =        hidraw_write,
+	.read_iter =    hidraw_read,
+	.write_iter =   hidraw_write_iter,
 	.poll =         hidraw_poll,
 	.open =         hidraw_open,
 	.release =      hidraw_release,

@@ -35,13 +35,14 @@ static int picolcd_debug_reset_open(struct inode *inode, struct file *f)
 	return single_open(f, picolcd_debug_reset_show, inode->i_private);
 }
 
-static ssize_t picolcd_debug_reset_write(struct file *f, const char __user *user_buf,
-		size_t count, loff_t *ppos)
+static ssize_t picolcd_debug_reset_write(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct picolcd_data *data = ((struct seq_file *)f->private_data)->private;
+	struct picolcd_data *data = ((struct seq_file *)iocb->ki_filp->private_data)->private;
+	size_t count = iov_iter_count(from);
 	char buf[32];
 	size_t cnt = min(count, sizeof(buf)-1);
-	if (copy_from_user(buf, user_buf, cnt))
+	if (!copy_from_iter_full(buf, cnt, from))
 		return -EFAULT;
 
 	while (cnt > 0 && (buf[cnt-1] == ' ' || buf[cnt-1] == '\n'))
@@ -61,34 +62,35 @@ static ssize_t picolcd_debug_reset_write(struct file *f, const char __user *user
 static const struct file_operations picolcd_debug_reset_fops = {
 	.owner    = THIS_MODULE,
 	.open     = picolcd_debug_reset_open,
-	.read     = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek   = seq_lseek,
-	.write    = picolcd_debug_reset_write,
+	.write_iter = picolcd_debug_reset_write,
 	.release  = single_release,
 };
 
 /*
  * The "eeprom" file
  */
-static ssize_t picolcd_debug_eeprom_read(struct file *f, char __user *u,
-		size_t s, loff_t *off)
+static ssize_t picolcd_debug_eeprom_read(struct kiocb *iocb,
+					 struct iov_iter *to)
 {
-	struct picolcd_data *data = f->private_data;
+	struct picolcd_data *data = iocb->ki_filp->private_data;
+	size_t s = iov_iter_count(to);
 	struct picolcd_pending *resp;
 	u8 raw_data[3];
 	ssize_t ret = -EIO;
 
 	if (s == 0)
 		return -EINVAL;
-	if (*off > 0x0ff)
+	if (iocb->ki_pos > 0x0ff)
 		return 0;
 
 	/* prepare buffer with info about what we want to read (addr & len) */
-	raw_data[0] = *off & 0xff;
-	raw_data[1] = (*off >> 8) & 0xff;
+	raw_data[0] = iocb->ki_pos & 0xff;
+	raw_data[1] = (iocb->ki_pos >> 8) & 0xff;
 	raw_data[2] = s < 20 ? s : 20;
-	if (*off + raw_data[2] > 0xff)
-		raw_data[2] = 0x100 - *off;
+	if (iocb->ki_pos + raw_data[2] > 0xff)
+		raw_data[2] = 0x100 - iocb->ki_pos;
 	resp = picolcd_send_and_wait(data->hdev, REPORT_EE_READ, raw_data,
 			sizeof(raw_data));
 	if (!resp)
@@ -99,37 +101,38 @@ static ssize_t picolcd_debug_eeprom_read(struct file *f, char __user *u,
 		ret = resp->raw_data[2];
 		if (ret > s)
 			ret = s;
-		if (copy_to_user(u, resp->raw_data+3, ret))
+		if (!copy_to_iter_full(resp->raw_data+3, ret, to))
 			ret = -EFAULT;
 		else
-			*off += ret;
+			iocb->ki_pos += ret;
 	} /* anything else is some kind of IO error */
 
 	kfree(resp);
 	return ret;
 }
 
-static ssize_t picolcd_debug_eeprom_write(struct file *f, const char __user *u,
-		size_t s, loff_t *off)
+static ssize_t picolcd_debug_eeprom_write(struct kiocb *iocb,
+					  struct iov_iter *from)
 {
-	struct picolcd_data *data = f->private_data;
+	struct picolcd_data *data = iocb->ki_filp->private_data;
+	size_t s = iov_iter_count(from);
 	struct picolcd_pending *resp;
 	ssize_t ret = -EIO;
 	u8 raw_data[23];
 
 	if (s == 0)
 		return -EINVAL;
-	if (*off > 0x0ff)
+	if (iocb->ki_pos > 0x0ff)
 		return -ENOSPC;
 
 	memset(raw_data, 0, sizeof(raw_data));
-	raw_data[0] = *off & 0xff;
-	raw_data[1] = (*off >> 8) & 0xff;
+	raw_data[0] = iocb->ki_pos & 0xff;
+	raw_data[1] = (iocb->ki_pos >> 8) & 0xff;
 	raw_data[2] = min_t(size_t, 20, s);
-	if (*off + raw_data[2] > 0xff)
-		raw_data[2] = 0x100 - *off;
+	if (iocb->ki_pos + raw_data[2] > 0xff)
+		raw_data[2] = 0x100 - iocb->ki_pos;
 
-	if (copy_from_user(raw_data+3, u, min((u8)20, raw_data[2])))
+	if (!copy_from_iter_full(raw_data+3, min((u8)20, raw_data[2]), from))
 		return -EFAULT;
 	resp = picolcd_send_and_wait(data->hdev, REPORT_EE_WRITE, raw_data,
 			sizeof(raw_data));
@@ -140,7 +143,7 @@ static ssize_t picolcd_debug_eeprom_write(struct file *f, const char __user *u,
 	if (resp->in_report && resp->in_report->id == REPORT_EE_DATA) {
 		/* check if written data matches */
 		if (memcmp(raw_data, resp->raw_data, 3+raw_data[2]) == 0) {
-			*off += raw_data[2];
+			iocb->ki_pos += raw_data[2];
 			ret = raw_data[2];
 		}
 	}
@@ -158,8 +161,8 @@ static ssize_t picolcd_debug_eeprom_write(struct file *f, const char __user *u,
 static const struct file_operations picolcd_debug_eeprom_fops = {
 	.owner    = THIS_MODULE,
 	.open     = simple_open,
-	.read     = picolcd_debug_eeprom_read,
-	.write    = picolcd_debug_eeprom_write,
+	.read_iter = picolcd_debug_eeprom_read,
+	.write_iter = picolcd_debug_eeprom_write,
 	.llseek   = generic_file_llseek,
 };
 
@@ -230,6 +233,7 @@ static ssize_t picolcd_debug_flash_read(struct file *f, char __user *u,
 	else
 		return _picolcd_flash_read(data, REPORT_READ_MEMORY, u, s, off);
 }
+FOPS_READ_ITER_HELPER(picolcd_debug_flash_read);
 
 /* erase block aligned to 64bytes boundary */
 static ssize_t _picolcd_flash_erase64(struct picolcd_data *data, int report_id,
@@ -336,6 +340,7 @@ static ssize_t picolcd_debug_flash_write(struct file *f, const char __user *u,
 	mutex_unlock(&data->mutex_flash);
 	return ret > 0 ? ret : err;
 }
+FOPS_WRITE_ITER_HELPER(picolcd_debug_flash_write);
 
 /*
  * Notes:
@@ -351,8 +356,8 @@ static ssize_t picolcd_debug_flash_write(struct file *f, const char __user *u,
 static const struct file_operations picolcd_debug_flash_fops = {
 	.owner    = THIS_MODULE,
 	.open     = simple_open,
-	.read     = picolcd_debug_flash_read,
-	.write    = picolcd_debug_flash_write,
+	.read_iter = picolcd_debug_flash_read_iter,
+	.write_iter = picolcd_debug_flash_write_iter,
 	.llseek   = generic_file_llseek,
 };
 

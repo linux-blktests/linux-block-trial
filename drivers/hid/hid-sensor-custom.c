@@ -636,14 +636,14 @@ static void hid_sensor_custom_remove_attributes(struct hid_sensor_custom *
 	kfree(sensor_inst->fields);
 }
 
-static ssize_t hid_sensor_custom_read(struct file *file, char __user *buf,
-				      size_t count, loff_t *f_ps)
+static ssize_t hid_sensor_custom_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct hid_sensor_custom *sensor_inst;
+	size_t count = iov_iter_count(to);
 	unsigned int copied;
 	int ret;
 
-	sensor_inst = container_of(file->private_data,
+	sensor_inst = container_of(iocb->ki_filp->private_data,
 				   struct hid_sensor_custom, custom_dev);
 
 	if (count < sizeof(struct hid_sensor_sample))
@@ -651,7 +651,7 @@ static ssize_t hid_sensor_custom_read(struct file *file, char __user *buf,
 
 	do {
 		if (kfifo_is_empty(&sensor_inst->data_fifo)) {
-			if (file->f_flags & O_NONBLOCK)
+			if (iocb->ki_filp->f_flags & O_NONBLOCK)
 				return -EAGAIN;
 
 			ret = wait_event_interruptible(sensor_inst->wait,
@@ -659,7 +659,7 @@ static ssize_t hid_sensor_custom_read(struct file *file, char __user *buf,
 			if (ret)
 				return ret;
 		}
-		ret = kfifo_to_user(&sensor_inst->data_fifo, buf, count,
+		ret = kfifo_to_iter(&sensor_inst->data_fifo, to, count,
 				    &copied);
 		if (ret)
 			return ret;
@@ -713,7 +713,7 @@ static __poll_t hid_sensor_custom_poll(struct file *file,
 
 static const struct file_operations hid_sensor_custom_fops = {
 	.open =  hid_sensor_custom_open,
-	.read =  hid_sensor_custom_read,
+	.read_iter =  hid_sensor_custom_read,
 	.release = hid_sensor_custom_release,
 	.poll = hid_sensor_custom_poll,
 	.llseek = noop_llseek,

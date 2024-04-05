@@ -71,11 +71,12 @@ static ssize_t wiidebug_eeprom_read(struct file *f, char __user *u, size_t s,
 
 	return ret;
 }
+FOPS_READ_ITER_HELPER(wiidebug_eeprom_read);
 
 static const struct file_operations wiidebug_eeprom_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = wiidebug_eeprom_read,
+	.read_iter = wiidebug_eeprom_read_iter,
 	.llseek = generic_file_llseek,
 };
 
@@ -121,11 +122,11 @@ static int wiidebug_drm_open(struct inode *i, struct file *f)
 	return single_open(f, wiidebug_drm_show, i->i_private);
 }
 
-static ssize_t wiidebug_drm_write(struct file *f, const char __user *u,
-							size_t s, loff_t *off)
+static ssize_t wiidebug_drm_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *sf = f->private_data;
+	struct seq_file *sf = iocb->ki_filp->private_data;
 	struct wiimote_debug *dbg = sf->private;
+	size_t s = iov_iter_count(from);
 	unsigned long flags;
 	char buf[16];
 	ssize_t len;
@@ -135,7 +136,7 @@ static ssize_t wiidebug_drm_write(struct file *f, const char __user *u,
 		return -EINVAL;
 
 	len = min((size_t) 15, s);
-	if (copy_from_user(buf, u, len))
+	if (!copy_from_iter_full(buf, len, from))
 		return -EFAULT;
 
 	buf[len] = 0;
@@ -163,9 +164,9 @@ static ssize_t wiidebug_drm_write(struct file *f, const char __user *u,
 static const struct file_operations wiidebug_drm_fops = {
 	.owner = THIS_MODULE,
 	.open = wiidebug_drm_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
-	.write = wiidebug_drm_write,
+	.write_iter = wiidebug_drm_write,
 	.release = single_release,
 };
 

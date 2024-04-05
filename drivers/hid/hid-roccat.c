@@ -70,14 +70,14 @@ static struct roccat_device *devices[ROCCAT_MAX_DEVICES];
 /* protects modifications of devices array */
 static DEFINE_MUTEX(devices_lock);
 
-static ssize_t roccat_read(struct file *file, char __user *buffer,
-		size_t count, loff_t *ppos)
+static ssize_t roccat_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct roccat_reader *reader = file->private_data;
+	struct roccat_reader *reader = iocb->ki_filp->private_data;
 	struct roccat_device *device = reader->device;
 	struct roccat_report *report;
 	ssize_t retval = 0, len;
 	DECLARE_WAITQUEUE(wait, current);
+	size_t count = iov_iter_count(to);
 
 	mutex_lock(&device->cbuf_lock);
 
@@ -88,7 +88,7 @@ static ssize_t roccat_read(struct file *file, char __user *buffer,
 
 		/* wait for data */
 		while (reader->cbuf_start == device->cbuf_end) {
-			if (file->f_flags & O_NONBLOCK) {
+			if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 				retval = -EAGAIN;
 				break;
 			}
@@ -122,7 +122,7 @@ static ssize_t roccat_read(struct file *file, char __user *buffer,
 	 */
 	len = device->report_size > count ? count : device->report_size;
 
-	if (copy_to_user(buffer, report->value, len)) {
+	if (!copy_to_iter_full(report->value, len, to)) {
 		retval = -EFAULT;
 		goto exit_unlock;
 	}
@@ -407,7 +407,7 @@ out:
 
 static const struct file_operations roccat_ops = {
 	.owner = THIS_MODULE,
-	.read = roccat_read,
+	.read_iter = roccat_read,
 	.poll = roccat_poll,
 	.open = roccat_open,
 	.release = roccat_release,
