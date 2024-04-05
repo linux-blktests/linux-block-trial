@@ -14,6 +14,7 @@
 #include <linux/anon_inodes.h>
 #include <linux/namei.h>
 #include <linux/file.h>
+#include <linux/uio.h>
 #include <uapi/linux/mount.h>
 #include "internal.h"
 #include "mount.h"
@@ -44,10 +45,10 @@ static inline const char *fetch_message_locked(struct fc_log *log, size_t len,
  * Allow the user to read back any error, warning or informational messages.
  * Only one message is returned for each read(2) call.
  */
-static ssize_t fscontext_read(struct file *file,
-			      char __user *_buf, size_t len, loff_t *pos)
+static ssize_t fscontext_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct fs_context *fc = file->private_data;
+	struct fs_context *fc = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	ssize_t err;
 	const char *p __free(kfree) = NULL, *message;
 	bool need_free;
@@ -65,7 +66,7 @@ static ssize_t fscontext_read(struct file *file,
 		p = message;
 
 	n = strlen(message);
-	if (copy_to_user(_buf, message, n))
+	if (!copy_to_iter_full(message, n, to))
 		return -EFAULT;
 	return n;
 }
@@ -82,7 +83,7 @@ static int fscontext_release(struct inode *inode, struct file *file)
 }
 
 const struct file_operations fscontext_fops = {
-	.read		= fscontext_read,
+	.read_iter	= fscontext_read,
 	.release	= fscontext_release,
 };
 
