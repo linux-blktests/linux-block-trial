@@ -16,6 +16,7 @@
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/spi/spi.h>
+#include <linux/uio.h>
 
 /*
  * @name:	module name for sysfs
@@ -461,10 +462,9 @@ static int moxtet_debug_open(struct inode *inode, struct file *file)
 	return nonseekable_open(inode, file);
 }
 
-static ssize_t input_read(struct file *file, char __user *buf, size_t len,
-			  loff_t *ppos)
+static ssize_t input_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct moxtet *moxtet = file->private_data;
+	struct moxtet *moxtet = iocb->ki_filp->private_data;
 	u8 bin[TURRIS_MOX_MAX_MODULES];
 	u8 hex[sizeof(bin) * 2 + 1];
 	int ret, n;
@@ -478,19 +478,18 @@ static ssize_t input_read(struct file *file, char __user *buf, size_t len,
 
 	hex[2*n] = '\n';
 
-	return simple_read_from_buffer(buf, len, ppos, hex, 2*n + 1);
+	return simple_copy_to_iter(hex, &iocb->ki_pos, 2*n + 1, to);
 }
 
 static const struct file_operations input_fops = {
 	.owner	= THIS_MODULE,
 	.open	= moxtet_debug_open,
-	.read	= input_read,
+	.read_iter	= input_read,
 };
 
-static ssize_t output_read(struct file *file, char __user *buf, size_t len,
-			   loff_t *ppos)
+static ssize_t output_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct moxtet *moxtet = file->private_data;
+	struct moxtet *moxtet = iocb->ki_filp->private_data;
 	u8 hex[TURRIS_MOX_MAX_MODULES * 2 + 1];
 	u8 *p = hex;
 	int i;
@@ -504,23 +503,22 @@ static ssize_t output_read(struct file *file, char __user *buf, size_t len,
 
 	*p++ = '\n';
 
-	return simple_read_from_buffer(buf, len, ppos, hex, p - hex);
+	return simple_copy_to_iter(hex, &iocb->ki_pos, p - hex, to);
 }
 
-static ssize_t output_write(struct file *file, const char __user *buf,
-			    size_t len, loff_t *ppos)
+static ssize_t output_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct moxtet *moxtet = file->private_data;
+	struct moxtet *moxtet = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	u8 bin[TURRIS_MOX_MAX_MODULES];
 	u8 hex[sizeof(bin) * 2 + 1];
 	ssize_t res;
-	loff_t dummy = 0;
 	int err, i;
 
 	if (len > 2 * moxtet->count + 1 || len < 2 * moxtet->count)
 		return -EINVAL;
 
-	res = simple_write_to_buffer(hex, sizeof(hex), &dummy, buf, len);
+	res = simple_copy_from_iter(hex, &iocb->ki_pos, sizeof(hex), from);
 	if (res < 0)
 		return res;
 
@@ -547,8 +545,8 @@ static ssize_t output_write(struct file *file, const char __user *buf,
 static const struct file_operations output_fops = {
 	.owner	= THIS_MODULE,
 	.open	= moxtet_debug_open,
-	.read	= output_read,
-	.write	= output_write,
+	.read_iter	= output_read,
+	.write_iter	= output_write,
 };
 
 static int moxtet_register_debugfs(struct moxtet *moxtet)

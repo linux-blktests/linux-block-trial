@@ -246,17 +246,17 @@ static int mhi_debugfs_device_wake_show(struct seq_file *m, void *d)
 	return 0;
 }
 
-static ssize_t mhi_debugfs_device_wake_write(struct file *file,
-					     const char __user *ubuf,
-					     size_t count, loff_t *ppos)
+static ssize_t mhi_debugfs_device_wake_write(struct kiocb *iocb,
+					     struct iov_iter *from)
 {
-	struct seq_file	*m = file->private_data;
+	struct seq_file	*m = iocb->ki_filp->private_data;
 	struct mhi_controller *mhi_cntrl = m->private;
 	struct mhi_device *mhi_dev = mhi_cntrl->mhi_dev;
+	size_t count = iov_iter_count(from);
 	char buf[16];
 	int ret = -EINVAL;
 
-	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
+	if (!copy_from_iter_full(&buf, min_t(size_t, sizeof(buf) - 1, count), from))
 		return -EFAULT;
 
 	if (!strncmp(buf, "get", 3)) {
@@ -278,15 +278,15 @@ static int mhi_debugfs_timeout_ms_show(struct seq_file *m, void *d)
 	return 0;
 }
 
-static ssize_t mhi_debugfs_timeout_ms_write(struct file *file,
-					    const char __user *ubuf,
-					    size_t count, loff_t *ppos)
+static ssize_t mhi_debugfs_timeout_ms_write(struct kiocb *iocb,
+					    struct iov_iter *from)
 {
-	struct seq_file	*m = file->private_data;
+	struct seq_file	*m = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct mhi_controller *mhi_cntrl = m->private;
 	u32 timeout_ms;
 
-	if (kstrtou32_from_user(ubuf, count, 0, &timeout_ms))
+	if (kstrtou32_from_iter(from, count, 0, &timeout_ms))
 		return -EINVAL;
 
 	mhi_cntrl->timeout_ms = timeout_ms;
@@ -332,45 +332,45 @@ static int mhi_debugfs_timeout_ms_open(struct inode *inode, struct file *fp)
 static const struct file_operations debugfs_states_fops = {
 	.open = mhi_debugfs_states_open,
 	.release = single_release,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 };
 
 static const struct file_operations debugfs_events_fops = {
 	.open = mhi_debugfs_events_open,
 	.release = single_release,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 };
 
 static const struct file_operations debugfs_channels_fops = {
 	.open = mhi_debugfs_channels_open,
 	.release = single_release,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 };
 
 static const struct file_operations debugfs_devices_fops = {
 	.open = mhi_debugfs_devices_open,
 	.release = single_release,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 };
 
 static const struct file_operations debugfs_regdump_fops = {
 	.open = mhi_debugfs_regdump_open,
 	.release = single_release,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 };
 
 static const struct file_operations debugfs_device_wake_fops = {
 	.open = mhi_debugfs_device_wake_open,
-	.write = mhi_debugfs_device_wake_write,
+	.write_iter = mhi_debugfs_device_wake_write,
 	.release = single_release,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 };
 
 static const struct file_operations debugfs_timeout_ms_fops = {
 	.open = mhi_debugfs_timeout_ms_open,
-	.write = mhi_debugfs_timeout_ms_write,
+	.write_iter = mhi_debugfs_timeout_ms_write,
 	.release = single_release,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 };
 
 static struct dentry *mhi_debugfs_root;
