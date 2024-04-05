@@ -691,25 +691,26 @@ static void gmux_notify_handler(acpi_handle device, u32 value, void *context)
  * 1 and 4 byte writes are also allowed.
  */
 
-static ssize_t gmux_selected_port_data_write(struct file *file,
-		const char __user *userbuf, size_t count, loff_t *ppos)
+static ssize_t gmux_selected_port_data_write(struct kiocb *iocb,
+					     struct iov_iter *from)
 {
-	struct apple_gmux_data *gmux_data = file->private_data;
+	struct apple_gmux_data *gmux_data = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return -EINVAL;
 
 	if (count == 1) {
 		u8 data;
 
-		if (copy_from_user(&data, userbuf, 1))
+		if (!copy_from_iter_full(&data, 1, from))
 			return -EFAULT;
 
 		gmux_write8(gmux_data, gmux_data->selected_port, data);
 	} else if (count == 4) {
 		u32 data;
 
-		if (copy_from_user(&data, userbuf, 4))
+		if (!copy_from_iter_full(&data, 4, from))
 			return -EFAULT;
 
 		gmux_write32(gmux_data, gmux_data->selected_port, data);
@@ -719,21 +720,21 @@ static ssize_t gmux_selected_port_data_write(struct file *file,
 	return count;
 }
 
-static ssize_t gmux_selected_port_data_read(struct file *file,
-		char __user *userbuf, size_t count, loff_t *ppos)
+static ssize_t gmux_selected_port_data_read(struct kiocb *iocb,
+					    struct iov_iter *to)
 {
-	struct apple_gmux_data *gmux_data = file->private_data;
+	struct apple_gmux_data *gmux_data = iocb->ki_filp->private_data;
 	u32 data;
 
 	data = gmux_read32(gmux_data, gmux_data->selected_port);
 
-	return simple_read_from_buffer(userbuf, count, ppos, &data, sizeof(data));
+	return simple_copy_to_iter(&data, &iocb->ki_pos, sizeof(data), to);
 }
 
 static const struct file_operations gmux_port_data_ops = {
 	.open = simple_open,
-	.write = gmux_selected_port_data_write,
-	.read = gmux_selected_port_data_read
+	.write_iter = gmux_selected_port_data_write,
+	.read_iter = gmux_selected_port_data_read
 };
 
 static void gmux_init_debugfs(struct apple_gmux_data *gmux_data)

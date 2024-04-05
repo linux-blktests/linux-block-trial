@@ -335,10 +335,8 @@ static __poll_t event_poll(struct file *filp, poll_table *wait)
 
 /**
  * event_read() - Callback for passing event data to userspace via read().
- * @filp: The file we are reading from.
- * @buf: Pointer to userspace buffer to fill with one event.
- * @count: Number of bytes requested. Must be at least EC_ACPI_MAX_EVENT_SIZE.
- * @pos: File position pointer, irrelevant since we don't support seeking.
+ * @iocb: Metadata for IO
+ * @to: Pointer to userspace buffer to fill with one event.
  *
  * Removes the first event from the queue, places it in the passed buffer.
  *
@@ -349,10 +347,10 @@ static __poll_t event_poll(struct file *filp, poll_table *wait)
  *
  * Return: Number of bytes placed in buffer, negative error code on failure.
  */
-static ssize_t event_read(struct file *filp, char __user *buf, size_t count,
-			  loff_t *pos)
+static ssize_t event_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct event_device_data *dev_data = filp->private_data;
+	struct event_device_data *dev_data = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	struct ec_event *event;
 	ssize_t n_bytes_written = 0;
 	int err;
@@ -364,7 +362,7 @@ static ssize_t event_read(struct file *filp, char __user *buf, size_t count,
 	spin_lock(&dev_data->queue_lock);
 	while (event_queue_empty(dev_data->events)) {
 		spin_unlock(&dev_data->queue_lock);
-		if (filp->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 
 		err = wait_event_interruptible(dev_data->wq,
@@ -381,7 +379,7 @@ static ssize_t event_read(struct file *filp, char __user *buf, size_t count,
 	event = event_queue_pop(dev_data->events);
 	spin_unlock(&dev_data->queue_lock);
 	n_bytes_written = ec_event_size(event);
-	if (copy_to_user(buf, event, n_bytes_written))
+	if (!copy_to_iter_full(event, n_bytes_written, to))
 		n_bytes_written = -EFAULT;
 	kfree(event);
 
@@ -401,7 +399,7 @@ static int event_release(struct inode *inode, struct file *filp)
 static const struct file_operations event_fops = {
 	.open = event_open,
 	.poll  = event_poll,
-	.read = event_read,
+	.read_iter = event_read,
 	.release = event_release,
 	.owner = THIS_MODULE,
 };

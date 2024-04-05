@@ -93,10 +93,10 @@ static int parse_hex_sentence(const char *in, int isize, u8 *out, int osize)
 /* The message type takes up two bytes*/
 #define TYPE_AND_DATA_SIZE ((EC_MAILBOX_DATA_SIZE) + 2)
 
-static ssize_t raw_write(struct file *file, const char __user *user_buf,
-			 size_t count, loff_t *ppos)
+static ssize_t raw_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char *buf = debug_info->formatted_data;
+	size_t count = iov_iter_count(from);
 	struct wilco_ec_message msg;
 	u8 request_data[TYPE_AND_DATA_SIZE];
 	ssize_t kcount;
@@ -105,8 +105,8 @@ static ssize_t raw_write(struct file *file, const char __user *user_buf,
 	if (count > FORMATTED_BUFFER_SIZE)
 		return -EINVAL;
 
-	kcount = simple_write_to_buffer(buf, FORMATTED_BUFFER_SIZE, ppos,
-					user_buf, count);
+	kcount = simple_copy_from_iter(buf, &iocb->ki_pos, FORMATTED_BUFFER_SIZE,
+					from);
 	if (kcount < 0)
 		return kcount;
 
@@ -133,8 +133,7 @@ static ssize_t raw_write(struct file *file, const char __user *user_buf,
 	return count;
 }
 
-static ssize_t raw_read(struct file *file, char __user *user_buf, size_t count,
-			loff_t *ppos)
+static ssize_t raw_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int fmt_len = 0;
 
@@ -148,14 +147,14 @@ static ssize_t raw_read(struct file *file, char __user *user_buf, size_t count,
 		debug_info->response_size = 0;
 	}
 
-	return simple_read_from_buffer(user_buf, count, ppos,
-				       debug_info->formatted_data, fmt_len);
+	return simple_copy_to_iter(debug_info->formatted_data, &iocb->ki_pos,
+					fmt_len, to);
 }
 
 static const struct file_operations fops_raw = {
 	.owner = THIS_MODULE,
-	.read = raw_read,
-	.write = raw_write,
+	.read_iter = raw_read,
+	.write_iter = raw_write,
 };
 
 #define CMD_KB_CHROME		0x88

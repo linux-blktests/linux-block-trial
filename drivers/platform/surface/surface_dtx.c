@@ -457,10 +457,11 @@ static int surface_dtx_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t surface_dtx_read(struct file *file, char __user *buf, size_t count, loff_t *offs)
+static ssize_t surface_dtx_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct sdtx_client *client = file->private_data;
+	struct sdtx_client *client = iocb->ki_filp->private_data;
 	struct sdtx_device *ddev = client->ddev;
+	size_t count = iov_iter_count(to);
 	unsigned int copied;
 	int status = 0;
 
@@ -478,7 +479,7 @@ static ssize_t surface_dtx_read(struct file *file, char __user *buf, size_t coun
 		if (kfifo_is_empty(&client->buffer)) {
 			up_read(&ddev->lock);
 
-			if (file->f_flags & O_NONBLOCK)
+			if (iocb->ki_filp->f_flags & O_NONBLOCK)
 				return -EAGAIN;
 
 			status = wait_event_interruptible(ddev->waitq,
@@ -504,7 +505,7 @@ static ssize_t surface_dtx_read(struct file *file, char __user *buf, size_t coun
 			return -ERESTARTSYS;
 		}
 
-		status = kfifo_to_user(&client->buffer, buf, count, &copied);
+		status = kfifo_to_iter(&client->buffer, to, count, &copied);
 		mutex_unlock(&client->read_lock);
 
 		if (status < 0) {
@@ -513,7 +514,7 @@ static ssize_t surface_dtx_read(struct file *file, char __user *buf, size_t coun
 		}
 
 		/* We might not have gotten anything, check this here. */
-		if (copied == 0 && (file->f_flags & O_NONBLOCK)) {
+		if (copied == 0 && (iocb->ki_filp->f_flags & O_NONBLOCK)) {
 			up_read(&ddev->lock);
 			return -EAGAIN;
 		}
@@ -550,7 +551,7 @@ static const struct file_operations surface_dtx_fops = {
 	.owner          = THIS_MODULE,
 	.open           = surface_dtx_open,
 	.release        = surface_dtx_release,
-	.read           = surface_dtx_read,
+	.read_iter      = surface_dtx_read,
 	.poll           = surface_dtx_poll,
 	.fasync         = surface_dtx_fasync,
 	.unlocked_ioctl = surface_dtx_ioctl,

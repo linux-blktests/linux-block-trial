@@ -474,6 +474,7 @@ static ssize_t goldfish_pipe_read(struct file *filp, char __user *buffer,
 	return goldfish_pipe_read_write(filp, buffer, bufflen,
 					/* is_write */ 0);
 }
+FOPS_READ_ITER_HELPER(goldfish_pipe_read);
 
 static ssize_t goldfish_pipe_write(struct file *filp,
 				   const char __user *buffer, size_t bufflen,
@@ -485,6 +486,7 @@ static ssize_t goldfish_pipe_write(struct file *filp,
 	return goldfish_pipe_read_write(filp, no_const_buffer, bufflen,
 					/* is_write */ 1);
 }
+FOPS_WRITE_ITER_HELPER(goldfish_pipe_write);
 
 static __poll_t goldfish_pipe_poll(struct file *filp, poll_table *wait)
 {
@@ -778,8 +780,8 @@ static int goldfish_pipe_release(struct inode *inode, struct file *filp)
 
 static const struct file_operations goldfish_pipe_fops = {
 	.owner = THIS_MODULE,
-	.read = goldfish_pipe_read,
-	.write = goldfish_pipe_write,
+	.read_iter = goldfish_pipe_read_iter,
+	.write_iter = goldfish_pipe_write_iter,
 	.poll = goldfish_pipe_poll,
 	.open = goldfish_pipe_open,
 	.release = goldfish_pipe_release,

@@ -578,8 +578,8 @@ static int __name ## _open(struct inode *inode, struct file *file)	\
 static const struct file_operations __name ## _fops = {			\
 	.owner		= THIS_MODULE,					\
 	.open		= __name ## _open,				\
-	.read		= seq_read,					\
-	.write		= __name ## _write,				\
+	.read_iter	= seq_read_iter,				\
+	.write_iter	= __name ## _write,				\
 	.release	= single_release,				\
 }
 

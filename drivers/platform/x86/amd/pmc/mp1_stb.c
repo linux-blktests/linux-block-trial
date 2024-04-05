@@ -111,13 +111,12 @@ static int amd_stb_debugfs_open(struct inode *inode, struct file *filp)
 	return rc;
 }
 
-static ssize_t amd_stb_debugfs_read(struct file *filp, char __user *buf, size_t size, loff_t *pos)
+static ssize_t amd_stb_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	if (!filp->private_data)
+	if (!iocb->ki_filp->private_data)
 		return -EINVAL;
 
-	return simple_read_from_buffer(buf, size, pos, filp->private_data,
-				       FIFO_SIZE * sizeof(u32));
+	return simple_copy_to_iter(iocb->ki_filp->private_data, &iocb->ki_pos, FIFO_SIZE * sizeof(u32), to);
 }
 
 static int amd_stb_debugfs_release(struct inode *inode, struct file *filp)
@@ -129,7 +128,7 @@ static int amd_stb_debugfs_release(struct inode *inode, struct file *filp)
 static const struct file_operations amd_stb_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = amd_stb_debugfs_open,
-	.read = amd_stb_debugfs_read,
+	.read_iter = amd_stb_debugfs_read,
 	.release = amd_stb_debugfs_release,
 };
 
@@ -217,12 +216,11 @@ static int amd_stb_debugfs_open_v2(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t amd_stb_debugfs_read_v2(struct file *filp, char __user *buf, size_t size,
-				       loff_t *pos)
+static ssize_t amd_stb_debugfs_read_v2(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct amd_stb_v2_data *data = filp->private_data;
+	struct amd_stb_v2_data *data = iocb->ki_filp->private_data;
 
-	return simple_read_from_buffer(buf, size, pos, data->data, data->size);
+	return simple_copy_to_iter(data->data, &iocb->ki_pos, data->size, to);
 }
 
 static int amd_stb_debugfs_release_v2(struct inode *inode, struct file *filp)
@@ -234,7 +232,7 @@ static int amd_stb_debugfs_release_v2(struct inode *inode, struct file *filp)
 static const struct file_operations amd_stb_debugfs_fops_v2 = {
 	.owner = THIS_MODULE,
 	.open = amd_stb_debugfs_open_v2,
-	.read = amd_stb_debugfs_read_v2,
+	.read_iter = amd_stb_debugfs_read_v2,
 	.release = amd_stb_debugfs_release_v2,
 };
 

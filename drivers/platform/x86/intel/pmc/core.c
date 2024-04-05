@@ -516,13 +516,13 @@ int pmc_core_send_ltr_ignore(struct pmc_dev *pmcdev, u32 value, int ignore)
 }
 
 static ssize_t pmc_core_ltr_write(struct pmc_dev *pmcdev,
-				  const char __user *userbuf,
-				  size_t count, int ignore)
+				  struct iov_iter *from, int ignore)
 {
+	size_t count = iov_iter_count(from);
 	u32 value;
 	int err;
 
-	err = kstrtou32_from_user(userbuf, count, 10, &value);
+	err = kstrtou32_from_iter(from, count, 10, &value);
 	if (err)
 		return err;
 
@@ -531,37 +531,59 @@ static ssize_t pmc_core_ltr_write(struct pmc_dev *pmcdev,
 	return err ?: count;
 }
 
-static ssize_t pmc_core_ltr_ignore_write(struct file *file,
-					 const char __user *userbuf,
-					 size_t count, loff_t *ppos)
+static ssize_t pmc_core_ltr_ignore_write(struct kiocb *iocb,
+					      struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct pmc_dev *pmcdev = s->private;
 
-	return pmc_core_ltr_write(pmcdev, userbuf, count, 1);
+	return pmc_core_ltr_write(pmcdev, from, 1);
 }
 
 static int pmc_core_ltr_ignore_show(struct seq_file *s, void *unused)
 {
 	return 0;
 }
-DEFINE_SHOW_STORE_ATTRIBUTE(pmc_core_ltr_ignore);
-
-static ssize_t pmc_core_ltr_restore_write(struct file *file,
-					  const char __user *userbuf,
-					  size_t count, loff_t *ppos)
+static int pmc_core_ltr_ignore_open(struct inode *inode, struct file *file)
 {
-	struct seq_file *s = file->private_data;
+	return single_open(file, pmc_core_ltr_ignore_show, inode->i_private);
+}
+
+static const struct file_operations pmc_core_ltr_ignore_fops = {
+	.owner		= THIS_MODULE,
+	.open		= pmc_core_ltr_ignore_open,
+	.read_iter	= seq_read_iter,
+	.write_iter	= pmc_core_ltr_ignore_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static ssize_t pmc_core_ltr_restore_write(struct kiocb *iocb,
+					       struct iov_iter *from)
+{
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct pmc_dev *pmcdev = s->private;
 
-	return pmc_core_ltr_write(pmcdev, userbuf, count, 0);
+	return pmc_core_ltr_write(pmcdev, from, 1);
 }
 
 static int pmc_core_ltr_restore_show(struct seq_file *s, void *unused)
 {
 	return 0;
 }
-DEFINE_SHOW_STORE_ATTRIBUTE(pmc_core_ltr_restore);
+static int pmc_core_ltr_restore_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pmc_core_ltr_restore_show, inode->i_private);
+}
+
+static const struct file_operations pmc_core_ltr_restore_fops = {
+	.owner		= THIS_MODULE,
+	.open		= pmc_core_ltr_restore_open,
+	.read_iter	= seq_read_iter,
+	.write_iter	= pmc_core_ltr_restore_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 
 static void pmc_core_slps0_dbg_latch(struct pmc_dev *pmcdev, bool reset)
 {
@@ -920,7 +942,7 @@ static int pmc_core_substate_blk_req_open(struct inode *inode, struct file *file
 const struct file_operations pmc_core_substate_blk_req_fops = {
 	.owner		= THIS_MODULE,
 	.open		= pmc_core_substate_blk_req_open,
-	.read		= seq_read,
+	.read_iter		= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
@@ -1025,7 +1047,7 @@ static int pmc_core_substate_req_regs_open(struct inode *inode, struct file *fil
 const struct file_operations pmc_core_substate_req_regs_fops = {
 	.owner		= THIS_MODULE,
 	.open		= pmc_core_substate_req_regs_open,
-	.read		= seq_read,
+	.read_iter		= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
@@ -1100,11 +1122,11 @@ static int pmc_core_lpm_latch_mode_show(struct seq_file *s, void *unused)
 	return 0;
 }
 
-static ssize_t pmc_core_lpm_latch_mode_write(struct file *file,
-					     const char __user *userbuf,
-					     size_t count, loff_t *ppos)
+static ssize_t pmc_core_lpm_latch_mode_write(struct kiocb *iocb,
+					     struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct pmc_dev *pmcdev = s->private;
 	struct pmc *pmc = pmcdev->pmcs[PMC_IDX_MAIN];
 	bool clear = false, c10 = false;
@@ -1115,7 +1137,7 @@ static ssize_t pmc_core_lpm_latch_mode_write(struct file *file,
 
 	if (count > sizeof(buf) - 1)
 		return -EINVAL;
-	if (copy_from_user(buf, userbuf, count))
+	if (!copy_from_iter_full(buf, count, from))
 		return -EFAULT;
 	buf[count] = '\0';
 

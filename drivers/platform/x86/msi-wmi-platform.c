@@ -225,23 +225,23 @@ static const struct hwmon_chip_info msi_wmi_platform_chip_info = {
 	.info = msi_wmi_platform_info,
 };
 
-static ssize_t msi_wmi_platform_write(struct file *fp, const char __user *input, size_t length,
-				      loff_t *offset)
+static ssize_t msi_wmi_platform_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *seq = fp->private_data;
+	struct seq_file *seq = iocb->ki_filp->private_data;
 	struct msi_wmi_platform_debugfs_data *data = seq->private;
+	size_t length = iov_iter_count(from);
 	u8 payload[32] = { };
 	ssize_t ret;
 
 	/* Do not allow partial writes */
-	if (*offset != 0)
+	if (iocb->ki_pos != 0)
 		return -EINVAL;
 
 	/* Do not allow incomplete command buffers */
 	if (length != data->length)
 		return -EINVAL;
 
-	ret = simple_write_to_buffer(payload, sizeof(payload), offset, input, length);
+	ret = simple_copy_from_iter(payload, &iocb->ki_pos, sizeof(payload), from);
 	if (ret < 0)
 		return ret;
 
@@ -279,8 +279,8 @@ static int msi_wmi_platform_open(struct inode *inode, struct file *fp)
 static const struct file_operations msi_wmi_platform_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = msi_wmi_platform_open,
-	.read = seq_read,
-	.write = msi_wmi_platform_write,
+	.read_iter = seq_read_iter,
+	.write_iter = msi_wmi_platform_write,
 	.llseek = seq_lseek,
 	.release = single_release,
 };

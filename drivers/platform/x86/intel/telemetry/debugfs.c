@@ -679,14 +679,14 @@ static int telem_pss_trc_verb_show(struct seq_file *s, void *unused)
 	return 0;
 }
 
-static ssize_t telem_pss_trc_verb_write(struct file *file,
-					const char __user *userbuf,
-					size_t count, loff_t *ppos)
+static ssize_t telem_pss_trc_verb_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	u32 verbosity;
 	int err;
 
-	err = kstrtou32_from_user(userbuf, count, 0, &verbosity);
+	err = kstrtou32_from_iter(from, count, 0, &verbosity);
 	if (err)
 		return err;
 
@@ -706,8 +706,8 @@ static int telem_pss_trc_verb_open(struct inode *inode, struct file *file)
 
 static const struct file_operations telem_pss_trc_verb_ops = {
 	.open		= telem_pss_trc_verb_open,
-	.read		= seq_read,
-	.write		= telem_pss_trc_verb_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= telem_pss_trc_verb_write,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
@@ -727,14 +727,14 @@ static int telem_ioss_trc_verb_show(struct seq_file *s, void *unused)
 	return 0;
 }
 
-static ssize_t telem_ioss_trc_verb_write(struct file *file,
-					 const char __user *userbuf,
-					 size_t count, loff_t *ppos)
+static ssize_t telem_ioss_trc_verb_write(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	u32 verbosity;
 	int err;
 
-	err = kstrtou32_from_user(userbuf, count, 0, &verbosity);
+	err = kstrtou32_from_iter(from, count, 0, &verbosity);
 	if (err)
 		return err;
 
@@ -754,8 +754,8 @@ static int telem_ioss_trc_verb_open(struct inode *inode, struct file *file)
 
 static const struct file_operations telem_ioss_trc_verb_ops = {
 	.open		= telem_ioss_trc_verb_open,
-	.read		= seq_read,
-	.write		= telem_ioss_trc_verb_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= telem_ioss_trc_verb_write,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };

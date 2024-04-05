@@ -74,6 +74,7 @@ static ssize_t smo8800_misc_read(struct file *file, char __user *buf,
 
 	return retval;
 }
+FOPS_READ_ITER_HELPER(smo8800_misc_read);
 
 static int smo8800_misc_open(struct inode *inode, struct file *file)
 {
@@ -98,7 +99,7 @@ static int smo8800_misc_release(struct inode *inode, struct file *file)
 
 static const struct file_operations smo8800_misc_fops = {
 	.owner = THIS_MODULE,
-	.read = smo8800_misc_read,
+	.read_iter = smo8800_misc_read_iter,
 	.open = smo8800_misc_open,
 	.release = smo8800_misc_release,
 };

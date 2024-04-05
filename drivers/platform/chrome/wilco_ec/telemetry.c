@@ -262,17 +262,17 @@ static int telem_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t telem_write(struct file *filp, const char __user *buf,
-			   size_t count, loff_t *pos)
+static ssize_t telem_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct telem_session_data *sess_data = filp->private_data;
+	struct telem_session_data *sess_data = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct wilco_ec_message msg = {};
 	int ret;
 
 	if (count > sizeof(sess_data->request))
 		return -EMSGSIZE;
 	memset(&sess_data->request, 0, sizeof(sess_data->request));
-	if (copy_from_user(&sess_data->request, buf, count))
+	if (!copy_from_iter_full(&sess_data->request, count, from))
 		return -EFAULT;
 	ret = check_telem_request(&sess_data->request, count);
 	if (ret < 0)
@@ -296,17 +296,17 @@ static ssize_t telem_write(struct file *filp, const char __user *buf,
 	return count;
 }
 
-static ssize_t telem_read(struct file *filp, char __user *buf, size_t count,
-			  loff_t *pos)
+static ssize_t telem_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct telem_session_data *sess_data = filp->private_data;
+	struct telem_session_data *sess_data = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 
 	if (!sess_data->has_msg)
 		return -ENODATA;
 	if (count > sizeof(sess_data->response))
 		return -EINVAL;
 
-	if (copy_to_user(buf, sess_data->response, count))
+	if (!copy_to_iter_full(sess_data->response, count, to))
 		return -EFAULT;
 
 	sess_data->has_msg = false;
@@ -327,8 +327,8 @@ static int telem_release(struct inode *inode, struct file *filp)
 
 static const struct file_operations telem_fops = {
 	.open = telem_open,
-	.write = telem_write,
-	.read = telem_read,
+	.write_iter = telem_write,
+	.read_iter = telem_read,
 	.release = telem_release,
 	.owner = THIS_MODULE,
 };

@@ -452,10 +452,11 @@ static int tpmi_mem_dump_show(struct seq_file *s, void *unused)
 }
 DEFINE_SHOW_ATTRIBUTE(tpmi_mem_dump);
 
-static ssize_t mem_write(struct file *file, const char __user *userbuf, size_t len, loff_t *ppos)
+static ssize_t mem_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct intel_tpmi_pm_feature *pfs = m->private;
+	size_t len = iov_iter_count(from);
 	u32 addr, value, punit, size;
 	u32 num_elems, *array;
 	void __iomem *mem;
@@ -465,7 +466,7 @@ static ssize_t mem_write(struct file *file, const char __user *userbuf, size_t l
 	if (!size)
 		return -EIO;
 
-	ret = parse_int_array_user(userbuf, len, (int **)&array);
+	ret = parse_int_array_iter(from, (int **)&array);
 	if (ret < 0)
 		return ret;
 
@@ -524,8 +525,8 @@ static int mem_write_open(struct inode *inode, struct file *file)
 
 static const struct file_operations mem_write_ops = {
 	.open           = mem_write_open,
-	.read           = seq_read,
-	.write          = mem_write,
+	.read_iter      = seq_read_iter,
+	.write_iter     = mem_write,
 	.llseek         = seq_lseek,
 	.release        = single_release,
 };

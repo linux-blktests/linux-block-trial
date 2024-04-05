@@ -403,9 +403,10 @@ static ssize_t amd_pmf_get_pb_data(struct file *filp, const char __user *buf,
 
 	return length;
 }
+FOPS_WRITE_ITER_HELPER(amd_pmf_get_pb_data);
 
 static const struct file_operations pb_fops = {
-	.write = amd_pmf_get_pb_data,
+	.write_iter = amd_pmf_get_pb_data_iter,
 	.open = simple_open,
 };
 

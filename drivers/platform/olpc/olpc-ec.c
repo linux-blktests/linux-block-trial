@@ -258,10 +258,10 @@ static DEFINE_MUTEX(ec_dbgfs_lock);
 static unsigned char ec_dbgfs_resp[EC_MAX_CMD_REPLY];
 static unsigned int ec_dbgfs_resp_bytes;
 
-static ssize_t ec_dbgfs_cmd_write(struct file *file, const char __user *buf,
-		size_t size, loff_t *ppos)
+static ssize_t ec_dbgfs_cmd_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int i, m;
+	size_t size = iov_iter_count(from);
 	unsigned char ec_cmd[EC_MAX_CMD_ARGS];
 	unsigned int ec_cmd_int[EC_MAX_CMD_ARGS];
 	char cmdbuf[64] = "";
@@ -269,7 +269,7 @@ static ssize_t ec_dbgfs_cmd_write(struct file *file, const char __user *buf,
 
 	mutex_lock(&ec_dbgfs_lock);
 
-	size = simple_write_to_buffer(cmdbuf, sizeof(cmdbuf), ppos, buf, size);
+	size = simple_copy_from_iter(cmdbuf, &iocb->ki_pos, sizeof(cmdbuf), from);
 
 	m = sscanf(cmdbuf, "%x:%u %x %x %x %x %x", &ec_cmd_int[0],
 			&ec_dbgfs_resp_bytes, &ec_cmd_int[1], &ec_cmd_int[2],
@@ -303,8 +303,7 @@ out:
 	return size;
 }
 
-static ssize_t ec_dbgfs_cmd_read(struct file *file, char __user *buf,
-		size_t size, loff_t *ppos)
+static ssize_t ec_dbgfs_cmd_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	unsigned int i, r;
 	char *rp;
@@ -319,12 +318,12 @@ static ssize_t ec_dbgfs_cmd_read(struct file *file, char __user *buf,
 	rp += sprintf(rp, "\n");
 
 	r = rp - respbuf;
-	return simple_read_from_buffer(buf, size, ppos, respbuf, r);
+	return simple_copy_to_iter(respbuf, &iocb->ki_pos, r, to);
 }
 
 static const struct file_operations ec_dbgfs_ops = {
-	.write = ec_dbgfs_cmd_write,
-	.read = ec_dbgfs_cmd_read,
+	.write_iter = ec_dbgfs_cmd_write,
+	.read_iter = ec_dbgfs_cmd_read,
 };
 
 static struct dentry *olpc_ec_setup_debugfs(void)

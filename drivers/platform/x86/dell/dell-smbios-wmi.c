@@ -123,13 +123,12 @@ static int dell_smbios_wmi_open(struct inode *inode, struct file *filp)
 	return nonseekable_open(inode, filp);
 }
 
-static ssize_t dell_smbios_wmi_read(struct file *filp, char __user *buffer, size_t length,
-				    loff_t *offset)
+static ssize_t dell_smbios_wmi_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wmi_smbios_priv *priv = filp->private_data;
+	struct wmi_smbios_priv *priv = iocb->ki_filp->private_data;
 
-	return simple_read_from_buffer(buffer, length, offset, &priv->req_buf_size,
-				       sizeof(priv->req_buf_size));
+	return simple_copy_to_iter(&priv->req_buf_size, &iocb->ki_pos,
+				   sizeof(priv->req_buf_size), to);
 }
 
 static long dell_smbios_wmi_do_ioctl(struct wmi_smbios_priv *priv,
@@ -189,7 +188,7 @@ static long dell_smbios_wmi_ioctl(struct file *filp, unsigned int cmd, unsigned 
 static const struct file_operations dell_smbios_wmi_fops = {
 	.owner		= THIS_MODULE,
 	.open		= dell_smbios_wmi_open,
-	.read		= dell_smbios_wmi_read,
+	.read_iter	= dell_smbios_wmi_read,
 	.unlocked_ioctl	= dell_smbios_wmi_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 };

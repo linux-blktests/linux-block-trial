@@ -572,10 +572,11 @@ static long ssam_cdev_device_ioctl(struct file *file, unsigned int cmd, unsigned
 	return status;
 }
 
-static ssize_t ssam_cdev_read(struct file *file, char __user *buf, size_t count, loff_t *offs)
+static ssize_t ssam_cdev_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ssam_cdev_client *client = file->private_data;
+	struct ssam_cdev_client *client = iocb->ki_filp->private_data;
 	struct ssam_cdev *cdev = client->cdev;
+	size_t count = iov_iter_count(to);
 	unsigned int copied;
 	int status = 0;
 
@@ -593,7 +594,7 @@ static ssize_t ssam_cdev_read(struct file *file, char __user *buf, size_t count,
 		if (kfifo_is_empty(&client->buffer)) {
 			up_read(&cdev->lock);
 
-			if (file->f_flags & O_NONBLOCK)
+			if (iocb->ki_filp->f_flags & O_NONBLOCK)
 				return -EAGAIN;
 
 			status = wait_event_interruptible(client->waitq,
@@ -619,7 +620,7 @@ static ssize_t ssam_cdev_read(struct file *file, char __user *buf, size_t count,
 			return -ERESTARTSYS;
 		}
 
-		status = kfifo_to_user(&client->buffer, buf, count, &copied);
+		status = kfifo_to_iter(&client->buffer, to, count, &copied);
 		mutex_unlock(&client->read_lock);
 
 		if (status < 0) {
@@ -628,7 +629,7 @@ static ssize_t ssam_cdev_read(struct file *file, char __user *buf, size_t count,
 		}
 
 		/* We might not have gotten anything, check this here. */
-		if (copied == 0 && (file->f_flags & O_NONBLOCK)) {
+		if (copied == 0 && (iocb->ki_filp->f_flags & O_NONBLOCK)) {
 			up_read(&cdev->lock);
 			return -EAGAIN;
 		}
@@ -665,7 +666,7 @@ static const struct file_operations ssam_controller_fops = {
 	.owner          = THIS_MODULE,
 	.open           = ssam_cdev_device_open,
 	.release        = ssam_cdev_device_release,
-	.read           = ssam_cdev_read,
+	.read_iter      = ssam_cdev_read,
 	.poll           = ssam_cdev_poll,
 	.fasync         = ssam_cdev_fasync,
 	.unlocked_ioctl = ssam_cdev_device_ioctl,

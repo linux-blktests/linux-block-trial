@@ -247,6 +247,7 @@ static ssize_t cros_ec_chardev_read(struct file *filp, char __user *buffer,
 	*offset = count;
 	return count;
 }
+FOPS_READ_ITER_HELPER(cros_ec_chardev_read);
 
 static int cros_ec_chardev_release(struct inode *inode, struct file *filp)
 {
@@ -362,7 +363,7 @@ static long cros_ec_chardev_ioctl(struct file *filp, unsigned int cmd,
 static const struct file_operations chardev_fops = {
 	.open		= cros_ec_chardev_open,
 	.poll		= cros_ec_chardev_poll,
-	.read		= cros_ec_chardev_read,
+	.read_iter	= cros_ec_chardev_read_iter,
 	.release	= cros_ec_chardev_release,
 	.unlocked_ioctl	= cros_ec_chardev_ioctl,
 #ifdef CONFIG_COMPAT

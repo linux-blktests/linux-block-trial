@@ -172,25 +172,25 @@ static int amd_mp2_stb_debugfs_open(struct inode *inode, struct file *filp)
 	return -ENODEV;
 }
 
-static ssize_t amd_mp2_stb_debugfs_read(struct file *filp, char __user *buf, size_t size,
-					loff_t *pos)
+static ssize_t amd_mp2_stb_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct amd_pmc_dev *dev = filp->f_inode->i_private;
+	struct amd_pmc_dev *dev = iocb->ki_filp->f_inode->i_private;
 	struct amd_mp2_dev *mp2 = dev->mp2;
 
 	if (!mp2)
 		return -ENODEV;
 
-	if (!filp->private_data)
+	if (!iocb->ki_filp->private_data)
 		return -EINVAL;
 
-	return simple_read_from_buffer(buf, size, pos, filp->private_data, mp2->stb_len);
+	return simple_copy_to_iter(iocb->ki_filp->private_data, &iocb->ki_pos,
+					mp2->stb_len, to);
 }
 
 static const struct file_operations amd_mp2_stb_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = amd_mp2_stb_debugfs_open,
-	.read = amd_mp2_stb_debugfs_read,
+	.read_iter = amd_mp2_stb_debugfs_read,
 };
 
 static void amd_mp2_dbgfs_register(struct amd_pmc_dev *dev)
