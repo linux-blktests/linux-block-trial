@@ -21,6 +21,7 @@
 #include <linux/pci.h>
 #include <linux/slab.h>
 #include <linux/fs.h>
+#include <linux/uio.h>
 #include <linux/uaccess.h>
 #include <linux/stddef.h>
 #include <linux/device.h>
@@ -483,9 +484,9 @@ out_put:
 	return ret;
 }
 
-static ssize_t aer_inject_write(struct file *filp, const char __user *ubuf,
-				size_t usize, loff_t *off)
+static ssize_t aer_inject_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t usize = iov_iter_count(from);
 	struct aer_error_inj einj;
 	int ret;
 
@@ -496,7 +497,7 @@ static ssize_t aer_inject_write(struct file *filp, const char __user *ubuf,
 		return -EINVAL;
 
 	memset(&einj, 0, sizeof(einj));
-	if (copy_from_user(&einj, ubuf, usize))
+	if (!copy_from_iter_full(&einj, usize, from))
 		return -EFAULT;
 
 	ret = aer_inject(&einj);
@@ -504,7 +505,7 @@ static ssize_t aer_inject_write(struct file *filp, const char __user *ubuf,
 }
 
 static const struct file_operations aer_inject_fops = {
-	.write = aer_inject_write,
+	.write_iter = aer_inject_write,
 	.owner = THIS_MODULE,
 	.llseek = noop_llseek,
 };

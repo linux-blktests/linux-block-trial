@@ -31,6 +31,7 @@
 #include <linux/console.h>
 #include <linux/acpi.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <linux/vgaarb.h>
 
 static void vga_arbiter_notify_clients(void);
@@ -1058,10 +1059,10 @@ static int vga_pci_str_to_vars(char *buf, int count, unsigned int *domain,
 	return 1;
 }
 
-static ssize_t vga_arb_read(struct file *file, char __user *buf,
-			    size_t count, loff_t *ppos)
+static ssize_t vga_arb_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct vga_arb_private *priv = file->private_data;
+	struct vga_arb_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	struct vga_device *vgadev;
 	struct pci_dev *pdev;
 	unsigned long flags;
@@ -1111,7 +1112,7 @@ done:
 	/* Copy that to user */
 	if (len > count)
 		len = count;
-	rc = copy_to_user(buf, lbuf, len);
+	rc = !copy_to_iter_full(lbuf, len, to);
 	kfree(lbuf);
 	if (rc)
 		return -EFAULT;
@@ -1122,10 +1123,10 @@ done:
  * TODO: To avoid parsing inside kernel and to improve the speed we may
  * consider use ioctl here
  */
-static ssize_t vga_arb_write(struct file *file, const char __user *buf,
-			     size_t count, loff_t *ppos)
+static ssize_t vga_arb_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct vga_arb_private *priv = file->private_data;
+	struct vga_arb_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct vga_arb_user_card *uc = NULL;
 	struct pci_dev *pdev;
 
@@ -1139,7 +1140,7 @@ static ssize_t vga_arb_write(struct file *file, const char __user *buf,
 
 	if (count >= sizeof(kbuf))
 		return -EINVAL;
-	if (copy_from_user(kbuf, buf, count))
+	if (!copy_from_iter_full(kbuf, count, from))
 		return -EFAULT;
 	curr_pos = kbuf;
 	kbuf[count] = '\0';
@@ -1493,8 +1494,8 @@ static struct notifier_block pci_notifier = {
 };
 
 static const struct file_operations vga_arb_device_fops = {
-	.read = vga_arb_read,
-	.write = vga_arb_write,
+	.read_iter = vga_arb_read,
+	.write_iter = vga_arb_write,
 	.poll = vga_arb_fpoll,
 	.open = vga_arb_open,
 	.release = vga_arb_release,
