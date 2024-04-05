@@ -240,12 +240,10 @@ xchk_stats_merge(
 
 static ssize_t
 xchk_scrub_stats_read(
-	struct file		*file,
-	char __user		*ubuf,
-	size_t			count,
-	loff_t			*ppos)
+	struct kiocb		*iocb,
+	struct iov_iter		*to)
 {
-	struct xchk_stats	*cs = file->private_data;
+	struct xchk_stats	*cs = iocb->ki_filp->private_data;
 	char			*buf;
 	size_t			bufsize;
 	ssize_t			avail, ret;
@@ -255,7 +253,7 @@ xchk_scrub_stats_read(
 	 * do not want userspace to receive garbled text from multiple calls.
 	 * If the file position is greater than 0, return a short read.
 	 */
-	if (*ppos > 0)
+	if (iocb->ki_pos > 0)
 		return 0;
 
 	bufsize = xchk_stats_estimate_bufsize(cs);
@@ -270,7 +268,7 @@ xchk_scrub_stats_read(
 		goto out;
 	}
 
-	ret = simple_read_from_buffer(ubuf, count, ppos, buf, avail);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, avail, to);
 out:
 	kvfree(buf);
 	return ret;
@@ -278,21 +276,20 @@ out:
 
 static const struct file_operations scrub_stats_fops = {
 	.open			= simple_open,
-	.read			= xchk_scrub_stats_read,
+	.read_iter		= xchk_scrub_stats_read,
 };
 
 static ssize_t
 xchk_clear_scrub_stats_write(
-	struct file		*file,
-	const char __user	*ubuf,
-	size_t			count,
-	loff_t			*ppos)
+	struct kiocb 		*iocb,
+	struct iov_iter		*from)
 {
-	struct xchk_stats	*cs = file->private_data;
+	struct xchk_stats	*cs = iocb->ki_filp->private_data;
+	size_t			count = iov_iter_count(from);
 	unsigned int		val;
 	int			ret;
 
-	ret = kstrtouint_from_user(ubuf, count, 0, &val);
+	ret = kstrtouint_from_iter(from, count, 0, &val);
 	if (ret)
 		return ret;
 
@@ -305,7 +302,7 @@ xchk_clear_scrub_stats_write(
 
 static const struct file_operations clear_scrub_stats_fops = {
 	.open			= simple_open,
-	.write			= xchk_clear_scrub_stats_write,
+	.write_iter		= xchk_clear_scrub_stats_write,
 };
 
 /* Initialize the stats object. */
