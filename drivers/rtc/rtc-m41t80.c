@@ -715,26 +715,22 @@ static void wdt_disable(void)
 
 /**
  *	wdt_write - write to watchdog.
- *	@file: file handle to the watchdog
- *	@buf: buffer to write (unused as data does not matter here
- *	@count: count of bytes
- *	@ppos: pointer to the position to write. No seeks allowed
+ *	@iocb: metadata for IO
+ *	@from: buffer to write (unused as data does not matter here
  *
  *	A write to a watchdog device is defined as a keepalive signal. Any
  *	write of data will do, as we don't define content meaning.
  */
-static ssize_t wdt_write(struct file *file, const char __user *buf,
-			 size_t count, loff_t *ppos)
+static ssize_t wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	if (count) {
+	if (iov_iter_count(from)) {
 		wdt_ping();
 		return 1;
 	}
 	return 0;
 }
 
-static ssize_t wdt_read(struct file *file, char __user *buf,
-			size_t count, loff_t *ppos)
+static ssize_t wdt_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return 0;
 }
@@ -873,10 +869,10 @@ static int wdt_notify_sys(struct notifier_block *this, unsigned long code,
 
 static const struct file_operations wdt_fops = {
 	.owner	= THIS_MODULE,
-	.read	= wdt_read,
+	.read_iter	= wdt_read,
 	.unlocked_ioctl = wdt_unlocked_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
-	.write	= wdt_write,
+	.write_iter	= wdt_write,
 	.open	= wdt_open,
 	.release = wdt_release,
 };

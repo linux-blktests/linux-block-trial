@@ -138,10 +138,10 @@ EXPORT_SYMBOL(rtc_dev_update_irq_enable_emul);
 
 #endif /* CONFIG_RTC_INTF_DEV_UIE_EMUL */
 
-static ssize_t
-rtc_dev_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+static ssize_t rtc_dev_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct rtc_device *rtc = file->private_data;
+	struct rtc_device *rtc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 
 	DECLARE_WAITQUEUE(wait, current);
 	unsigned long data;
@@ -163,7 +163,7 @@ rtc_dev_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 			ret = 0;
 			break;
 		}
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			ret = -EAGAIN;
 			break;
 		}
@@ -177,13 +177,9 @@ rtc_dev_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 	remove_wait_queue(&rtc->irq_queue, &wait);
 
 	if (ret == 0) {
-		if (sizeof(int) != sizeof(long) &&
-		    count == sizeof(unsigned int))
-			ret = put_user(data, (unsigned int __user *)buf) ?:
-				sizeof(unsigned int);
-		else
-			ret = put_user(data, (unsigned long __user *)buf) ?:
-				sizeof(unsigned long);
+		ret = sizeof(data);
+		if (put_iter(data, to))
+			ret = -EFAULT;
 	}
 	return ret;
 }
@@ -523,7 +519,7 @@ static int rtc_dev_release(struct inode *inode, struct file *file)
 
 static const struct file_operations rtc_dev_fops = {
 	.owner		= THIS_MODULE,
-	.read		= rtc_dev_read,
+	.read_iter	= rtc_dev_read,
 	.poll		= rtc_dev_poll,
 	.unlocked_ioctl	= rtc_dev_ioctl,
 #ifdef CONFIG_COMPAT
