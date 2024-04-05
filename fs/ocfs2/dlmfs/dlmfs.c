@@ -29,6 +29,7 @@
 #include <linux/string.h>
 #include <linux/backing-dev.h>
 #include <linux/poll.h>
+#include <linux/uio.h>
 
 #include <linux/uaccess.h>
 
@@ -220,47 +221,42 @@ static __poll_t dlmfs_file_poll(struct file *file, poll_table *wait)
 	return event;
 }
 
-static ssize_t dlmfs_file_read(struct file *file,
-			       char __user *buf,
-			       size_t count,
-			       loff_t *ppos)
+static ssize_t dlmfs_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char lvb[DLM_LVB_LEN];
 
-	if (!user_dlm_read_lvb(file_inode(file), lvb))
+	if (!user_dlm_read_lvb(file_inode(iocb->ki_filp), lvb))
 		return 0;
 
-	return simple_read_from_buffer(buf, count, ppos, lvb, sizeof(lvb));
+	return simple_copy_to_iter(lvb, &iocb->ki_pos, sizeof(lvb), to);
 }
 
-static ssize_t dlmfs_file_write(struct file *filp,
-				const char __user *buf,
-				size_t count,
-				loff_t *ppos)
+static ssize_t dlmfs_file_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char lvb_buf[DLM_LVB_LEN];
-	int bytes_left;
-	struct inode *inode = file_inode(filp);
+	int copied;
+	struct inode *inode = file_inode(iocb->ki_filp);
+	size_t count = iov_iter_count(from);
 
 	mlog(0, "inode %lu, count = %zu, *ppos = %llu\n",
-		inode->i_ino, count, *ppos);
+		inode->i_ino, count, iocb->ki_pos);
 
-	if (*ppos >= DLM_LVB_LEN)
+	if (iocb->ki_pos >= DLM_LVB_LEN)
 		return -ENOSPC;
 
 	/* don't write past the lvb */
-	if (count > DLM_LVB_LEN - *ppos)
-		count = DLM_LVB_LEN - *ppos;
+	if (count > DLM_LVB_LEN - iocb->ki_pos)
+		count = DLM_LVB_LEN - iocb->ki_pos;
 
 	if (!count)
 		return 0;
 
-	bytes_left = copy_from_user(lvb_buf, buf, count);
-	count -= bytes_left;
+	copied = copy_from_iter(lvb_buf, count, from);
+	count -= copied;
 	if (count)
 		user_dlm_write_lvb(inode, lvb_buf, count);
 
-	*ppos = *ppos + count;
+	iocb->ki_pos += count;
 	mlog(0, "wrote %zu bytes\n", count);
 	return count;
 }
@@ -522,8 +518,8 @@ static const struct file_operations dlmfs_file_operations = {
 	.open		= dlmfs_file_open,
 	.release	= dlmfs_file_release,
 	.poll		= dlmfs_file_poll,
-	.read		= dlmfs_file_read,
-	.write		= dlmfs_file_write,
+	.read_iter	= dlmfs_file_read,
+	.write_iter	= dlmfs_file_write,
 	.llseek		= default_llseek,
 };
 

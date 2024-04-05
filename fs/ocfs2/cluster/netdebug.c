@@ -468,17 +468,18 @@ static int o2net_debug_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t o2net_debug_read(struct file *file, char __user *buf,
-				size_t nbytes, loff_t *ppos)
+static ssize_t o2net_debug_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return simple_read_from_buffer(buf, nbytes, ppos, file->private_data,
-				       i_size_read(file->f_mapping->host));
+	struct file *file = iocb->ki_filp;
+
+	return simple_copy_to_iter(file->private_data, &iocb->ki_pos,
+				       i_size_read(file->f_mapping->host), to);
 }
 
 static const struct file_operations nodes_fops = {
 	.open		= nodes_fop_open,
 	.release	= o2net_debug_release,
-	.read		= o2net_debug_read,
+	.read_iter	= o2net_debug_read,
 	.llseek		= generic_file_llseek,
 };
 
