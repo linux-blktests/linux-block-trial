@@ -28,8 +28,7 @@
 #define WLCORE_MAX_BLOCK_SIZE ((size_t)(4*PAGE_SIZE))
 
 /* debugfs macros idea from mac80211 */
-int wl1271_format_buffer(char __user *userbuf, size_t count,
-			 loff_t *ppos, char *fmt, ...)
+int wl1271_format_buffer(struct kiocb *iocb, struct iov_iter *to, char *fmt, ...)
 {
 	va_list args;
 	char buf[DEBUGFS_FORMAT_BUFFER_SIZE];
@@ -39,7 +38,7 @@ int wl1271_format_buffer(char __user *userbuf, size_t count,
 	res = vscnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, res);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, res, to);
 }
 EXPORT_SYMBOL_GPL(wl1271_format_buffer);
 
@@ -74,10 +73,9 @@ DEBUGFS_READONLY_FILE(retry_count, "%u", wl->stats.retry_count);
 DEBUGFS_READONLY_FILE(excessive_retries, "%u",
 		      wl->stats.excessive_retries);
 
-static ssize_t tx_queue_len_read(struct file *file, char __user *userbuf,
-				 size_t count, loff_t *ppos)
+static ssize_t tx_queue_len_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 	u32 queue_len;
 	char buf[20];
 	int res;
@@ -85,11 +83,11 @@ static ssize_t tx_queue_len_read(struct file *file, char __user *userbuf,
 	queue_len = wl1271_tx_total_queue_count(wl);
 
 	res = scnprintf(buf, sizeof(buf), "%u\n", queue_len);
-	return simple_read_from_buffer(userbuf, count, ppos, buf, res);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, res, to);
 }
 
 static const struct file_operations tx_queue_len_ops = {
-	.read = tx_queue_len_read,
+	.read_iter = tx_queue_len_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
@@ -118,25 +116,23 @@ static void chip_op_handler(struct wl1271 *wl, unsigned long value,
 #define WL12XX_CONF_DEBUGFS(param, conf_sub_struct,			\
 			    min_val, max_val, write_handler_locked,	\
 			    write_handler_arg)				\
-	static ssize_t param##_read(struct file *file,			\
-				      char __user *user_buf,		\
-				      size_t count, loff_t *ppos)	\
+	static ssize_t param##_read(struct kiocb *iocb,			\
+				      struct iov_iter *to)		\
 	{								\
-	struct wl1271 *wl = file->private_data;				\
-	return wl1271_format_buffer(user_buf, count,			\
-				    ppos, "%d\n",			\
-				    wl->conf.conf_sub_struct.param);	\
+	struct wl1271 *wl = iocb->ki_filp->private_data;		\
+	return wl1271_format_buffer(iocb, to, "%d\n",			\
+				wl->conf.conf_sub_struct.param);	\
 	}								\
 									\
-	static ssize_t param##_write(struct file *file,			\
-				     const char __user *user_buf,	\
-				     size_t count, loff_t *ppos)	\
+	static ssize_t param##_write(struct kiocb *iocb,		\
+				     struct iov_iter *from)		\
 	{								\
-	struct wl1271 *wl = file->private_data;				\
+	struct wl1271 *wl = iocb->ki_filp->private_data;		\
+	size_t count = iov_iter_count(from);				\
 	unsigned long value;						\
 	int ret;							\
 									\
-	ret = kstrtoul_from_user(user_buf, count, 10, &value);		\
+	ret = kstrtoul_from_iter(from, count, 10, &value);		\
 	if (ret < 0) {							\
 		wl1271_warning("illegal value for " #param);		\
 		return -EINVAL;						\
@@ -157,8 +153,8 @@ static void chip_op_handler(struct wl1271 *wl, unsigned long value,
 	}								\
 									\
 	static const struct file_operations param##_ops = {		\
-		.read = param##_read,					\
-		.write = param##_write,					\
+		.read_iter = param##_read,				\
+		.write_iter = param##_write,				\
 		.open = simple_open,					\
 		.llseek = default_llseek,				\
 	};
@@ -170,10 +166,9 @@ WL12XX_CONF_DEBUGFS(irq_blk_threshold, rx, 0, 65535,
 WL12XX_CONF_DEBUGFS(irq_timeout, rx, 0, 100,
 		    chip_op_handler, wl1271_acx_init_rx_interrupt)
 
-static ssize_t gpio_power_read(struct file *file, char __user *user_buf,
-			  size_t count, loff_t *ppos)
+static ssize_t gpio_power_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 	bool state = test_bit(WL1271_FLAG_GPIO_POWER, &wl->flags);
 
 	int res;
@@ -181,18 +176,17 @@ static ssize_t gpio_power_read(struct file *file, char __user *user_buf,
 
 	res = scnprintf(buf, sizeof(buf), "%d\n", state);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, res);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, res, to);
 }
 
-static ssize_t gpio_power_write(struct file *file,
-			   const char __user *user_buf,
-			   size_t count, loff_t *ppos)
+static ssize_t gpio_power_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long value;
 	int ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 10, &value);
+	ret = kstrtoul_from_iter(from, count, 10, &value);
 	if (ret < 0) {
 		wl1271_warning("illegal value in gpio_power");
 		return -EINVAL;
@@ -210,51 +204,47 @@ static ssize_t gpio_power_write(struct file *file,
 }
 
 static const struct file_operations gpio_power_ops = {
-	.read = gpio_power_read,
-	.write = gpio_power_write,
+	.read_iter = gpio_power_read,
+	.write_iter = gpio_power_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t start_recovery_write(struct file *file,
-				    const char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t start_recovery_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 
 	mutex_lock(&wl->mutex);
 	wl12xx_queue_recovery_work(wl);
 	mutex_unlock(&wl->mutex);
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations start_recovery_ops = {
-	.write = start_recovery_write,
+	.write_iter = start_recovery_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t dynamic_ps_timeout_read(struct file *file, char __user *user_buf,
-			  size_t count, loff_t *ppos)
+static ssize_t dynamic_ps_timeout_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 
-	return wl1271_format_buffer(user_buf, count,
-				    ppos, "%d\n",
+	return wl1271_format_buffer(iocb, to, "%d\n",
 				    wl->conf.conn.dynamic_ps_timeout);
 }
 
-static ssize_t dynamic_ps_timeout_write(struct file *file,
-				    const char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t dynamic_ps_timeout_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct wl12xx_vif *wlvif;
 	unsigned long value;
 	int ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 10, &value);
+	ret = kstrtoul_from_iter(from, count, 10, &value);
 	if (ret < 0) {
 		wl1271_warning("illegal value in dynamic_ps");
 		return -EINVAL;
@@ -293,32 +283,29 @@ out:
 }
 
 static const struct file_operations dynamic_ps_timeout_ops = {
-	.read = dynamic_ps_timeout_read,
-	.write = dynamic_ps_timeout_write,
+	.read_iter = dynamic_ps_timeout_read,
+	.write_iter = dynamic_ps_timeout_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t forced_ps_read(struct file *file, char __user *user_buf,
-			  size_t count, loff_t *ppos)
+static ssize_t forced_ps_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 
-	return wl1271_format_buffer(user_buf, count,
-				    ppos, "%d\n",
+	return wl1271_format_buffer(iocb, to, "%d\n",
 				    wl->conf.conn.forced_ps);
 }
 
-static ssize_t forced_ps_write(struct file *file,
-				    const char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t forced_ps_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct wl12xx_vif *wlvif;
 	unsigned long value;
 	int ret, ps_mode;
 
-	ret = kstrtoul_from_user(user_buf, count, 10, &value);
+	ret = kstrtoul_from_iter(from, count, 10, &value);
 	if (ret < 0) {
 		wl1271_warning("illegal value in forced_ps");
 		return -EINVAL;
@@ -362,31 +349,29 @@ out:
 }
 
 static const struct file_operations forced_ps_ops = {
-	.read = forced_ps_read,
-	.write = forced_ps_write,
+	.read_iter = forced_ps_read,
+	.write_iter = forced_ps_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t split_scan_timeout_read(struct file *file, char __user *user_buf,
-			  size_t count, loff_t *ppos)
+static ssize_t split_scan_timeout_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 
-	return wl1271_format_buffer(user_buf, count,
-				    ppos, "%d\n",
+	return wl1271_format_buffer(iocb, to, "%d\n",
 				    wl->conf.scan.split_scan_timeout / 1000);
 }
 
-static ssize_t split_scan_timeout_write(struct file *file,
-				    const char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t split_scan_timeout_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long value;
 	int ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 10, &value);
+	ret = kstrtoul_from_iter(from, count, 10, &value);
 	if (ret < 0) {
 		wl1271_warning("illegal value in split_scan_timeout");
 		return -EINVAL;
@@ -404,16 +389,15 @@ static ssize_t split_scan_timeout_write(struct file *file,
 }
 
 static const struct file_operations split_scan_timeout_ops = {
-	.read = split_scan_timeout_read,
-	.write = split_scan_timeout_write,
+	.read_iter = split_scan_timeout_read,
+	.write_iter = split_scan_timeout_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t driver_state_read(struct file *file, char __user *user_buf,
-				 size_t count, loff_t *ppos)
+static ssize_t driver_state_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 	int res = 0;
 	ssize_t ret;
 	char *buf;
@@ -498,21 +482,20 @@ static ssize_t driver_state_read(struct file *file, char __user *user_buf,
 
 	mutex_unlock(&wl->mutex);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, res);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, res, to);
 	kfree(buf);
 	return ret;
 }
 
 static const struct file_operations driver_state_ops = {
-	.read = driver_state_read,
+	.read_iter = driver_state_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t vifs_state_read(struct file *file, char __user *user_buf,
-				 size_t count, loff_t *ppos)
+static ssize_t vifs_state_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 	struct wl12xx_vif *wlvif;
 	int ret, res = 0;
 	const int buf_size = 4096;
@@ -608,21 +591,20 @@ static ssize_t vifs_state_read(struct file *file, char __user *user_buf,
 
 	mutex_unlock(&wl->mutex);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, res);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, res, to);
 	kfree(buf);
 	return ret;
 }
 
 static const struct file_operations vifs_state_ops = {
-	.read = vifs_state_read,
+	.read_iter = vifs_state_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t dtim_interval_read(struct file *file, char __user *user_buf,
-				  size_t count, loff_t *ppos)
+static ssize_t dtim_interval_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 	u8 value;
 
 	if (wl->conf.conn.wake_up_event == CONF_WAKE_UP_EVENT_DTIM ||
@@ -631,18 +613,17 @@ static ssize_t dtim_interval_read(struct file *file, char __user *user_buf,
 	else
 		value = 0;
 
-	return wl1271_format_buffer(user_buf, count, ppos, "%d\n", value);
+	return wl1271_format_buffer(iocb, to, "%d\n", value);
 }
 
-static ssize_t dtim_interval_write(struct file *file,
-				   const char __user *user_buf,
-				   size_t count, loff_t *ppos)
+static ssize_t dtim_interval_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long value;
 	int ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 10, &value);
+	ret = kstrtoul_from_iter(from, count, 10, &value);
 	if (ret < 0) {
 		wl1271_warning("illegal value for dtim_interval");
 		return -EINVAL;
@@ -671,19 +652,18 @@ static ssize_t dtim_interval_write(struct file *file,
 }
 
 static const struct file_operations dtim_interval_ops = {
-	.read = dtim_interval_read,
-	.write = dtim_interval_write,
+	.read_iter = dtim_interval_read,
+	.write_iter = dtim_interval_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
 
 
-static ssize_t suspend_dtim_interval_read(struct file *file,
-					  char __user *user_buf,
-					  size_t count, loff_t *ppos)
+static ssize_t suspend_dtim_interval_read(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 	u8 value;
 
 	if (wl->conf.conn.suspend_wake_up_event == CONF_WAKE_UP_EVENT_DTIM ||
@@ -692,18 +672,18 @@ static ssize_t suspend_dtim_interval_read(struct file *file,
 	else
 		value = 0;
 
-	return wl1271_format_buffer(user_buf, count, ppos, "%d\n", value);
+	return wl1271_format_buffer(iocb, to, "%d\n", value);
 }
 
-static ssize_t suspend_dtim_interval_write(struct file *file,
-					   const char __user *user_buf,
-					   size_t count, loff_t *ppos)
+static ssize_t suspend_dtim_interval_write(struct kiocb *iocb,
+					   struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long value;
 	int ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 10, &value);
+	ret = kstrtoul_from_iter(from, count, 10, &value);
 	if (ret < 0) {
 		wl1271_warning("illegal value for suspend_dtim_interval");
 		return -EINVAL;
@@ -727,18 +707,16 @@ static ssize_t suspend_dtim_interval_write(struct file *file,
 	return count;
 }
 
-
 static const struct file_operations suspend_dtim_interval_ops = {
-	.read = suspend_dtim_interval_read,
-	.write = suspend_dtim_interval_write,
+	.read_iter = suspend_dtim_interval_read,
+	.write_iter = suspend_dtim_interval_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t beacon_interval_read(struct file *file, char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t beacon_interval_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 	u8 value;
 
 	if (wl->conf.conn.wake_up_event == CONF_WAKE_UP_EVENT_BEACON ||
@@ -747,18 +725,17 @@ static ssize_t beacon_interval_read(struct file *file, char __user *user_buf,
 	else
 		value = 0;
 
-	return wl1271_format_buffer(user_buf, count, ppos, "%d\n", value);
+	return wl1271_format_buffer(iocb, to, "%d\n", value);
 }
 
-static ssize_t beacon_interval_write(struct file *file,
-				     const char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t beacon_interval_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long value;
 	int ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 10, &value);
+	ret = kstrtoul_from_iter(from, count, 10, &value);
 	if (ret < 0) {
 		wl1271_warning("illegal value for beacon_interval");
 		return -EINVAL;
@@ -787,22 +764,22 @@ static ssize_t beacon_interval_write(struct file *file,
 }
 
 static const struct file_operations beacon_interval_ops = {
-	.read = beacon_interval_read,
-	.write = beacon_interval_write,
+	.read_iter = beacon_interval_read,
+	.write_iter = beacon_interval_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t rx_streaming_interval_write(struct file *file,
-			   const char __user *user_buf,
-			   size_t count, loff_t *ppos)
+static ssize_t rx_streaming_interval_write(struct kiocb *iocb,
+					   struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct wl12xx_vif *wlvif;
 	unsigned long value;
 	int ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 10, &value);
+	ret = kstrtoul_from_iter(from, count, 10, &value);
 	if (ret < 0) {
 		wl1271_warning("illegal value in rx_streaming_interval!");
 		return -EINVAL;
@@ -832,32 +809,31 @@ out:
 	return count;
 }
 
-static ssize_t rx_streaming_interval_read(struct file *file,
-			    char __user *userbuf,
-			    size_t count, loff_t *ppos)
+static ssize_t rx_streaming_interval_read(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
-	return wl1271_format_buffer(userbuf, count, ppos,
-				    "%d\n", wl->conf.rx_streaming.interval);
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	return wl1271_format_buffer(iocb, to, "%d\n",
+				    wl->conf.rx_streaming.interval);
 }
 
 static const struct file_operations rx_streaming_interval_ops = {
-	.read = rx_streaming_interval_read,
-	.write = rx_streaming_interval_write,
+	.read_iter = rx_streaming_interval_read,
+	.write_iter = rx_streaming_interval_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t rx_streaming_always_write(struct file *file,
-			   const char __user *user_buf,
-			   size_t count, loff_t *ppos)
+static ssize_t rx_streaming_always_write(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct wl12xx_vif *wlvif;
 	unsigned long value;
 	int ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 10, &value);
+	ret = kstrtoul_from_iter(from, count, 10, &value);
 	if (ret < 0) {
 		wl1271_warning("illegal value in rx_streaming_write!");
 		return -EINVAL;
@@ -887,32 +863,29 @@ out:
 	return count;
 }
 
-static ssize_t rx_streaming_always_read(struct file *file,
-			    char __user *userbuf,
-			    size_t count, loff_t *ppos)
+static ssize_t rx_streaming_always_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
-	return wl1271_format_buffer(userbuf, count, ppos,
-				    "%d\n", wl->conf.rx_streaming.always);
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	return wl1271_format_buffer(iocb, to, "%d\n",
+				    wl->conf.rx_streaming.always);
 }
 
 static const struct file_operations rx_streaming_always_ops = {
-	.read = rx_streaming_always_read,
-	.write = rx_streaming_always_write,
+	.read_iter = rx_streaming_always_read,
+	.write_iter = rx_streaming_always_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t beacon_filtering_write(struct file *file,
-				      const char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t beacon_filtering_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct wl12xx_vif *wlvif;
 	unsigned long value;
 	int ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &value);
+	ret = kstrtoul_from_iter(from, count, 0, &value);
 	if (ret < 0) {
 		wl1271_warning("illegal value for beacon_filtering!");
 		return -EINVAL;
@@ -935,49 +908,42 @@ out:
 }
 
 static const struct file_operations beacon_filtering_ops = {
-	.write = beacon_filtering_write,
+	.write_iter = beacon_filtering_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t fw_stats_raw_read(struct file *file,
-				 char __user *userbuf,
-				 size_t count, loff_t *ppos)
+static ssize_t fw_stats_raw_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 
 	wl1271_debugfs_update_stats(wl);
 
-	return simple_read_from_buffer(userbuf, count, ppos,
-				       wl->stats.fw_stats,
-				       wl->stats.fw_stats_len);
+	return simple_copy_to_iter(wl->stats.fw_stats, &iocb->ki_pos,
+				       wl->stats.fw_stats_len, to);
 }
 
 static const struct file_operations fw_stats_raw_ops = {
-	.read = fw_stats_raw_read,
+	.read_iter = fw_stats_raw_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t sleep_auth_read(struct file *file, char __user *user_buf,
-			       size_t count, loff_t *ppos)
+static ssize_t sleep_auth_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 
-	return wl1271_format_buffer(user_buf, count,
-				    ppos, "%d\n",
-				    wl->sleep_auth);
+	return wl1271_format_buffer(iocb, to, "%d\n", wl->sleep_auth);
 }
 
-static ssize_t sleep_auth_write(struct file *file,
-				const char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t sleep_auth_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long value;
 	int ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &value);
+	ret = kstrtoul_from_iter(from, count, 0, &value);
 	if (ret < 0) {
 		wl1271_warning("illegal value in sleep_auth");
 		return -EINVAL;
@@ -1015,18 +981,17 @@ out:
 }
 
 static const struct file_operations sleep_auth_ops = {
-	.read = sleep_auth_read,
-	.write = sleep_auth_write,
+	.read_iter = sleep_auth_read,
+	.write_iter = sleep_auth_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t dev_mem_read(struct file *file,
-	     char __user *user_buf, size_t count,
-	     loff_t *ppos)
+static ssize_t dev_mem_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 	struct wlcore_partition_set part, old_part;
+	size_t count = iov_iter_count(to);
 	size_t bytes = count;
 	int ret;
 	char *buf;
@@ -1035,7 +1000,7 @@ static ssize_t dev_mem_read(struct file *file,
 	if (bytes % 4)
 		return -EINVAL;
 
-	if (*ppos % 4)
+	if (iocb->ki_pos % 4)
 		return -EINVAL;
 
 	/* function should return in reasonable time */
@@ -1045,7 +1010,7 @@ static ssize_t dev_mem_read(struct file *file,
 		return -EINVAL;
 
 	memset(&part, 0, sizeof(part));
-	part.mem.start = *ppos;
+	part.mem.start = iocb->ki_pos;
 	part.mem.size = bytes;
 
 	buf = kmalloc(bytes, GFP_KERNEL);
@@ -1088,13 +1053,13 @@ skip_read:
 	mutex_unlock(&wl->mutex);
 
 	if (ret == 0) {
-		ret = copy_to_user(user_buf, buf, bytes);
-		if (ret < bytes) {
-			bytes -= ret;
-			*ppos += bytes;
-			ret = 0;
-		} else {
+		ret = copy_to_iter(buf, bytes, to);
+		if (!ret) {
 			ret = -EFAULT;
+		} else {
+			bytes -= ret;
+			iocb->ki_pos += bytes;
+			ret = 0;
 		}
 	}
 
@@ -1103,10 +1068,10 @@ skip_read:
 	return ((ret == 0) ? bytes : ret);
 }
 
-static ssize_t dev_mem_write(struct file *file, const char __user *user_buf,
-		size_t count, loff_t *ppos)
+static ssize_t dev_mem_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct wlcore_partition_set part, old_part;
 	size_t bytes = count;
 	int ret;
@@ -1116,7 +1081,7 @@ static ssize_t dev_mem_write(struct file *file, const char __user *user_buf,
 	if (bytes % 4)
 		return -EINVAL;
 
-	if (*ppos % 4)
+	if (iocb->ki_pos % 4)
 		return -EINVAL;
 
 	/* function should return in reasonable time */
@@ -1126,10 +1091,10 @@ static ssize_t dev_mem_write(struct file *file, const char __user *user_buf,
 		return -EINVAL;
 
 	memset(&part, 0, sizeof(part));
-	part.mem.start = *ppos;
+	part.mem.start = iocb->ki_pos;
 	part.mem.size = bytes;
 
-	buf = memdup_user(user_buf, bytes);
+	buf = iterdup(from, bytes);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -1169,7 +1134,7 @@ skip_write:
 	mutex_unlock(&wl->mutex);
 
 	if (ret == 0)
-		*ppos += bytes;
+		iocb->ki_pos += bytes;
 
 	kfree(buf);
 
@@ -1187,30 +1152,26 @@ static loff_t dev_mem_seek(struct file *file, loff_t offset, int orig)
 
 static const struct file_operations dev_mem_ops = {
 	.open = simple_open,
-	.read = dev_mem_read,
-	.write = dev_mem_write,
+	.read_iter = dev_mem_read,
+	.write_iter = dev_mem_write,
 	.llseek = dev_mem_seek,
 };
 
-static ssize_t fw_logger_read(struct file *file, char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t fw_logger_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 
-	return wl1271_format_buffer(user_buf, count,
-					ppos, "%d\n",
-					wl->conf.fwlog.output);
+	return wl1271_format_buffer(iocb, to, "%d\n", wl->conf.fwlog.output);
 }
 
-static ssize_t fw_logger_write(struct file *file,
-			       const char __user *user_buf,
-			       size_t count, loff_t *ppos)
+static ssize_t fw_logger_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long value;
 	int ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &value);
+	ret = kstrtoul_from_iter(from, count, 0, &value);
 	if (ret < 0) {
 		wl1271_warning("illegal value in fw_logger");
 		return -EINVAL;
@@ -1246,8 +1207,8 @@ out:
 
 static const struct file_operations fw_logger_ops = {
 	.open = simple_open,
-	.read = fw_logger_read,
-	.write = fw_logger_write,
+	.read_iter = fw_logger_read,
+	.write_iter = fw_logger_write,
 	.llseek = default_llseek,
 };
 

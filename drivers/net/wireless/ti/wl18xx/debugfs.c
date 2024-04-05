@@ -175,10 +175,9 @@ WL18XX_DEBUGFS_FWSTATS_FILE(roaming, rssi_level, "%d");
 
 WL18XX_DEBUGFS_FWSTATS_FILE(dfs, num_of_radar_detections, "%d");
 
-static ssize_t conf_read(struct file *file, char __user *user_buf,
-			 size_t count, loff_t *ppos)
+static ssize_t conf_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 	struct wl18xx_priv *priv = wl->priv;
 	struct wlcore_conf_header header;
 	char *buf, *pos;
@@ -205,23 +204,22 @@ static ssize_t conf_read(struct file *file, char __user *user_buf,
 
 	mutex_unlock(&wl->mutex);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 
 	kfree(buf);
 	return ret;
 }
 
 static const struct file_operations conf_ops = {
-	.read = conf_read,
+	.read_iter = conf_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t clear_fw_stats_write(struct file *file,
-			      const char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t clear_fw_stats_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int ret;
 
 	mutex_lock(&wl->mutex);
@@ -240,20 +238,19 @@ out:
 }
 
 static const struct file_operations clear_fw_stats_ops = {
-	.write = clear_fw_stats_write,
+	.write_iter = clear_fw_stats_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t radar_detection_write(struct file *file,
-				     const char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t radar_detection_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int ret;
 	u8 channel;
 
-	ret = kstrtou8_from_user(user_buf, count, 10, &channel);
+	ret = kstrtou8_from_iter(from, count, 10, &channel);
 	if (ret < 0) {
 		wl1271_warning("illegal channel");
 		return -EINVAL;
@@ -279,20 +276,19 @@ out:
 }
 
 static const struct file_operations radar_detection_ops = {
-	.write = radar_detection_write,
+	.write_iter = radar_detection_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t dynamic_fw_traces_write(struct file *file,
-					const char __user *user_buf,
-					size_t count, loff_t *ppos)
+static ssize_t dynamic_fw_traces_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long value;
 	int ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &value);
+	ret = kstrtoul_from_iter(from, count, 0, &value);
 	if (ret < 0)
 		return ret;
 
@@ -317,33 +313,29 @@ out:
 	return count;
 }
 
-static ssize_t dynamic_fw_traces_read(struct file *file,
-					char __user *userbuf,
-					size_t count, loff_t *ppos)
+static ssize_t dynamic_fw_traces_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
-	return wl1271_format_buffer(userbuf, count, ppos,
-				    "%d\n", wl->dynamic_fw_traces);
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	return wl1271_format_buffer(iocb, to, "%d\n", wl->dynamic_fw_traces);
 }
 
 static const struct file_operations dynamic_fw_traces_ops = {
-	.read = dynamic_fw_traces_read,
-	.write = dynamic_fw_traces_write,
+	.read_iter = dynamic_fw_traces_read,
+	.write_iter = dynamic_fw_traces_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
 #ifdef CONFIG_CFG80211_CERTIFICATION_ONUS
-static ssize_t radar_debug_mode_write(struct file *file,
-				      const char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t radar_debug_mode_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct wl12xx_vif *wlvif;
 	unsigned long value;
 	int ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 10, &value);
+	ret = kstrtoul_from_iter(from, count, 10, &value);
 	if (ret < 0) {
 		wl1271_warning("illegal radar_debug_mode value!");
 		return -EINVAL;
@@ -378,19 +370,16 @@ out:
 	return count;
 }
 
-static ssize_t radar_debug_mode_read(struct file *file,
-				     char __user *userbuf,
-				     size_t count, loff_t *ppos)
+static ssize_t radar_debug_mode_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1271 *wl = file->private_data;
+	struct wl1271 *wl = iocb->ki_filp->private_data;
 
-	return wl1271_format_buffer(userbuf, count, ppos,
-				    "%d\n", wl->radar_debug_mode);
+	return wl1271_format_buffer(iocb, to, "%d\n", wl->radar_debug_mode);
 }
 
 static const struct file_operations radar_debug_mode_ops = {
-	.write = radar_debug_mode_write,
-	.read = radar_debug_mode_read,
+	.write_iter = radar_debug_mode_write,
+	.read_iter = radar_debug_mode_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };

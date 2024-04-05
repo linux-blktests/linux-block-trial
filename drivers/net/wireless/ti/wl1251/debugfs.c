@@ -20,19 +20,18 @@
 /* debugfs macros idea from mac80211 */
 
 #define DEBUGFS_READONLY_FILE(name, buflen, fmt, value...)		\
-static ssize_t name## _read(struct file *file, char __user *userbuf,	\
-			    size_t count, loff_t *ppos)			\
+static ssize_t name## _read(struct kiocb *iocb, struct iov_iter *to)	\
 {									\
-	struct wl1251 *wl = file->private_data;				\
+	struct wl1251 *wl = iocb->ki_filp->private_data;			\
 	char buf[buflen];						\
 	int res;							\
 									\
 	res = scnprintf(buf, buflen, fmt "\n", ##value);		\
-	return simple_read_from_buffer(userbuf, count, ppos, buf, res);	\
+	return simple_copy_to_iter(buf, &iocb->ki_pos, res, to);	\
 }									\
 									\
 static const struct file_operations name## _ops = {			\
-	.read = name## _read,						\
+	.read_iter = name## _read,					\
 	.open = simple_open,						\
 	.llseek	= generic_file_llseek,					\
 };
@@ -48,11 +47,10 @@ static const struct file_operations name## _ops = {			\
 	} while (0)
 
 #define DEBUGFS_FWSTATS_FILE(sub, name, buflen, fmt)			\
-static ssize_t sub## _ ##name## _read(struct file *file,		\
-				      char __user *userbuf,		\
-				      size_t count, loff_t *ppos)	\
+static ssize_t sub## _ ##name## _read(struct kiocb *iocb,		\
+				      struct iov_iter *to)		\
 {									\
-	struct wl1251 *wl = file->private_data;				\
+	struct wl1251 *wl = iocb->ki_filp->private_data;		\
 	char buf[buflen];						\
 	int res;							\
 									\
@@ -60,11 +58,11 @@ static ssize_t sub## _ ##name## _read(struct file *file,		\
 									\
 	res = scnprintf(buf, buflen, fmt "\n",				\
 			wl->stats.fw_stats->sub.name);			\
-	return simple_read_from_buffer(userbuf, count, ppos, buf, res);	\
+	return simple_copy_to_iter(buf, &iocb->ki_pos, res, to);	\
 }									\
 									\
 static const struct file_operations sub## _ ##name## _ops = {		\
-	.read = sub## _ ##name## _read,					\
+	.read_iter = sub## _ ##name## _read,				\
 	.open = simple_open,						\
 	.llseek	= generic_file_llseek,					\
 };
@@ -194,10 +192,9 @@ DEBUGFS_READONLY_FILE(retry_count, 20, "%u", wl->stats.retry_count);
 DEBUGFS_READONLY_FILE(excessive_retries, 20, "%u",
 		      wl->stats.excessive_retries);
 
-static ssize_t tx_queue_len_read(struct file *file, char __user *userbuf,
-				 size_t count, loff_t *ppos)
+static ssize_t tx_queue_len_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1251 *wl = file->private_data;
+	struct wl1251 *wl = iocb->ki_filp->private_data;
 	u32 queue_len;
 	char buf[20];
 	int res;
@@ -205,19 +202,18 @@ static ssize_t tx_queue_len_read(struct file *file, char __user *userbuf,
 	queue_len = skb_queue_len(&wl->tx_queue);
 
 	res = scnprintf(buf, sizeof(buf), "%u\n", queue_len);
-	return simple_read_from_buffer(userbuf, count, ppos, buf, res);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, res, to);
 }
 
 static const struct file_operations tx_queue_len_ops = {
-	.read = tx_queue_len_read,
+	.read_iter = tx_queue_len_read,
 	.open = simple_open,
 	.llseek = generic_file_llseek,
 };
 
-static ssize_t tx_queue_status_read(struct file *file, char __user *userbuf,
-				    size_t count, loff_t *ppos)
+static ssize_t tx_queue_status_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wl1251 *wl = file->private_data;
+	struct wl1251 *wl = iocb->ki_filp->private_data;
 	char buf[3], status;
 	int len;
 
@@ -227,11 +223,11 @@ static ssize_t tx_queue_status_read(struct file *file, char __user *userbuf,
 		status = 'r';
 
 	len = scnprintf(buf, sizeof(buf), "%c\n", status);
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations tx_queue_status_ops = {
-	.read = tx_queue_status_read,
+	.read_iter = tx_queue_status_read,
 	.open = simple_open,
 	.llseek = generic_file_llseek,
 };
