@@ -577,10 +577,10 @@ static __poll_t uio_poll(struct file *filep, poll_table *wait)
 	return 0;
 }
 
-static ssize_t uio_read(struct file *filep, char __user *buf,
-			size_t count, loff_t *ppos)
+static ssize_t uio_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct uio_listener *listener = filep->private_data;
+	struct uio_listener *listener = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	struct uio_device *idev = listener->dev;
 	DECLARE_WAITQUEUE(wait, current);
 	ssize_t retval = 0;
@@ -605,7 +605,7 @@ static ssize_t uio_read(struct file *filep, char __user *buf,
 		event_count = atomic_read(&idev->event);
 		if (event_count != listener->event_count) {
 			__set_current_state(TASK_RUNNING);
-			if (copy_to_user(buf, &event_count, count))
+			if (!copy_to_iter_full(&event_count, count, to))
 				retval = -EFAULT;
 			else {
 				listener->event_count = event_count;
@@ -614,7 +614,7 @@ static ssize_t uio_read(struct file *filep, char __user *buf,
 			break;
 		}
 
-		if (filep->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			retval = -EAGAIN;
 			break;
 		}
@@ -632,18 +632,18 @@ static ssize_t uio_read(struct file *filep, char __user *buf,
 	return retval;
 }
 
-static ssize_t uio_write(struct file *filep, const char __user *buf,
-			size_t count, loff_t *ppos)
+static ssize_t uio_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct uio_listener *listener = filep->private_data;
+	struct uio_listener *listener = iocb->ki_filp->private_data;
 	struct uio_device *idev = listener->dev;
+	size_t count = iov_iter_count(from);
 	ssize_t retval;
 	s32 irq_on;
 
 	if (count != sizeof(s32))
 		return -EINVAL;
 
-	if (copy_from_user(&irq_on, buf, count))
+	if (!copy_from_iter_full(&irq_on, count, from))
 		return -EFAULT;
 
 	mutex_lock(&idev->info_lock);
@@ -880,8 +880,8 @@ static const struct file_operations uio_fops = {
 	.owner		= THIS_MODULE,
 	.open		= uio_open,
 	.release	= uio_release,
-	.read		= uio_read,
-	.write		= uio_write,
+	.read_iter	= uio_read,
+	.write_iter	= uio_write,
 	.mmap		= uio_mmap,
 	.poll		= uio_poll,
 	.fasync		= uio_fasync,
