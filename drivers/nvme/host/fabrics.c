@@ -1382,10 +1382,10 @@ static const struct class nvmf_class = {
 static struct device *nvmf_device;
 static DEFINE_MUTEX(nvmf_dev_mutex);
 
-static ssize_t nvmf_dev_write(struct file *file, const char __user *ubuf,
-		size_t count, loff_t *pos)
+static ssize_t nvmf_dev_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *seq_file = file->private_data;
+	struct seq_file *seq_file = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct nvme_ctrl *ctrl;
 	const char *buf;
 	int ret = 0;
@@ -1393,7 +1393,7 @@ static ssize_t nvmf_dev_write(struct file *file, const char __user *ubuf,
 	if (count > PAGE_SIZE)
 		return -ENOMEM;
 
-	buf = memdup_user_nul(ubuf, count);
+	buf = iterdup_nul(from, count);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -1478,8 +1478,8 @@ static int nvmf_dev_release(struct inode *inode, struct file *file)
 
 static const struct file_operations nvmf_dev_fops = {
 	.owner		= THIS_MODULE,
-	.write		= nvmf_dev_write,
-	.read		= seq_read,
+	.write_iter	= nvmf_dev_write,
+	.read_iter	= seq_read_iter,
 	.open		= nvmf_dev_open,
 	.release	= nvmf_dev_release,
 };

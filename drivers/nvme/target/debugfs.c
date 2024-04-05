@@ -21,7 +21,7 @@ static struct dentry *nvmet_debugfs;
 	\
 	static const struct file_operations field##_fops = { \
 		.open = field##_open, \
-		.read = seq_read, \
+		.read_iter = seq_read_iter, \
 		.release = single_release, \
 	}
 
@@ -31,8 +31,8 @@ static struct dentry *nvmet_debugfs;
 	\
 	static const struct file_operations field##_fops = { \
 		.open = field##_open, \
-		.read = seq_read, \
-		.write = field##_write, \
+		.read_iter = seq_read_iter, \
+		.write_iter = field##_write, \
 		.release = single_release, \
 	}
 
@@ -96,16 +96,16 @@ static int nvmet_ctrl_state_show(struct seq_file *m, void *p)
 	return 0;
 }
 
-static ssize_t nvmet_ctrl_state_write(struct file *file, const char __user *buf,
-				      size_t count, loff_t *ppos)
+static ssize_t nvmet_ctrl_state_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct nvmet_ctrl *ctrl = m->private;
+	size_t count = iov_iter_count(from);
 	char reset[16];
 
 	if (count >= sizeof(reset))
 		return -EINVAL;
-	if (copy_from_user(reset, buf, count))
+	if (!copy_from_iter_full(reset, count, from))
 		return -EFAULT;
 	if (!memcmp(reset, "fatal", 5))
 		nvmet_ctrl_fatal_error(ctrl);
