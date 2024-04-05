@@ -192,18 +192,18 @@ static int trigger_open(struct inode *inode, struct file *file)
 	return single_open(file, NULL, inode->i_private);
 }
 
-static ssize_t trigger_write(struct file *file, const char __user *ubuf,
-			     size_t count, loff_t *offset)
+static ssize_t trigger_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct gpio_la_poll_priv *priv = m->private;
+	size_t count = iov_iter_count(from);
 	char *buf;
 
 	/* upper limit is arbitrary but should be less than PAGE_SIZE */
 	if (count > 2048 || count & 1)
 		return -EINVAL;
 
-	buf = memdup_user(ubuf, count);
+	buf = iterdup(from, count);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -216,7 +216,7 @@ static ssize_t trigger_write(struct file *file, const char __user *ubuf,
 static const struct file_operations fops_trigger = {
 	.owner = THIS_MODULE,
 	.open = trigger_open,
-	.write = trigger_write,
+	.write_iter = trigger_write,
 	.release = single_release,
 };
 

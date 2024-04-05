@@ -269,9 +269,7 @@ static void gpio_mockup_free(struct gpio_chip *gc, unsigned int offset)
 	__gpio_mockup_set(chip, offset, chip->lines[offset].pull);
 }
 
-static ssize_t gpio_mockup_debugfs_read(struct file *file,
-					char __user *usr_buf,
-					size_t size, loff_t *ppos)
+static ssize_t gpio_mockup_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct gpio_mockup_dbgfs_private *priv;
 	struct gpio_mockup_chip *chip;
@@ -280,10 +278,10 @@ static ssize_t gpio_mockup_debugfs_read(struct file *file,
 	int val, cnt;
 	char buf[3];
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
-	sfile = file->private_data;
+	sfile = iocb->ki_filp->private_data;
 	priv = sfile->private;
 	chip = priv->chip;
 	gc = &chip->gc;
@@ -291,27 +289,27 @@ static ssize_t gpio_mockup_debugfs_read(struct file *file,
 	val = gpio_mockup_get(gc, priv->offset);
 	cnt = snprintf(buf, sizeof(buf), "%d\n", val);
 
-	return simple_read_from_buffer(usr_buf, size, ppos, buf, cnt);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, cnt, to);
 }
 
-static ssize_t gpio_mockup_debugfs_write(struct file *file,
-					 const char __user *usr_buf,
-					 size_t size, loff_t *ppos)
+static ssize_t gpio_mockup_debugfs_write(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
 	struct gpio_mockup_dbgfs_private *priv;
+	size_t size = iov_iter_count(from);
 	int rv, val;
 	struct seq_file *sfile;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return -EINVAL;
 
-	rv = kstrtoint_from_user(usr_buf, size, 0, &val);
+	rv = kstrtoint_from_iter(from, size, 0, &val);
 	if (rv)
 		return rv;
 	if (val != 0 && val != 1)
 		return -EINVAL;
 
-	sfile = file->private_data;
+	sfile = iocb->ki_filp->private_data;
 	priv = sfile->private;
 	rv = gpio_mockup_apply_pull(priv->chip, priv->offset, val);
 	if (rv)
@@ -349,8 +347,8 @@ static int gpio_mockup_debugfs_open(struct inode *inode, struct file *file)
 static const struct file_operations gpio_mockup_debugfs_ops = {
 	.owner = THIS_MODULE,
 	.open = gpio_mockup_debugfs_open,
-	.read = gpio_mockup_debugfs_read,
-	.write = gpio_mockup_debugfs_write,
+	.read_iter = gpio_mockup_debugfs_read,
+	.write_iter = gpio_mockup_debugfs_write,
 	.release = single_release,
 };
 
