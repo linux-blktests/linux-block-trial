@@ -103,10 +103,10 @@ static int xen_mce_chrdev_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t xen_mce_chrdev_read(struct file *filp, char __user *ubuf,
-				size_t usize, loff_t *off)
+static ssize_t xen_mce_chrdev_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	char __user *buf = ubuf;
+	size_t usize = iov_iter_count(to);
+	ssize_t copied;
 	unsigned num;
 	int i, err;
 
@@ -116,15 +116,16 @@ static ssize_t xen_mce_chrdev_read(struct file *filp, char __user *ubuf,
 
 	/* Only supports full reads right now */
 	err = -EINVAL;
-	if (*off != 0 || usize < XEN_MCE_LOG_LEN*sizeof(struct xen_mce))
+	if (iocb->ki_pos != 0 || usize < XEN_MCE_LOG_LEN*sizeof(struct xen_mce))
 		goto out;
 
 	err = 0;
+	copied = 0;
 	for (i = 0; i < num; i++) {
 		struct xen_mce *m = &xen_mcelog.entry[i];
 
-		err |= copy_to_user(buf, m, sizeof(*m));
-		buf += sizeof(*m);
+		err |= !copy_to_iter_full(m, sizeof(*m), to);
+		copied += sizeof(*m);
 	}
 
 	memset(xen_mcelog.entry, 0, num * sizeof(struct xen_mce));
@@ -136,7 +137,7 @@ static ssize_t xen_mce_chrdev_read(struct file *filp, char __user *ubuf,
 out:
 	mutex_unlock(&mcelog_lock);
 
-	return err ? err : buf - ubuf;
+	return err ? err : copied;
 }
 
 static __poll_t xen_mce_chrdev_poll(struct file *file, poll_table *wait)
@@ -177,7 +178,7 @@ static long xen_mce_chrdev_ioctl(struct file *f, unsigned int cmd,
 static const struct file_operations xen_mce_chrdev_ops = {
 	.open			= xen_mce_chrdev_open,
 	.release		= xen_mce_chrdev_release,
-	.read			= xen_mce_chrdev_read,
+	.read_iter		= xen_mce_chrdev_read,
 	.poll			= xen_mce_chrdev_poll,
 	.unlocked_ioctl		= xen_mce_chrdev_ioctl,
 };

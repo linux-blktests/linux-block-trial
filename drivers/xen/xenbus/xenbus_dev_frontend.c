@@ -122,11 +122,10 @@ struct xenbus_file_priv {
 };
 
 /* Read out any raw xenbus messages queued up. */
-static ssize_t xenbus_file_read(struct file *filp,
-			       char __user *ubuf,
-			       size_t len, loff_t *ppos)
+static ssize_t xenbus_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct xenbus_file_priv *u = filp->private_data;
+	struct xenbus_file_priv *u = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	struct read_buffer *rb;
 	ssize_t i;
 	int ret;
@@ -135,7 +134,7 @@ static ssize_t xenbus_file_read(struct file *filp,
 again:
 	while (list_empty(&u->read_buffers)) {
 		mutex_unlock(&u->reply_mutex);
-		if (filp->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 
 		ret = wait_event_interruptible(u->read_waitq,
@@ -150,7 +149,7 @@ again:
 	while (i < len) {
 		size_t sz = min_t(size_t, len - i, rb->len - rb->cons);
 
-		ret = copy_to_user(ubuf + i, &rb->msg[rb->cons], sz);
+		ret = !copy_to_iter_full(&rb->msg[rb->cons], sz, to);
 
 		i += sz - ret;
 		rb->cons += sz - ret;
@@ -547,11 +546,10 @@ out:
 	return rc;
 }
 
-static ssize_t xenbus_file_write(struct file *filp,
-				const char __user *ubuf,
-				size_t len, loff_t *ppos)
+static ssize_t xenbus_file_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct xenbus_file_priv *u = filp->private_data;
+	struct xenbus_file_priv *u = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	uint32_t msg_type;
 	int rc = len;
 	int ret;
@@ -585,7 +583,7 @@ static ssize_t xenbus_file_write(struct file *filp,
 		goto out;
 	}
 
-	ret = copy_from_user(u->u.buffer + u->len, ubuf, len);
+	ret = !copy_from_iter_full(u->u.buffer + u->len, len, from);
 
 	if (ret != 0) {
 		rc = -EFAULT;
@@ -695,8 +693,8 @@ static __poll_t xenbus_file_poll(struct file *file, poll_table *wait)
 }
 
 const struct file_operations xen_xenbus_fops = {
-	.read = xenbus_file_read,
-	.write = xenbus_file_write,
+	.read_iter = xenbus_file_read,
+	.write_iter = xenbus_file_write,
 	.open = xenbus_file_open,
 	.release = xenbus_file_release,
 	.poll = xenbus_file_poll,

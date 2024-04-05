@@ -28,19 +28,18 @@
 MODULE_DESCRIPTION("Xen filesystem");
 MODULE_LICENSE("GPL");
 
-static ssize_t capabilities_read(struct file *file, char __user *buf,
-				 size_t size, loff_t *off)
+static ssize_t capabilities_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *tmp = "";
 
 	if (xen_initial_domain())
 		tmp = "control_d\n";
 
-	return simple_read_from_buffer(buf, size, off, tmp, strlen(tmp));
+	return simple_copy_to_iter(tmp, &iocb->ki_pos, strlen(tmp), to);
 }
 
 static const struct file_operations capabilities_file_ops = {
-	.read = capabilities_read,
+	.read_iter = capabilities_read,
 	.llseek = default_llseek,
 };
 

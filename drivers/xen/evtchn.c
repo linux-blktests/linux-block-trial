@@ -51,6 +51,7 @@
 #include <linux/cpu.h>
 #include <linux/mm.h>
 #include <linux/vmalloc.h>
+#include <linux/uio.h>
 
 #include <xen/xen.h>
 #include <xen/events.h>
@@ -197,12 +198,12 @@ static irqreturn_t evtchn_interrupt(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static ssize_t evtchn_read(struct file *file, char __user *buf,
-			   size_t count, loff_t *ppos)
+static ssize_t evtchn_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int rc;
 	unsigned int c, p, bytes1 = 0, bytes2 = 0;
-	struct per_user_data *u = file->private_data;
+	struct per_user_data *u = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 
 	/* Whole number of ports. */
 	count &= ~(sizeof(evtchn_port_t)-1);
@@ -227,7 +228,7 @@ static ssize_t evtchn_read(struct file *file, char __user *buf,
 
 		mutex_unlock(&u->ring_cons_mutex);
 
-		if (file->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 
 		rc = wait_event_interruptible(u->evtchn_wait,
@@ -256,9 +257,9 @@ static ssize_t evtchn_read(struct file *file, char __user *buf,
 
 	rc = -EFAULT;
 	smp_rmb(); /* Ensure that we see the port before we copy it. */
-	if (copy_to_user(buf, evtchn_ring_entry(u, c), bytes1) ||
+	if (!copy_to_iter_full(evtchn_ring_entry(u, c), bytes1, to) ||
 	    ((bytes2 != 0) &&
-	     copy_to_user(&buf[bytes1], &u->ring[0], bytes2)))
+	     !copy_to_iter_full(&u->ring[0], bytes2, to)))
 		goto unlock_out;
 
 	WRITE_ONCE(u->ring_cons, c + (bytes1 + bytes2) / sizeof(evtchn_port_t));
@@ -269,12 +270,12 @@ static ssize_t evtchn_read(struct file *file, char __user *buf,
 	return rc;
 }
 
-static ssize_t evtchn_write(struct file *file, const char __user *buf,
-			    size_t count, loff_t *ppos)
+static ssize_t evtchn_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int rc, i;
 	evtchn_port_t *kbuf = (evtchn_port_t *)__get_free_page(GFP_KERNEL);
-	struct per_user_data *u = file->private_data;
+	struct per_user_data *u = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 
 	if (kbuf == NULL)
 		return -ENOMEM;
@@ -290,7 +291,7 @@ static ssize_t evtchn_write(struct file *file, const char __user *buf,
 		count = PAGE_SIZE;
 
 	rc = -EFAULT;
-	if (copy_from_user(kbuf, buf, count) != 0)
+	if (!copy_from_iter_full(kbuf, count, from) != 0)
 		goto out;
 
 	mutex_lock(&u->bind_mutex);
@@ -687,8 +688,8 @@ static int evtchn_release(struct inode *inode, struct file *filp)
 
 static const struct file_operations evtchn_fops = {
 	.owner   = THIS_MODULE,
-	.read    = evtchn_read,
-	.write   = evtchn_write,
+	.read_iter    = evtchn_read,
+	.write_iter   = evtchn_write,
 	.unlocked_ioctl = evtchn_ioctl,
 	.poll    = evtchn_poll,
 	.fasync  = evtchn_fasync,

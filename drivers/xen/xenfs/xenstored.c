@@ -9,11 +9,10 @@
 
 #include "xenfs.h"
 
-static ssize_t xsd_read(struct file *file, char __user *buf,
-			    size_t size, loff_t *off)
+static ssize_t xsd_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	const char *str = (const char *)file->private_data;
-	return simple_read_from_buffer(buf, size, off, str, strlen(str));
+	const char *str = (const char *)iocb->ki_filp->private_data;
+	return simple_copy_to_iter(str, &iocb->ki_pos, strlen(str), to);
 }
 
 static int xsd_release(struct inode *inode, struct file *file)
@@ -49,7 +48,7 @@ static int xsd_kva_mmap(struct file *file, struct vm_area_struct *vma)
 const struct file_operations xsd_kva_file_ops = {
 	.open = xsd_kva_open,
 	.mmap = xsd_kva_mmap,
-	.read = xsd_read,
+	.read_iter = xsd_read,
 	.release = xsd_release,
 };
 
@@ -64,6 +63,6 @@ static int xsd_port_open(struct inode *inode, struct file *file)
 
 const struct file_operations xsd_port_file_ops = {
 	.open = xsd_port_open,
-	.read = xsd_read,
+	.read_iter = xsd_read,
 	.release = xsd_release,
 };
