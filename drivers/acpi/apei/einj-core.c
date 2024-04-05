@@ -839,10 +839,9 @@ static int available_error_type_show(struct seq_file *m, void *v)
 
 DEFINE_SHOW_ATTRIBUTE(available_error_type);
 
-static ssize_t error_type_get(struct file *file, char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t error_type_get(struct kiocb *iocb, struct iov_iter *to)
 {
-	return simple_read_from_buffer(buf, count, ppos, einj_buf, strlen(einj_buf));
+	return simple_copy_to_iter(einj_buf, &iocb->ki_pos, strlen(einj_buf), to);
 }
 
 bool einj_is_cxl_error_type(u64 type)
@@ -875,18 +874,18 @@ int einj_validate_error_type(u64 type)
 	return 0;
 }
 
-static ssize_t error_type_set(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t error_type_set(struct kiocb *iocb, struct iov_iter *from)
 {
 	int rc;
 	u64 val;
+	size_t count = iov_iter_count(from);
 
 	/* Leave the last character for the NUL terminator */
 	if (count > sizeof(einj_buf) - 1)
 		return -EINVAL;
 
 	memset(einj_buf, 0, sizeof(einj_buf));
-	if (copy_from_user(einj_buf, buf, count))
+	if (!copy_from_iter_full(einj_buf, count, from))
 		return -EFAULT;
 
 	if (strncmp(einj_buf, "V2_", 3) == 0) {
@@ -909,8 +908,8 @@ static ssize_t error_type_set(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations error_type_fops = {
-	.read		= error_type_get,
-	.write		= error_type_set,
+	.read_iter		= error_type_get,
+	.write_iter		= error_type_set,
 };
 
 static int error_inject_set(void *data, u64 val)
@@ -945,26 +944,26 @@ static int einj_check_table(struct acpi_table_einj *einj_tab)
 	return 0;
 }
 
-static ssize_t u128_read(struct file *f, char __user *buf, size_t count, loff_t *off)
+static ssize_t u128_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char output[2 * COMPONENT_LEN + 1];
-	u8 *data = f->f_inode->i_private;
+	u8 *data = iocb->ki_filp->f_inode->i_private;
 	int i;
 
-	if (*off >= sizeof(output))
+	if (iocb->ki_pos >= sizeof(output))
 		return 0;
 
 	for (i = 0; i < COMPONENT_LEN; i++)
 		sprintf(output + 2 * i, "%.02x", data[COMPONENT_LEN - i - 1]);
 	output[2 * COMPONENT_LEN] = '\n';
 
-	return simple_read_from_buffer(buf, count, off, output, sizeof(output));
+	return simple_copy_to_iter(output, &iocb->ki_pos, sizeof(output), to);
 }
 
-static ssize_t u128_write(struct file *f, const char __user *buf, size_t count, loff_t *off)
+static ssize_t u128_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char input[2 + 2 * COMPONENT_LEN + 2];
-	u8 *save = f->f_inode->i_private;
+	u8 *save = iocb->ki_filp->f_inode->i_private;
 	u8 tmp[COMPONENT_LEN];
 	char byte[3] = {};
 	char *s, *e;
@@ -973,10 +972,10 @@ static ssize_t u128_write(struct file *f, const char __user *buf, size_t count, 
 	int i;
 
 	/* Require that user supply whole input line in one write(2) syscall */
-	if (*off)
+	if (iocb->ki_pos)
 		return -EINVAL;
 
-	c = simple_write_to_buffer(input, sizeof(input), off, buf, count);
+	c = simple_copy_from_iter(input, &iocb->ki_pos, sizeof(input), from);
 	if (c < 0)
 		return c;
 
@@ -1013,8 +1012,8 @@ static ssize_t u128_write(struct file *f, const char __user *buf, size_t count, 
 }
 
 static const struct file_operations u128_fops = {
-	.read	= u128_read,
-	.write	= u128_write,
+	.read_iter	= u128_read,
+	.write_iter	= u128_write,
 };
 
 static bool setup_einjv2_component_files(void)

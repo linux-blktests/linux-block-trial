@@ -638,6 +638,7 @@ again:
 	}
 	return size > 0 ? size : ret;
 }
+FOPS_READ_ITER_HELPER(acpi_aml_read);
 
 static ssize_t acpi_aml_write_user(const char __user *buf, size_t len)
 {
@@ -707,6 +708,7 @@ again:
 	}
 	return size > 0 ? size : ret;
 }
+FOPS_WRITE_ITER_HELPER(acpi_aml_write);
 
 static __poll_t acpi_aml_poll(struct file *file, poll_table *wait)
 {
@@ -722,8 +724,8 @@ static __poll_t acpi_aml_poll(struct file *file, poll_table *wait)
 }
 
 static const struct file_operations acpi_aml_operations = {
-	.read		= acpi_aml_read,
-	.write		= acpi_aml_write,
+	.read_iter	= acpi_aml_read_iter,
+	.write_iter	= acpi_aml_write_iter,
 	.poll		= acpi_aml_poll,
 	.open		= acpi_aml_open,
 	.release	= acpi_aml_release,

@@ -60,6 +60,7 @@ static ssize_t acpi_ec_read_io(struct file *f, char __user *buf,
 	}
 	return count;
 }
+FOPS_READ_ITER_HELPER(acpi_ec_read_io);
 
 static ssize_t acpi_ec_write_io(struct file *f, const char __user *buf,
 				size_t count, loff_t *off)
@@ -98,12 +99,13 @@ static ssize_t acpi_ec_write_io(struct file *f, const char __user *buf,
 	}
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(acpi_ec_write_io);
 
 static const struct file_operations acpi_ec_io_ops = {
 	.owner = THIS_MODULE,
 	.open  = simple_open,
-	.read  = acpi_ec_read_io,
-	.write = acpi_ec_write_io,
+	.read_iter  = acpi_ec_read_io_iter,
+	.write_iter = acpi_ec_write_io_iter,
 	.llseek = default_llseek,
 };
 

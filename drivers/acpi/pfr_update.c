@@ -514,10 +514,11 @@ unmap:
 
 	return ret ?: len;
 }
+FOPS_WRITE_ITER_HELPER(pfru_write);
 
 static const struct file_operations acpi_pfru_fops = {
 	.owner		= THIS_MODULE,
-	.write		= pfru_write,
+	.write_iter	= pfru_write_iter,
 	.unlocked_ioctl = pfru_ioctl,
 	.llseek		= noop_llseek,
 };

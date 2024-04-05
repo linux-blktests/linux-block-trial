@@ -14,6 +14,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <acpi/apei.h>
 #include <linux/miscdevice.h>
 
@@ -60,8 +61,9 @@ static long erst_dbg_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 
 	switch (cmd) {
 	case APEI_ERST_CLEAR_RECORD:
-		if (copy_from_user(&record_id, (void __user *)arg,
-				   sizeof(record_id)))
+		rc = copy_from_user(&record_id, (void __user *)arg,
+				    sizeof(record_id));
+		if (rc)
 			return -EFAULT;
 		return erst_clear(record_id);
 	case APEI_ERST_GET_RECORD_COUNT:
@@ -78,20 +80,20 @@ static long erst_dbg_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	}
 }
 
-static ssize_t erst_dbg_read(struct file *filp, char __user *ubuf,
-			     size_t usize, loff_t *off)
+static ssize_t erst_dbg_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t usize = iov_iter_count(to);
 	int rc, *pos;
 	ssize_t len = 0;
 	u64 id;
 
-	if (*off)
+	if (iocb->ki_pos)
 		return -EINVAL;
 
 	if (mutex_lock_interruptible(&erst_dbg_mutex) != 0)
 		return -EINTR;
 
-	pos = (int *)&filp->private_data;
+	pos = (int *)&iocb->ki_filp->private_data;
 
 retry_next:
 	rc = erst_get_record_id_next(pos, &id);
@@ -140,7 +142,7 @@ retry:
 		goto out;
 
 	rc = -EFAULT;
-	if (copy_to_user(ubuf, erst_dbg_buf, len))
+	if (!copy_to_iter_full(erst_dbg_buf, len, to))
 		goto out;
 	rc = 0;
 out:
@@ -148,9 +150,9 @@ out:
 	return rc ? rc : len;
 }
 
-static ssize_t erst_dbg_write(struct file *filp, const char __user *ubuf,
-			      size_t usize, loff_t *off)
+static ssize_t erst_dbg_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t usize = iov_iter_count(from);
 	int rc;
 	struct cper_record_header *rcd;
 
@@ -174,7 +176,8 @@ static ssize_t erst_dbg_write(struct file *filp, const char __user *ubuf,
 		erst_dbg_buf = p;
 		erst_dbg_buf_len = usize;
 	}
-	if (copy_from_user(erst_dbg_buf, ubuf, usize)) {
+	rc = copy_from_iter_full(erst_dbg_buf, usize, from);
+	if (!rc) {
 		rc = -EFAULT;
 		goto out;
 	}
@@ -194,8 +197,8 @@ static const struct file_operations erst_dbg_ops = {
 	.owner		= THIS_MODULE,
 	.open		= erst_dbg_open,
 	.release	= erst_dbg_release,
-	.read		= erst_dbg_read,
-	.write		= erst_dbg_write,
+	.read_iter	= erst_dbg_read,
+	.write_iter	= erst_dbg_write,
 	.unlocked_ioctl	= erst_dbg_ioctl,
 };
 
