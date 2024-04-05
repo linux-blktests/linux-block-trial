@@ -4295,6 +4295,7 @@ static ssize_t kvm_vcpu_stats_read(struct file *file, char __user *user_buffer,
 			&kvm_vcpu_stats_desc[0], &vcpu->stat,
 			sizeof(vcpu->stat), user_buffer, size, offset);
 }
+FOPS_READ_ITER_HELPER(kvm_vcpu_stats_read);
 
 static int kvm_vcpu_stats_release(struct inode *inode, struct file *file)
 {
@@ -4306,7 +4307,7 @@ static int kvm_vcpu_stats_release(struct inode *inode, struct file *file)
 
 static const struct file_operations kvm_vcpu_stats_fops = {
 	.owner = THIS_MODULE,
-	.read = kvm_vcpu_stats_read,
+	.read_iter = kvm_vcpu_stats_read_iter,
 	.release = kvm_vcpu_stats_release,
 	.llseek = noop_llseek,
 };
@@ -5105,6 +5106,7 @@ static ssize_t kvm_vm_stats_read(struct file *file, char __user *user_buffer,
 				&kvm_vm_stats_desc[0], &kvm->stat,
 				sizeof(kvm->stat), user_buffer, size, offset);
 }
+FOPS_READ_ITER_HELPER(kvm_vm_stats_read);
 
 static int kvm_vm_stats_release(struct inode *inode, struct file *file)
 {
@@ -5116,7 +5118,7 @@ static int kvm_vm_stats_release(struct inode *inode, struct file *file)
 
 static const struct file_operations kvm_vm_stats_fops = {
 	.owner = THIS_MODULE,
-	.read = kvm_vm_stats_read,
+	.read_iter = kvm_vm_stats_read_iter,
 	.release = kvm_vm_stats_release,
 	.llseek = noop_llseek,
 };
@@ -6215,8 +6217,8 @@ static const struct file_operations stat_fops_per_vm = {
 	.owner = THIS_MODULE,
 	.open = kvm_stat_data_open,
 	.release = kvm_debugfs_release,
-	.read = simple_attr_read,
-	.write = simple_attr_write,
+	.read_iter = simple_attr_read_iter,
+	.write_iter = simple_attr_write_iter,
 };
 
 static int vm_stat_get(void *_offset, u64 *val)
