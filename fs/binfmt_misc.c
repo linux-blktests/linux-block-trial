@@ -697,10 +697,9 @@ static void remove_binfmt_handler(struct binfmt_misc *misc, Node *e)
 
 /* /<entry> */
 
-static ssize_t
-bm_entry_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
+static ssize_t bm_entry_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	Node *e = file_inode(file)->i_private;
+	Node *e = file_inode(iocb->ki_filp)->i_private;
 	ssize_t res;
 	char *page;
 
@@ -710,7 +709,7 @@ bm_entry_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
 
 	entry_status(e, page);
 
-	res = simple_read_from_buffer(buf, nbytes, ppos, page, strlen(page));
+	res = simple_copy_to_iter(page, &iocb->ki_pos, strlen(page), to);
 
 	free_page((unsigned long) page);
 	return res;
@@ -757,10 +756,11 @@ static ssize_t bm_entry_write(struct file *file, const char __user *buffer,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(bm_entry_write);
 
 static const struct file_operations bm_entry_operations = {
-	.read		= bm_entry_read,
-	.write		= bm_entry_write,
+	.read_iter	= bm_entry_read,
+	.write_iter	= bm_entry_write_iter,
 	.llseek		= default_llseek,
 };
 
@@ -839,23 +839,23 @@ static ssize_t bm_register_write(struct file *file, const char __user *buffer,
 	}
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(bm_register_write);
 
 static const struct file_operations bm_register_operations = {
-	.write		= bm_register_write,
+	.write_iter	= bm_register_write_iter,
 	.llseek		= noop_llseek,
 };
 
 /* /status */
 
-static ssize_t
-bm_status_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
+static ssize_t bm_status_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct binfmt_misc *misc;
 	char *s;
 
-	misc = i_binfmt_misc(file_inode(file));
+	misc = i_binfmt_misc(file_inode(iocb->ki_filp));
 	s = misc->enabled ? "enabled\n" : "disabled\n";
-	return simple_read_from_buffer(buf, nbytes, ppos, s, strlen(s));
+	return simple_copy_to_iter(s, &iocb->ki_pos, strlen(s), to);
 }
 
 static ssize_t bm_status_write(struct file *file, const char __user *buffer,
@@ -901,10 +901,11 @@ static ssize_t bm_status_write(struct file *file, const char __user *buffer,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(bm_status_write);
 
 static const struct file_operations bm_status_operations = {
-	.read		= bm_status_read,
-	.write		= bm_status_write,
+	.read_iter	= bm_status_read,
+	.write_iter	= bm_status_write_iter,
 	.llseek		= default_llseek,
 };
 
