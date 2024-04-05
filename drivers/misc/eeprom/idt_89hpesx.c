@@ -895,20 +895,20 @@ static ssize_t eeprom_read(struct file *filp, struct kobject *kobj,
  * "<reg addr>:<value>". Register address must be aligned within 4 bytes
  * (one DWORD).
  */
-static ssize_t idt_dbgfs_csr_write(struct file *filep, const char __user *ubuf,
-				   size_t count, loff_t *offp)
+static ssize_t idt_dbgfs_csr_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct idt_89hpesx_dev *pdev = filep->private_data;
+	struct idt_89hpesx_dev *pdev = iocb->ki_filp->private_data;
 	char *colon_ch, *csraddr_str, *csrval_str;
+	size_t count = iov_iter_count(from);
 	int ret;
 	u32 csraddr, csrval;
 	char *buf;
 
-	if (*offp)
+	if (iocb->ki_pos)
 		return 0;
 
 	/* Copy data from User-space */
-	buf = memdup_user_nul(ubuf, count);
+	buf = iterdup(from, count);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -982,10 +982,9 @@ free_buf:
  * It just prints the pair "0x<reg addr>:0x<value>" to passed buffer.
  */
 #define CSRBUF_SIZE	((size_t)32)
-static ssize_t idt_dbgfs_csr_read(struct file *filep, char __user *ubuf,
-				  size_t count, loff_t *offp)
+static ssize_t idt_dbgfs_csr_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct idt_89hpesx_dev *pdev = filep->private_data;
+	struct idt_89hpesx_dev *pdev = iocb->ki_filp->private_data;
 	u32 csraddr, csrval;
 	char buf[CSRBUF_SIZE];
 	int ret, size;
@@ -1003,7 +1002,7 @@ static ssize_t idt_dbgfs_csr_read(struct file *filep, char __user *ubuf,
 		(unsigned int)csraddr, (unsigned int)csrval);
 
 	/* Copy data to User-space */
-	return simple_read_from_buffer(ubuf, count, offp, buf, size);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, size, to);
 }
 
 /*
@@ -1020,8 +1019,8 @@ static const BIN_ATTR_RW(eeprom, EEPROM_DEF_SIZE);
 static const struct file_operations csr_dbgfs_ops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.write = idt_dbgfs_csr_write,
-	.read = idt_dbgfs_csr_read
+	.write_iter = idt_dbgfs_csr_write,
+	.read_iter = idt_dbgfs_csr_read
 };
 
 /*===========================================================================
