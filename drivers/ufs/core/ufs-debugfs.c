@@ -157,17 +157,17 @@ static int ufs_saved_err_show(struct seq_file *s, void *data)
 	return 0;
 }
 
-static ssize_t ufs_saved_err_write(struct file *file, const char __user *buf,
-				   size_t count, loff_t *ppos)
+static ssize_t ufs_saved_err_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ufs_debugfs_attr *attr = file->f_inode->i_private;
-	struct ufs_hba *hba = hba_from_file(file);
+	struct ufs_debugfs_attr *attr = iocb->ki_filp->f_inode->i_private;
+	struct ufs_hba *hba = hba_from_file(iocb->ki_filp);
+	size_t count = iov_iter_count(from);
 	char val_str[16] = { };
 	int val, ret;
 
 	if (count > sizeof(val_str))
 		return -EINVAL;
-	if (copy_from_user(val_str, buf, count))
+	if (!copy_from_iter_full(val_str, count, from))
 		return -EFAULT;
 	ret = kstrtoint(val_str, 0, &val);
 	if (ret < 0)
@@ -196,8 +196,8 @@ static int ufs_saved_err_open(struct inode *inode, struct file *file)
 static const struct file_operations ufs_saved_err_fops = {
 	.owner		= THIS_MODULE,
 	.open		= ufs_saved_err_open,
-	.read		= seq_read,
-	.write		= ufs_saved_err_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= ufs_saved_err_write,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
