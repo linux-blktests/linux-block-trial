@@ -3844,27 +3844,25 @@ static int btusb_shutdown_qca(struct hci_dev *hdev)
 	return 0;
 }
 
-static ssize_t force_poll_sync_read(struct file *file, char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t force_poll_sync_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct btusb_data *data = file->private_data;
+	struct btusb_data *data = iocb->ki_filp->private_data;
 	char buf[3];
 
 	buf[0] = data->poll_sync ? 'Y' : 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
-static ssize_t force_poll_sync_write(struct file *file,
-				     const char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t force_poll_sync_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct btusb_data *data = file->private_data;
+	struct btusb_data *data = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	bool enable;
 	int err;
 
-	err = kstrtobool_from_user(user_buf, count, &enable);
+	err = kstrtobool_from_iter(from, count, &enable);
 	if (err)
 		return err;
 
@@ -3883,8 +3881,8 @@ static ssize_t force_poll_sync_write(struct file *file,
 static const struct file_operations force_poll_sync_fops = {
 	.owner		= THIS_MODULE,
 	.open		= simple_open,
-	.read		= force_poll_sync_read,
-	.write		= force_poll_sync_write,
+	.read_iter	= force_poll_sync_read,
+	.write_iter	= force_poll_sync_write,
 	.llseek		= default_llseek,
 };
 

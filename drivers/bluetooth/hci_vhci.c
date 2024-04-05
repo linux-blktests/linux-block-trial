@@ -109,16 +109,15 @@ static bool vhci_wakeup(struct hci_dev *hdev)
 	return data->wakeup;
 }
 
-static ssize_t force_suspend_read(struct file *file, char __user *user_buf,
-				  size_t count, loff_t *ppos)
+static ssize_t force_suspend_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct vhci_data *data = file->private_data;
+	struct vhci_data *data = iocb->ki_filp->private_data;
 	char buf[3];
 
 	buf[0] = data->suspended ? 'Y' : 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
 static void vhci_suspend_work(struct work_struct *work)
@@ -132,15 +131,14 @@ static void vhci_suspend_work(struct work_struct *work)
 		hci_resume_dev(data->hdev);
 }
 
-static ssize_t force_suspend_write(struct file *file,
-				   const char __user *user_buf,
-				   size_t count, loff_t *ppos)
+static ssize_t force_suspend_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct vhci_data *data = file->private_data;
+	struct vhci_data *data = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	bool enable;
 	int err;
 
-	err = kstrtobool_from_user(user_buf, count, &enable);
+	err = kstrtobool_from_iter(from, count, &enable);
 	if (err)
 		return err;
 
@@ -156,32 +154,30 @@ static ssize_t force_suspend_write(struct file *file,
 
 static const struct file_operations force_suspend_fops = {
 	.open		= simple_open,
-	.read		= force_suspend_read,
-	.write		= force_suspend_write,
+	.read_iter	= force_suspend_read,
+	.write_iter	= force_suspend_write,
 	.llseek		= default_llseek,
 };
 
-static ssize_t force_wakeup_read(struct file *file, char __user *user_buf,
-				 size_t count, loff_t *ppos)
+static ssize_t force_wakeup_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct vhci_data *data = file->private_data;
+	struct vhci_data *data = iocb->ki_filp->private_data;
 	char buf[3];
 
 	buf[0] = data->wakeup ? 'Y' : 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
-static ssize_t force_wakeup_write(struct file *file,
-				  const char __user *user_buf, size_t count,
-				  loff_t *ppos)
+static ssize_t force_wakeup_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct vhci_data *data = file->private_data;
+	struct vhci_data *data = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	bool enable;
 	int err;
 
-	err = kstrtobool_from_user(user_buf, count, &enable);
+	err = kstrtobool_from_iter(from, count, &enable);
 	if (err)
 		return err;
 
@@ -195,8 +191,8 @@ static ssize_t force_wakeup_write(struct file *file,
 
 static const struct file_operations force_wakeup_fops = {
 	.open		= simple_open,
-	.read		= force_wakeup_read,
-	.write		= force_wakeup_write,
+	.read_iter	= force_wakeup_read,
+	.write_iter	= force_wakeup_write,
 	.llseek		= default_llseek,
 };
 
@@ -227,27 +223,25 @@ static int msft_opcode_get(void *data, u64 *val)
 DEFINE_DEBUGFS_ATTRIBUTE(msft_opcode_fops, msft_opcode_get, msft_opcode_set,
 			 "%llu\n");
 
-static ssize_t aosp_capable_read(struct file *file, char __user *user_buf,
-				 size_t count, loff_t *ppos)
+static ssize_t aosp_capable_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct vhci_data *vhci = file->private_data;
+	struct vhci_data *vhci = iocb->ki_filp->private_data;
 	char buf[3];
 
 	buf[0] = vhci->aosp_capable ? 'Y' : 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
-static ssize_t aosp_capable_write(struct file *file,
-				  const char __user *user_buf, size_t count,
-				  loff_t *ppos)
+static ssize_t aosp_capable_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct vhci_data *vhci = file->private_data;
+	struct vhci_data *vhci = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	bool enable;
 	int err;
 
-	err = kstrtobool_from_user(user_buf, count, &enable);
+	err = kstrtobool_from_iter(from, count, &enable);
 	if (err)
 		return err;
 
@@ -264,8 +258,8 @@ static ssize_t aosp_capable_write(struct file *file,
 
 static const struct file_operations aosp_capable_fops = {
 	.open		= simple_open,
-	.read		= aosp_capable_read,
-	.write		= aosp_capable_write,
+	.read_iter	= aosp_capable_read,
+	.write_iter	= aosp_capable_write,
 	.llseek		= default_llseek,
 };
 
@@ -320,10 +314,10 @@ static inline void force_devcd_timeout(struct hci_dev *hdev,
 #endif
 }
 
-static ssize_t force_devcd_write(struct file *file, const char __user *user_buf,
-				 size_t count, loff_t *ppos)
+static ssize_t force_devcd_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct vhci_data *data = file->private_data;
+	struct vhci_data *data = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct hci_dev *hdev = data->hdev;
 	struct sk_buff *skb = NULL;
 	struct devcoredump_test_data dump_data;
@@ -334,7 +328,7 @@ static ssize_t force_devcd_write(struct file *file, const char __user *user_buf,
 	    count > sizeof(dump_data))
 		return -EINVAL;
 
-	if (copy_from_user(&dump_data, user_buf, count))
+	if (!copy_from_iter_full(&dump_data, count, from))
 		return -EFAULT;
 
 	data_size = count - offsetof(struct devcoredump_test_data, data);
@@ -377,7 +371,7 @@ static ssize_t force_devcd_write(struct file *file, const char __user *user_buf,
 
 static const struct file_operations force_devcoredump_fops = {
 	.open		= simple_open,
-	.write		= force_devcd_write,
+	.write_iter	= force_devcd_write,
 };
 
 static void vhci_debugfs_init(struct vhci_data *data)
@@ -607,6 +601,7 @@ static ssize_t vhci_read(struct file *file,
 
 	return ret;
 }
+FOPS_READ_ITER_HELPER(vhci_read);
 
 static ssize_t vhci_write(struct kiocb *iocb, struct iov_iter *from)
 {
@@ -700,7 +695,7 @@ static int vhci_release(struct inode *inode, struct file *file)
 
 static const struct file_operations vhci_fops = {
 	.owner		= THIS_MODULE,
-	.read		= vhci_read,
+	.read_iter	= vhci_read_iter,
 	.write_iter	= vhci_write,
 	.poll		= vhci_poll,
 	.open		= vhci_open,

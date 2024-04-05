@@ -18,13 +18,13 @@ struct btmrvl_debugfs_data {
 	struct dentry *status_dir;
 };
 
-static ssize_t btmrvl_hscfgcmd_write(struct file *file,
-			const char __user *ubuf, size_t count, loff_t *ppos)
+static ssize_t btmrvl_hscfgcmd_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct btmrvl_private *priv = file->private_data;
+	struct btmrvl_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	long result, ret;
 
-	ret = kstrtol_from_user(ubuf, count, 10, &result);
+	ret = kstrtol_from_iter(from, count, 10, &result);
 	if (ret)
 		return ret;
 
@@ -38,33 +38,32 @@ static ssize_t btmrvl_hscfgcmd_write(struct file *file,
 	return count;
 }
 
-static ssize_t btmrvl_hscfgcmd_read(struct file *file, char __user *userbuf,
-						size_t count, loff_t *ppos)
+static ssize_t btmrvl_hscfgcmd_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct btmrvl_private *priv = file->private_data;
+	struct btmrvl_private *priv = iocb->ki_filp->private_data;
 	char buf[16];
 	int ret;
 
 	ret = snprintf(buf, sizeof(buf) - 1, "%d\n",
 						priv->btmrvl_dev.hscfgcmd);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, ret);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, ret, to);
 }
 
 static const struct file_operations btmrvl_hscfgcmd_fops = {
-	.read	= btmrvl_hscfgcmd_read,
-	.write	= btmrvl_hscfgcmd_write,
+	.read_iter	= btmrvl_hscfgcmd_read,
+	.write_iter	= btmrvl_hscfgcmd_write,
 	.open	= simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t btmrvl_pscmd_write(struct file *file, const char __user *ubuf,
-						size_t count, loff_t *ppos)
+static ssize_t btmrvl_pscmd_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct btmrvl_private *priv = file->private_data;
+	struct btmrvl_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	long result, ret;
 
-	ret = kstrtol_from_user(ubuf, count, 10, &result);
+	ret = kstrtol_from_iter(from, count, 10, &result);
 	if (ret)
 		return ret;
 
@@ -79,32 +78,31 @@ static ssize_t btmrvl_pscmd_write(struct file *file, const char __user *ubuf,
 
 }
 
-static ssize_t btmrvl_pscmd_read(struct file *file, char __user *userbuf,
-						size_t count, loff_t *ppos)
+static ssize_t btmrvl_pscmd_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct btmrvl_private *priv = file->private_data;
+	struct btmrvl_private *priv = iocb->ki_filp->private_data;
 	char buf[16];
 	int ret;
 
 	ret = snprintf(buf, sizeof(buf) - 1, "%d\n", priv->btmrvl_dev.pscmd);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, ret);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, ret, to);
 }
 
 static const struct file_operations btmrvl_pscmd_fops = {
-	.read = btmrvl_pscmd_read,
-	.write = btmrvl_pscmd_write,
+	.read_iter = btmrvl_pscmd_read,
+	.write_iter = btmrvl_pscmd_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t btmrvl_hscmd_write(struct file *file, const char __user *ubuf,
-						size_t count, loff_t *ppos)
+static ssize_t btmrvl_hscmd_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct btmrvl_private *priv = file->private_data;
+	struct btmrvl_private *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	long result, ret;
 
-	ret = kstrtol_from_user(ubuf, count, 10, &result);
+	ret = kstrtol_from_iter(from, count, 10, &result);
 	if (ret)
 		return ret;
 
@@ -117,21 +115,20 @@ static ssize_t btmrvl_hscmd_write(struct file *file, const char __user *ubuf,
 	return count;
 }
 
-static ssize_t btmrvl_hscmd_read(struct file *file, char __user *userbuf,
-						size_t count, loff_t *ppos)
+static ssize_t btmrvl_hscmd_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct btmrvl_private *priv = file->private_data;
+	struct btmrvl_private *priv = iocb->ki_filp->private_data;
 	char buf[16];
 	int ret;
 
 	ret = snprintf(buf, sizeof(buf) - 1, "%d\n", priv->btmrvl_dev.hscmd);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, ret);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, ret, to);
 }
 
 static const struct file_operations btmrvl_hscmd_fops = {
-	.read	= btmrvl_hscmd_read,
-	.write	= btmrvl_hscmd_write,
+	.read_iter	= btmrvl_hscmd_read,
+	.write_iter	= btmrvl_hscmd_write,
 	.open	= simple_open,
 	.llseek = default_llseek,
 };
