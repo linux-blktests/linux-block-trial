@@ -27,20 +27,17 @@
 #include <linux/slab.h>
 #include <linux/debugfs.h>
 #include <linux/utsname.h>
+#include <linux/uio.h>
 
 #define DEFAULT_COUNT 10
 
 static int lkdtm_debugfs_open(struct inode *inode, struct file *file);
-static ssize_t lkdtm_debugfs_read(struct file *f, char __user *user_buf,
-		size_t count, loff_t *off);
-static ssize_t direct_entry(struct file *f, const char __user *user_buf,
-			    size_t count, loff_t *off);
+static ssize_t lkdtm_debugfs_read(struct kiocb *iocb, struct iov_iter *to);
+static ssize_t direct_entry(struct kiocb *iocb, struct iov_iter *from);
 
 #ifdef CONFIG_KPROBES
 static int lkdtm_kprobe_handler(struct kprobe *kp, struct pt_regs *regs);
-static ssize_t lkdtm_debugfs_entry(struct file *f,
-				   const char __user *user_buf,
-				   size_t count, loff_t *off);
+static ssize_t lkdtm_debugfs_entry(struct kiocb *iocb, struct iov_iter *from);
 # define CRASHPOINT_KPROBE(_symbol)				\
 		.kprobe = {					\
 			.symbol_name = (_symbol),		\
@@ -64,10 +61,10 @@ struct crashpoint {
 	{							\
 		.name = _name,					\
 		.fops = {					\
-			.read	= lkdtm_debugfs_read,		\
+			.read_iter= lkdtm_debugfs_read,		\
 			.llseek	= generic_file_llseek,		\
 			.open	= lkdtm_debugfs_open,		\
-			.write	= CRASHPOINT_WRITE(_symbol)	\
+			.write_iter = CRASHPOINT_WRITE(_symbol)	\
 		},						\
 		CRASHPOINT_KPROBE(_symbol)			\
 	}
@@ -224,12 +221,11 @@ static int lkdtm_kprobe_handler(struct kprobe *kp, struct pt_regs *regs)
 	return 0;
 }
 
-static ssize_t lkdtm_debugfs_entry(struct file *f,
-				   const char __user *user_buf,
-				   size_t count, loff_t *off)
+static ssize_t lkdtm_debugfs_entry(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct crashpoint *crashpoint = file_inode(f)->i_private;
+	struct crashpoint *crashpoint = file_inode(iocb->ki_filp)->i_private;
 	const struct crashtype *crashtype = NULL;
+	size_t count = iov_iter_count(from);
 	char *buf;
 	int err;
 
@@ -239,7 +235,7 @@ static ssize_t lkdtm_debugfs_entry(struct file *f,
 	buf = (char *)__get_free_page(GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
-	if (copy_from_user(buf, user_buf, count)) {
+	if (!copy_from_iter_full(buf, count, from)) {
 		free_page((unsigned long) buf);
 		return -EFAULT;
 	}
@@ -257,15 +253,14 @@ static ssize_t lkdtm_debugfs_entry(struct file *f,
 	if (err < 0)
 		return err;
 
-	*off += count;
+	iocb->ki_pos += count;
 
 	return count;
 }
 #endif
 
 /* Generic read callback that just prints out the available crash types */
-static ssize_t lkdtm_debugfs_read(struct file *f, char __user *user_buf,
-		size_t count, loff_t *off)
+static ssize_t lkdtm_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int n, cat, idx;
 	ssize_t out;
@@ -288,8 +283,7 @@ static ssize_t lkdtm_debugfs_read(struct file *f, char __user *user_buf,
 	}
 	buf[n] = '\0';
 
-	out = simple_read_from_buffer(user_buf, count, off,
-				      buf, n);
+	out = simple_copy_to_iter(buf, &iocb->ki_pos, n, to);
 	free_page((unsigned long) buf);
 
 	return out;
@@ -301,10 +295,10 @@ static int lkdtm_debugfs_open(struct inode *inode, struct file *file)
 }
 
 /* Special entry to just crash directly. Available without KPROBEs */
-static ssize_t direct_entry(struct file *f, const char __user *user_buf,
-		size_t count, loff_t *off)
+static ssize_t direct_entry(struct kiocb *iocb, struct iov_iter *from)
 {
 	const struct crashtype *crashtype;
+	size_t count = iov_iter_count(from);
 	char *buf;
 	int err;
 
@@ -316,7 +310,7 @@ static ssize_t direct_entry(struct file *f, const char __user *user_buf,
 	buf = (char *)__get_free_page(GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
-	if (copy_from_user(buf, user_buf, count)) {
+	if (!copy_from_iter_full(buf, count, from)) {
 		free_page((unsigned long) buf);
 		return -EFAULT;
 	}
@@ -331,7 +325,7 @@ static ssize_t direct_entry(struct file *f, const char __user *user_buf,
 
 	pr_info("Performing direct entry %s\n", crashtype->name);
 	err = lkdtm_do_action(crashtype);
-	*off += count;
+	iocb->ki_pos += count;
 
 	if (err)
 		return err;
