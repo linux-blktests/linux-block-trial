@@ -1917,11 +1917,10 @@ static void unset_regulator_supplies(struct regulator_dev *rdev)
 }
 
 #ifdef CONFIG_DEBUG_FS
-static ssize_t constraint_flags_read_file(struct file *file,
-					  char __user *user_buf,
-					  size_t count, loff_t *ppos)
+static ssize_t constraint_flags_read_file(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
-	const struct regulator *regulator = file->private_data;
+	const struct regulator *regulator = iocb->ki_filp->private_data;
 	const struct regulation_constraints *c = regulator->rdev->constraints;
 	char *buf;
 	ssize_t ret;
@@ -1949,9 +1948,8 @@ static ssize_t constraint_flags_read_file(struct file *file,
 			c->pull_down,
 			c->over_current_protection);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, ret);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, ret, to);
 	kfree(buf);
-
 	return ret;
 }
 
@@ -1960,7 +1958,7 @@ static ssize_t constraint_flags_read_file(struct file *file,
 static const struct file_operations constraint_flags_fops = {
 #ifdef CONFIG_DEBUG_FS
 	.open = simple_open,
-	.read = constraint_flags_read_file,
+	.read_iter = constraint_flags_read_file,
 	.llseek = default_llseek,
 #endif
 };
