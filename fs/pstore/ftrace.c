@@ -88,13 +88,14 @@ static int pstore_set_ftrace_enabled(bool on)
 	return ret;
 }
 
-static ssize_t pstore_ftrace_knob_write(struct file *f, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t pstore_ftrace_knob_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	u8 on;
 	ssize_t ret;
 
-	ret = kstrtou8_from_user(buf, count, 2, &on);
+	ret = kstrtou8_from_iter(from, count, 2, &on);
 	if (ret)
 		return ret;
 
@@ -108,18 +109,17 @@ static ssize_t pstore_ftrace_knob_write(struct file *f, const char __user *buf,
 	return ret;
 }
 
-static ssize_t pstore_ftrace_knob_read(struct file *f, char __user *buf,
-				       size_t count, loff_t *ppos)
+static ssize_t pstore_ftrace_knob_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char val[] = { '0' + pstore_ftrace_enabled, '\n' };
 
-	return simple_read_from_buffer(buf, count, ppos, val, sizeof(val));
+	return simple_copy_to_iter(val, &iocb->ki_pos, sizeof(val), to);
 }
 
 static const struct file_operations pstore_knob_fops = {
 	.open	= simple_open,
-	.read	= pstore_ftrace_knob_read,
-	.write	= pstore_ftrace_knob_write,
+	.read_iter	= pstore_ftrace_knob_read,
+	.write_iter	= pstore_ftrace_knob_write,
 };
 
 static struct dentry *pstore_ftrace_dir;

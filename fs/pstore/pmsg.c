@@ -33,11 +33,12 @@ static ssize_t write_pmsg(struct file *file, const char __user *buf,
 	mutex_unlock(&pmsg_lock);
 	return ret ? ret : count;
 }
+FOPS_WRITE_ITER_HELPER(write_pmsg);
 
 static const struct file_operations pmsg_fops = {
 	.owner		= THIS_MODULE,
 	.llseek		= noop_llseek,
-	.write		= write_pmsg,
+	.write_iter	= write_pmsg_iter,
 };
 
 static struct class *pmsg_class;
