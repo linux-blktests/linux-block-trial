@@ -494,6 +494,7 @@ static ssize_t idxd_cdev_write(struct file *filp, const char __user *buf, size_t
 
 	return written;
 }
+FOPS_WRITE_ITER_HELPER(idxd_cdev_write);
 
 static __poll_t idxd_cdev_poll(struct file *filp,
 			       struct poll_table_struct *wait)
@@ -520,7 +521,7 @@ static const struct file_operations idxd_cdev_fops = {
 	.open = idxd_cdev_open,
 	.release = idxd_cdev_release,
 	.mmap = idxd_cdev_mmap,
-	.write = idxd_cdev_write,
+	.write_iter = idxd_cdev_write_iter,
 	.poll = idxd_cdev_poll,
 };
 

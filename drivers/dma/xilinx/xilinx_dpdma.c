@@ -355,14 +355,14 @@ static struct xilinx_dpdma_debugfs_request dpdma_debugfs_reqs[] = {
 	},
 };
 
-static ssize_t xilinx_dpdma_debugfs_read(struct file *f, char __user *buf,
-					 size_t size, loff_t *pos)
+static ssize_t xilinx_dpdma_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	enum xilinx_dpdma_testcases testcase;
+	size_t size = iov_iter_count(to);
 	char *kern_buff;
 	int ret = 0;
 
-	if (*pos != 0 || size <= 0)
+	if (iocb->ki_pos != 0 || size <= 0)
 		return -EINVAL;
 
 	kern_buff = kzalloc(XILINX_DPDMA_DEBUGFS_READ_MAX_SIZE, GFP_KERNEL);
@@ -382,7 +382,7 @@ static ssize_t xilinx_dpdma_debugfs_read(struct file *f, char __user *buf,
 	}
 
 	size = min(size, strlen(kern_buff));
-	if (copy_to_user(buf, kern_buff, size))
+	if (!copy_to_iter_full(kern_buff, size, to))
 		ret = -EFAULT;
 
 done:
@@ -390,7 +390,7 @@ done:
 	if (ret)
 		return ret;
 
-	*pos = size + 1;
+	iocb->ki_pos = size + 1;
 	return size;
 }
 
@@ -442,11 +442,12 @@ done:
 	kfree(kern_buff_start);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(xilinx_dpdma_debugfs_write);
 
 static const struct file_operations fops_xilinx_dpdma_dbgfs = {
 	.owner = THIS_MODULE,
-	.read = xilinx_dpdma_debugfs_read,
-	.write = xilinx_dpdma_debugfs_write,
+	.read_iter = xilinx_dpdma_debugfs_read,
+	.write_iter = xilinx_dpdma_debugfs_write_iter,
 };
 
 static void xilinx_dpdma_debugfs_init(struct xilinx_dpdma_device *xdev)
