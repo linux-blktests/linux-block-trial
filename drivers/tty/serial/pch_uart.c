@@ -290,10 +290,9 @@ static const int trigger_level_1[4] = { 1, 1, 1, 1 };
 #define PCH_REGS_BUFSIZE	1024
 
 
-static ssize_t port_show_regs(struct file *file, char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t port_show_regs(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct eg20t_port *priv = file->private_data;
+	struct eg20t_port *priv = iocb->ki_filp->private_data;
 	char *buf;
 	u32 len = 0;
 	ssize_t ret;
@@ -335,7 +334,7 @@ static ssize_t port_show_regs(struct file *file, char __user *user_buf,
 	if (len > PCH_REGS_BUFSIZE)
 		len = PCH_REGS_BUFSIZE;
 
-	ret =  simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	ret =  simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 	return ret;
 }
@@ -343,7 +342,7 @@ static ssize_t port_show_regs(struct file *file, char __user *user_buf,
 static const struct file_operations port_regs_ops = {
 	.owner		= THIS_MODULE,
 	.open		= simple_open,
-	.read		= port_show_regs,
+	.read_iter	= port_show_regs,
 	.llseek		= default_llseek,
 };
 
