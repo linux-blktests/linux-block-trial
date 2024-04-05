@@ -3625,16 +3625,15 @@ static int current_parent_show(struct seq_file *s, void *data)
 DEFINE_SHOW_ATTRIBUTE(current_parent);
 
 #ifdef CLOCK_ALLOW_WRITE_DEBUGFS
-static ssize_t current_parent_write(struct file *file, const char __user *ubuf,
-				    size_t count, loff_t *ppos)
+static ssize_t current_parent_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct clk_core *core = s->private;
 	struct clk_core *parent;
 	u8 idx;
 	int err;
 
-	err = kstrtou8_from_user(ubuf, count, 0, &idx);
+	err = kstrtou8_from_iter(from, count, 0, &idx);
 	if (err < 0)
 		return err;
 
@@ -3653,8 +3652,8 @@ static ssize_t current_parent_write(struct file *file, const char __user *ubuf,
 
 static const struct file_operations current_parent_rw_fops = {
 	.open		= current_parent_open,
-	.write		= current_parent_write,
-	.read		= seq_read,
+	.write_iter	= current_parent_write,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };

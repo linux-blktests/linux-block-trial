@@ -420,7 +420,7 @@ static const struct file_operations jh7110_pll_registers_ops = {
 	.owner = THIS_MODULE,
 	.open = jh7110_pll_registers_open,
 	.release = single_release,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek
 };
 
