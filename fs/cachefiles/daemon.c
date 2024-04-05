@@ -24,10 +24,8 @@
 
 static int cachefiles_daemon_open(struct inode *, struct file *);
 static int cachefiles_daemon_release(struct inode *, struct file *);
-static ssize_t cachefiles_daemon_read(struct file *, char __user *, size_t,
-				      loff_t *);
-static ssize_t cachefiles_daemon_write(struct file *, const char __user *,
-				       size_t, loff_t *);
+static ssize_t cachefiles_daemon_read(struct kiocb *, struct iov_iter *);
+static ssize_t cachefiles_daemon_write(struct kiocb *, struct iov_iter *);
 static __poll_t cachefiles_daemon_poll(struct file *,
 					   struct poll_table_struct *);
 static int cachefiles_daemon_frun(struct cachefiles_cache *, char *);
@@ -51,8 +49,8 @@ const struct file_operations cachefiles_daemon_fops = {
 	.owner		= THIS_MODULE,
 	.open		= cachefiles_daemon_open,
 	.release	= cachefiles_daemon_release,
-	.read		= cachefiles_daemon_read,
-	.write		= cachefiles_daemon_write,
+	.read_iter	= cachefiles_daemon_read,
+	.write_iter	= cachefiles_daemon_write,
 	.poll		= cachefiles_daemon_poll,
 	.llseek		= noop_llseek,
 };
@@ -209,8 +207,9 @@ static int cachefiles_daemon_release(struct inode *inode, struct file *file)
 }
 
 static ssize_t cachefiles_do_daemon_read(struct cachefiles_cache *cache,
-					 char __user *_buffer, size_t buflen)
+					 struct iov_iter *to)
 {
+	size_t buflen = iov_iter_count(to);
 	unsigned long long b_released;
 	unsigned f_released;
 	char buffer[256];
@@ -247,7 +246,7 @@ static ssize_t cachefiles_do_daemon_read(struct cachefiles_cache *cache,
 	if (n > buflen)
 		return -EMSGSIZE;
 
-	if (copy_to_user(_buffer, buffer, n) != 0)
+	if (!copy_to_iter_full(buffer, n, to) != 0)
 		return -EFAULT;
 
 	return n;
@@ -256,10 +255,9 @@ static ssize_t cachefiles_do_daemon_read(struct cachefiles_cache *cache,
 /*
  * Read the cache state.
  */
-static ssize_t cachefiles_daemon_read(struct file *file, char __user *_buffer,
-				      size_t buflen, loff_t *pos)
+static ssize_t cachefiles_daemon_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct cachefiles_cache *cache = file->private_data;
+	struct cachefiles_cache *cache = iocb->ki_filp->private_data;
 
 	//_enter(",,%zu,", buflen);
 
@@ -267,21 +265,20 @@ static ssize_t cachefiles_daemon_read(struct file *file, char __user *_buffer,
 		return 0;
 
 	if (cachefiles_in_ondemand_mode(cache))
-		return cachefiles_ondemand_daemon_read(cache, _buffer, buflen);
+		return cachefiles_ondemand_daemon_read(cache, to);
 	else
-		return cachefiles_do_daemon_read(cache, _buffer, buflen);
+		return cachefiles_do_daemon_read(cache, to);
 }
 
 /*
  * Take a command from cachefilesd, parse it and act on it.
  */
-static ssize_t cachefiles_daemon_write(struct file *file,
-				       const char __user *_data,
-				       size_t datalen,
-				       loff_t *pos)
+static ssize_t cachefiles_daemon_write(struct kiocb *iocb,
+				       struct iov_iter *from)
 {
 	const struct cachefiles_daemon_cmd *cmd;
-	struct cachefiles_cache *cache = file->private_data;
+	struct cachefiles_cache *cache = iocb->ki_filp->private_data;
+	size_t datalen = iov_iter_count(from);
 	ssize_t ret;
 	char *data, *args, *cp;
 
@@ -296,7 +293,7 @@ static ssize_t cachefiles_daemon_write(struct file *file,
 		return -EOPNOTSUPP;
 
 	/* drag the command string into the kernel so we can parse it */
-	data = memdup_user_nul(_data, datalen);
+	data = iterdup_nul(from, datalen);
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 

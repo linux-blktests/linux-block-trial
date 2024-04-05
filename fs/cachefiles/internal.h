@@ -303,7 +303,7 @@ extern bool cachefiles_commit_tmpfile(struct cachefiles_cache *cache,
  */
 #ifdef CONFIG_CACHEFILES_ONDEMAND
 extern ssize_t cachefiles_ondemand_daemon_read(struct cachefiles_cache *cache,
-					char __user *_buffer, size_t buflen);
+					struct iov_iter *to);
 
 extern int cachefiles_ondemand_copen(struct cachefiles_cache *cache,
 				     char *args);
@@ -347,7 +347,7 @@ static inline bool cachefiles_ondemand_is_reopening_read(struct cachefiles_req *
 
 #else
 static inline ssize_t cachefiles_ondemand_daemon_read(struct cachefiles_cache *cache,
-					char __user *_buffer, size_t buflen)
+					struct iov_iter *to)
 {
 	return -EOPNOTSUPP;
 }

@@ -411,8 +411,9 @@ static inline bool cachefiles_ondemand_finish_req(struct cachefiles_req *req,
 }
 
 ssize_t cachefiles_ondemand_daemon_read(struct cachefiles_cache *cache,
-					char __user *_buffer, size_t buflen)
+					struct iov_iter *to)
 {
+	size_t buflen = iov_iter_count(to);
 	struct cachefiles_req *req;
 	struct cachefiles_msg *msg;
 	size_t n;
@@ -459,7 +460,7 @@ ssize_t cachefiles_ondemand_daemon_read(struct cachefiles_cache *cache,
 	msg->msg_id = xas.xa_index;
 	msg->object_id = req->object->ondemand->ondemand_id;
 
-	if (copy_to_user(_buffer, msg, n) != 0)
+	if (!copy_to_iter_full(msg, n, to) != 0)
 		ret = -EFAULT;
 
 	if (msg->opcode == CACHEFILES_OP_OPEN) {
