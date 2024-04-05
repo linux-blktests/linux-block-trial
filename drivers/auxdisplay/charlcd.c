@@ -489,6 +489,7 @@ static ssize_t charlcd_write(struct file *file, const char __user *buf,
 
 	return tmp - buf;
 }
+FOPS_WRITE_ITER_HELPER(charlcd_write);
 
 static int charlcd_open(struct inode *inode, struct file *file)
 {
@@ -523,7 +524,7 @@ static int charlcd_release(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations charlcd_fops = {
-	.write   = charlcd_write,
+	.write_iter = charlcd_write_iter,
 	.open    = charlcd_open,
 	.release = charlcd_release,
 };
