@@ -196,16 +196,17 @@ static ssize_t coda_psdev_write(struct file *file, const char __user *buf,
 out:
         return(count ? count : retval);  
 }
+FOPS_WRITE_ITER_HELPER(coda_psdev_write);
 
 /*
  *	Read a message from the kernel to Venus
  */
 
-static ssize_t coda_psdev_read(struct file * file, char __user * buf, 
-			       size_t nbytes, loff_t *off)
+static ssize_t coda_psdev_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	DECLARE_WAITQUEUE(wait, current);
-        struct venus_comm *vcp = (struct venus_comm *) file->private_data;
+	struct venus_comm *vcp = iocb->ki_filp->private_data;
+	size_t nbytes = iov_iter_count(to);
         struct upc_req *req;
 	ssize_t retval = 0, count = 0;
 
@@ -218,7 +219,7 @@ static ssize_t coda_psdev_read(struct file * file, char __user * buf,
 	set_current_state(TASK_INTERRUPTIBLE);
 
 	while (list_empty(&vcp->vc_pending)) {
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			retval = -EAGAIN;
 			break;
 		}
@@ -248,9 +249,9 @@ static ssize_t coda_psdev_read(struct file * file, char __user * buf,
 		count = nbytes;
         }
 
-	if (copy_to_user(buf, req->uc_data, count))
+	if (!copy_to_iter_full(req->uc_data, count, to))
 	        retval = -EFAULT;
-        
+
 	/* If request was not a signal, enqueue and don't free */
 	if (!(req->uc_flags & CODA_REQ_ASYNC)) {
 		req->uc_flags |= CODA_REQ_READ;
@@ -344,8 +345,8 @@ static int coda_psdev_release(struct inode * inode, struct file * file)
 
 static const struct file_operations coda_psdev_fops = {
 	.owner		= THIS_MODULE,
-	.read		= coda_psdev_read,
-	.write		= coda_psdev_write,
+	.read_iter	= coda_psdev_read,
+	.write_iter	= coda_psdev_write_iter,
 	.poll		= coda_psdev_poll,
 	.unlocked_ioctl	= coda_psdev_ioctl,
 	.open		= coda_psdev_open,
