@@ -436,11 +436,9 @@ mt7615_rf_reg_get(void *data, u64 *val)
 DEFINE_DEBUGFS_ATTRIBUTE(fops_rf_reg, mt7615_rf_reg_get, mt7615_rf_reg_set,
 			 "0x%08llx\n");
 
-static ssize_t
-mt7615_ext_mac_addr_read(struct file *file, char __user *userbuf,
-			 size_t count, loff_t *ppos)
+static ssize_t mt7615_ext_mac_addr_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mt7615_dev *dev = file->private_data;
+	struct mt7615_dev *dev = iocb->ki_filp->private_data;
 	u32 len = 32 * ((ETH_ALEN * 3) + 4) + 1;
 	u8 addr[ETH_ALEN];
 	char *buf;
@@ -464,17 +462,17 @@ mt7615_ext_mac_addr_read(struct file *file, char __user *userbuf,
 		ofs += snprintf(buf + ofs, len - ofs, "%d=%pM\n", i, addr);
 	}
 
-	ofs = simple_read_from_buffer(userbuf, count, ppos, buf, ofs);
+	ofs = simple_copy_to_iter(buf, &iocb->ki_pos, ofs, to);
 
 	kfree(buf);
 	return ofs;
 }
 
 static ssize_t
-mt7615_ext_mac_addr_write(struct file *file, const char __user *userbuf,
-			  size_t count, loff_t *ppos)
+mt7615_ext_mac_addr_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mt7615_dev *dev = file->private_data;
+	struct mt7615_dev *dev = iocb->ki_filp->private_data;;
+	size_t count = iov_iter_count(from);
 	unsigned long idx = 0;
 	u8 addr[ETH_ALEN];
 	char buf[32];
@@ -483,7 +481,7 @@ mt7615_ext_mac_addr_write(struct file *file, const char __user *userbuf,
 	if (count > sizeof(buf))
 		return -EINVAL;
 
-	if (copy_from_user(buf, userbuf, count))
+	if (!copy_from_iter_full(buf, count, from))
 		return -EFAULT;
 
 	buf[sizeof(buf) - 1] = '\0';
@@ -526,8 +524,8 @@ mt7615_ext_mac_addr_write(struct file *file, const char __user *userbuf,
 static const struct file_operations fops_ext_mac_addr = {
 	.open = simple_open,
 	.llseek = generic_file_llseek,
-	.read = mt7615_ext_mac_addr_read,
-	.write = mt7615_ext_mac_addr_write,
+	.read_iter = mt7615_ext_mac_addr_read,
+	.write_iter = mt7615_ext_mac_addr_write,
 	.owner = THIS_MODULE,
 };
 

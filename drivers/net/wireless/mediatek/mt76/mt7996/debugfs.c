@@ -124,6 +124,7 @@ mt7996_sys_recovery_set(struct file *file, const char __user *user_buf,
 
 	return ret ? ret : count;
 }
+FOPS_WRITE_ITER_HELPER(mt7996_sys_recovery_set);
 
 static ssize_t
 mt7996_sys_recovery_get(struct file *file, char __user *user_buf,
@@ -211,10 +212,11 @@ mt7996_sys_recovery_get(struct file *file, char __user *user_buf,
 	kfree(buff);
 	return ret;
 }
+FOPS_READ_ITER_HELPER(mt7996_sys_recovery_get);
 
 static const struct file_operations mt7996_sys_recovery_ops = {
-	.write = mt7996_sys_recovery_set,
-	.read = mt7996_sys_recovery_get,
+	.write_iter = mt7996_sys_recovery_set_iter,
+	.read_iter = mt7996_sys_recovery_get_iter,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
@@ -1038,9 +1040,10 @@ out:
 	mutex_unlock(&dev->mt76.mutex);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(mt7996_link_sta_fixed_rate_set);
 
 static const struct file_operations fops_fixed_rate = {
-	.write = mt7996_link_sta_fixed_rate_set,
+	.write_iter = mt7996_link_sta_fixed_rate_set_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
