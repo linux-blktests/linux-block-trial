@@ -53,11 +53,11 @@ struct tps6594_pfsm {
 	unsigned long chip_id;
 };
 
-static ssize_t tps6594_pfsm_read(struct file *f, char __user *buf,
-				 size_t count, loff_t *ppos)
+static ssize_t tps6594_pfsm_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tps6594_pfsm *pfsm = TPS6594_FILE_TO_PFSM(f);
-	loff_t pos = *ppos;
+	struct tps6594_pfsm *pfsm = TPS6594_FILE_TO_PFSM(iocb->ki_filp);
+	size_t count = iov_iter_count(to);
+	loff_t pos = iocb->ki_pos;
 	unsigned int val;
 	int ret;
 	int i;
@@ -74,20 +74,19 @@ static ssize_t tps6594_pfsm_read(struct file *f, char __user *buf,
 		if (ret)
 			return ret;
 
-		if (put_user(val, buf + i))
+		if (put_iter(val, to))
 			return -EFAULT;
 	}
 
-	*ppos = pos + count;
-
+	iocb->ki_pos = pos + count;
 	return count;
 }
 
-static ssize_t tps6594_pfsm_write(struct file *f, const char __user *buf,
-				  size_t count, loff_t *ppos)
+static ssize_t tps6594_pfsm_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tps6594_pfsm *pfsm = TPS6594_FILE_TO_PFSM(f);
-	loff_t pos = *ppos;
+	struct tps6594_pfsm *pfsm = TPS6594_FILE_TO_PFSM(iocb->ki_filp);
+	size_t count = iov_iter_count(from);
+	loff_t pos = iocb->ki_pos;
 	char val;
 	int ret;
 	int i;
@@ -100,7 +99,7 @@ static ssize_t tps6594_pfsm_write(struct file *f, const char __user *buf,
 		count = TPS6594_PMIC_MAX_POS - pos;
 
 	for (i = 0 ; i < count ; i++) {
-		if (get_user(val, buf + i))
+		if (get_iter(val, from))
 			return -EFAULT;
 
 		ret = regmap_write(pfsm->regmap, pos + i, val);
@@ -108,8 +107,7 @@ static ssize_t tps6594_pfsm_write(struct file *f, const char __user *buf,
 			return ret;
 	}
 
-	*ppos = pos + count;
-
+	iocb->ki_pos = pos + count;
 	return count;
 }
 
@@ -253,8 +251,8 @@ static long tps6594_pfsm_ioctl(struct file *f, unsigned int cmd, unsigned long a
 static const struct file_operations tps6594_pfsm_fops = {
 	.owner		= THIS_MODULE,
 	.llseek		= generic_file_llseek,
-	.read		= tps6594_pfsm_read,
-	.write		= tps6594_pfsm_write,
+	.read_iter	= tps6594_pfsm_read,
+	.write_iter	= tps6594_pfsm_write,
 	.unlocked_ioctl	= tps6594_pfsm_ioctl,
 	.compat_ioctl   = compat_ptr_ioctl,
 };
