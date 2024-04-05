@@ -131,13 +131,12 @@ ATTRIBUTE_GROUPS(i2c);
  * needed by those system calls and by this SMBus interface.
  */
 
-static ssize_t i2cdev_read(struct file *file, char __user *buf, size_t count,
-		loff_t *offset)
+static ssize_t i2cdev_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	struct i2c_client *client = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	char *tmp;
 	int ret;
-
-	struct i2c_client *client = file->private_data;
 
 	/* Adapter must support I2C transfers */
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
@@ -150,22 +149,22 @@ static ssize_t i2cdev_read(struct file *file, char __user *buf, size_t count,
 	if (tmp == NULL)
 		return -ENOMEM;
 
-	pr_debug("i2c-%d reading %zu bytes.\n", iminor(file_inode(file)), count);
+	pr_debug("i2c-%d reading %zu bytes.\n", iminor(file_inode(iocb->ki_filp)), count);
 
 	ret = i2c_master_recv(client, tmp, count);
 	if (ret >= 0)
-		if (copy_to_user(buf, tmp, ret))
+		if (!copy_to_iter_full(tmp, ret, to))
 			ret = -EFAULT;
 	kfree(tmp);
 	return ret;
 }
 
-static ssize_t i2cdev_write(struct file *file, const char __user *buf,
-		size_t count, loff_t *offset)
+static ssize_t i2cdev_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	struct i2c_client *client = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int ret;
 	char *tmp;
-	struct i2c_client *client = file->private_data;
 
 	/* Adapter must support I2C transfers */
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
@@ -174,11 +173,11 @@ static ssize_t i2cdev_write(struct file *file, const char __user *buf,
 	if (count > 8192)
 		count = 8192;
 
-	tmp = memdup_user(buf, count);
+	tmp = iterdup(from, count);
 	if (IS_ERR(tmp))
 		return PTR_ERR(tmp);
 
-	pr_debug("i2c-%d writing %zu bytes.\n", iminor(file_inode(file)), count);
+	pr_debug("i2c-%d writing %zu bytes.\n", iminor(file_inode(iocb->ki_filp)), count);
 
 	ret = i2c_master_send(client, tmp, count);
 	kfree(tmp);
@@ -637,8 +636,8 @@ static int i2cdev_release(struct inode *inode, struct file *file)
 
 static const struct file_operations i2cdev_fops = {
 	.owner		= THIS_MODULE,
-	.read		= i2cdev_read,
-	.write		= i2cdev_write,
+	.read_iter	= i2cdev_read,
+	.write_iter	= i2cdev_write,
 	.unlocked_ioctl	= i2cdev_ioctl,
 	.compat_ioctl	= compat_i2cdev_ioctl,
 	.open		= i2cdev_open,
