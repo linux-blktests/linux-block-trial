@@ -23,6 +23,7 @@
 #include <linux/wait.h>
 #include <linux/poll.h>
 #include <linux/slab.h>
+#include <linux/uio.h>
 #include "hpilo.h"
 
 static const struct class ilo_class = {
@@ -431,13 +432,13 @@ static void ilo_set_reset(struct ilo_hwinfo *hw)
 	}
 }
 
-static ssize_t ilo_read(struct file *fp, char __user *buf,
-			size_t len, loff_t *off)
+static ssize_t ilo_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int err, found, cnt, pkt_id, pkt_len;
-	struct ccb_data *data = fp->private_data;
+	struct ccb_data *data = iocb->ki_filp->private_data;
 	struct ccb *driver_ccb = &data->driver_ccb;
 	struct ilo_hwinfo *hw = data->ilo_hw;
+	size_t len = iov_iter_count(to);
 	void *pkt;
 
 	if (is_channel_reset(driver_ccb)) {
@@ -473,7 +474,7 @@ static ssize_t ilo_read(struct file *fp, char __user *buf,
 	if (pkt_len < len)
 		len = pkt_len;
 
-	err = copy_to_user(buf, pkt, len);
+	err = !copy_to_iter_full(pkt, len, to);
 
 	/* return the received packet to the queue */
 	ilo_pkt_enqueue(hw, driver_ccb, RECVQ, pkt_id, desc_mem_sz(1));
@@ -481,13 +482,13 @@ static ssize_t ilo_read(struct file *fp, char __user *buf,
 	return err ? -EFAULT : len;
 }
 
-static ssize_t ilo_write(struct file *fp, const char __user *buf,
-			 size_t len, loff_t *off)
+static ssize_t ilo_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int err, pkt_id, pkt_len;
-	struct ccb_data *data = fp->private_data;
+	struct ccb_data *data = iocb->ki_filp->private_data;
 	struct ccb *driver_ccb = &data->driver_ccb;
 	struct ilo_hwinfo *hw = data->ilo_hw;
+	size_t len = iov_iter_count(from);
 	void *pkt;
 
 	if (is_channel_reset(driver_ccb))
@@ -502,7 +503,7 @@ static ssize_t ilo_write(struct file *fp, const char __user *buf,
 		len = pkt_len;
 
 	/* on failure, set the len to 0 to return empty packet to the device */
-	err = copy_from_user(pkt, buf, len);
+	err = !copy_from_iter_full(pkt, len, from);
 	if (err)
 		len = 0;
 
@@ -635,8 +636,8 @@ out:
 
 static const struct file_operations ilo_fops = {
 	.owner		= THIS_MODULE,
-	.read		= ilo_read,
-	.write		= ilo_write,
+	.read_iter	= ilo_read,
+	.write_iter	= ilo_write,
 	.poll		= ilo_poll,
 	.open 		= ilo_open,
 	.release 	= ilo_close,
