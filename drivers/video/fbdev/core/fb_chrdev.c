@@ -42,6 +42,7 @@ static ssize_t fb_read(struct file *file, char __user *buf, size_t count, loff_t
 
 	return info->fbops->fb_read(info, buf, count, ppos);
 }
+FOPS_READ_ITER_HELPER(fb_read);
 
 static ssize_t fb_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 {
@@ -58,6 +59,7 @@ static ssize_t fb_write(struct file *file, const char __user *buf, size_t count,
 
 	return info->fbops->fb_write(info, buf, count, ppos);
 }
+FOPS_WRITE_ITER_HELPER(fb_write);
 
 static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 			unsigned long arg)
@@ -405,8 +407,8 @@ static unsigned long get_fb_unmapped_area(struct file *filp,
 
 static const struct file_operations fb_fops = {
 	.owner = THIS_MODULE,
-	.read = fb_read,
-	.write = fb_write,
+	.read_iter = fb_read_iter,
+	.write_iter = fb_write_iter,
 	.unlocked_ioctl = fb_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = fb_compat_ioctl,
