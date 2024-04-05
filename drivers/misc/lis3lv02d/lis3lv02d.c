@@ -27,6 +27,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/atomic.h>
 #include <linux/of.h>
+#include <linux/uio.h>
 #include "lis3lv02d.h"
 
 #define DRIVER_NAME     "lis3lv02d"
@@ -596,12 +597,12 @@ static int lis3lv02d_misc_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t lis3lv02d_misc_read(struct file *file, char __user *buf,
-				size_t count, loff_t *pos)
+static ssize_t lis3lv02d_misc_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct lis3lv02d *lis3 = container_of(file->private_data,
+	struct lis3lv02d *lis3 = container_of(iocb->ki_filp->private_data,
 					      struct lis3lv02d, miscdev);
 
+	size_t count = iov_iter_count(to);
 	DECLARE_WAITQUEUE(wait, current);
 	u32 data;
 	unsigned char byte_data;
@@ -617,7 +618,7 @@ static ssize_t lis3lv02d_misc_read(struct file *file, char __user *buf,
 		if (data)
 			break;
 
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			retval = -EAGAIN;
 			goto out;
 		}
@@ -635,7 +636,7 @@ static ssize_t lis3lv02d_misc_read(struct file *file, char __user *buf,
 	/* make sure we are not going into copy_to_user() with
 	 * TASK_INTERRUPTIBLE state */
 	set_current_state(TASK_RUNNING);
-	if (copy_to_user(buf, &byte_data, sizeof(byte_data)))
+	if (!copy_to_iter_full(&byte_data, sizeof(byte_data), to))
 		retval = -EFAULT;
 
 out:
@@ -666,7 +667,7 @@ static int lis3lv02d_misc_fasync(int fd, struct file *file, int on)
 
 static const struct file_operations lis3lv02d_misc_fops = {
 	.owner   = THIS_MODULE,
-	.read    = lis3lv02d_misc_read,
+	.read_iter    = lis3lv02d_misc_read,
 	.open    = lis3lv02d_misc_open,
 	.release = lis3lv02d_misc_release,
 	.poll    = lis3lv02d_misc_poll,
