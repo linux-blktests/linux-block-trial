@@ -331,9 +331,9 @@ static void queue_event(struct client *client, struct event *event,
 	wake_up_interruptible(&client->wait);
 }
 
-static int dequeue_event(struct client *client,
-			 char __user *buffer, size_t count)
+static int dequeue_event(struct client *client, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	struct event *event;
 	size_t size, total;
 	int i, ret;
@@ -356,7 +356,7 @@ static int dequeue_event(struct client *client,
 	total = 0;
 	for (i = 0; i < ARRAY_SIZE(event->v) && total < count; i++) {
 		size = min(event->v[i].size, count - total);
-		if (copy_to_user(buffer + total, event->v[i].data, size)) {
+		if (!copy_to_iter_full(event->v[i].data, size, to)) {
 			ret = -EFAULT;
 			goto out;
 		}
@@ -370,12 +370,11 @@ static int dequeue_event(struct client *client,
 	return ret;
 }
 
-static ssize_t fw_device_op_read(struct file *file, char __user *buffer,
-				 size_t count, loff_t *offset)
+static ssize_t fw_device_op_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct client *client = file->private_data;
+	struct client *client = iocb->ki_filp->private_data;
 
-	return dequeue_event(client, buffer, count);
+	return dequeue_event(client, to);
 }
 
 static void fill_bus_reset_event(struct fw_cdev_event_bus_reset *event,
@@ -1902,7 +1901,7 @@ static __poll_t fw_device_op_poll(struct file *file, poll_table * pt)
 const struct file_operations fw_device_ops = {
 	.owner		= THIS_MODULE,
 	.open		= fw_device_op_open,
-	.read		= fw_device_op_read,
+	.read_iter	= fw_device_op_read,
 	.unlocked_ioctl	= fw_device_op_ioctl,
 	.mmap		= fw_device_op_mmap,
 	.release	= fw_device_op_release,

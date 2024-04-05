@@ -135,10 +135,10 @@ packet_buffer_destroy(struct packet_buffer *buffer)
 	kfree(buffer->data);
 }
 
-static int
-packet_buffer_get(struct client *client, char __user *data, size_t user_length)
+static int packet_buffer_get(struct client *client, struct iov_iter *to)
 {
 	struct packet_buffer *buffer = &client->buffer;
+	size_t user_length = iov_iter_count(to);
 	size_t length;
 	char *end;
 
@@ -158,15 +158,15 @@ packet_buffer_get(struct client *client, char __user *data, size_t user_length)
 	end = buffer->data + buffer->capacity;
 
 	if (&buffer->head->data[length] < end) {
-		if (copy_to_user(data, buffer->head->data, length))
+		if (!copy_to_iter_full(buffer->head->data, length, to))
 			return -EFAULT;
 		buffer->head = (struct packet *) &buffer->head->data[length];
 	} else {
 		size_t split = end - buffer->head->data;
 
-		if (copy_to_user(data, buffer->head->data, split))
+		if (!copy_to_iter_full(buffer->head->data, split, to))
 			return -EFAULT;
-		if (copy_to_user(data + split, buffer->data, length - split))
+		if (!copy_to_iter_full(buffer->data, length - split, to))
 			return -EFAULT;
 		buffer->head = (struct packet *) &buffer->data[length - split];
 	}
@@ -336,12 +336,11 @@ nosy_poll(struct file *file, poll_table *pt)
 	return ret;
 }
 
-static ssize_t
-nosy_read(struct file *file, char __user *buffer, size_t count, loff_t *offset)
+static ssize_t nosy_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct client *client = file->private_data;
+	struct client *client = iocb->ki_filp->private_data;
 
-	return packet_buffer_get(client, buffer, count);
+	return packet_buffer_get(client, to);
 }
 
 static long
@@ -397,7 +396,7 @@ nosy_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 static const struct file_operations nosy_ops = {
 	.owner =		THIS_MODULE,
-	.read =			nosy_read,
+	.read_iter =		nosy_read,
 	.unlocked_ioctl =	nosy_ioctl,
 	.poll =			nosy_poll,
 	.open =			nosy_open,
