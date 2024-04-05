@@ -33,10 +33,9 @@ void opp_debug_remove_one(struct dev_pm_opp *opp)
 	debugfs_remove_recursive(opp->dentry);
 }
 
-static ssize_t bw_name_read(struct file *fp, char __user *userbuf,
-			    size_t count, loff_t *ppos)
+static ssize_t bw_name_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct icc_path *path = fp->private_data;
+	struct icc_path *path = iocb->ki_filp->private_data;
 	const char *name = icc_get_name(path);
 	char buf[64];
 	int i = 0;
@@ -44,12 +43,12 @@ static ssize_t bw_name_read(struct file *fp, char __user *userbuf,
 	if (name)
 		i = scnprintf(buf, sizeof(buf), "%.62s\n", name);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, i);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, i, to);
 }
 
 static const struct file_operations bw_name_fops = {
 	.open = simple_open,
-	.read = bw_name_read,
+	.read_iter = bw_name_read,
 	.llseek = default_llseek,
 };
 
