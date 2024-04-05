@@ -486,10 +486,8 @@ static inline bool bcm_vk_msgq_marker_valid(struct bcm_vk *vk)
 }
 
 int bcm_vk_open(struct inode *inode, struct file *p_file);
-ssize_t bcm_vk_read(struct file *p_file, char __user *buf, size_t count,
-		    loff_t *f_pos);
-ssize_t bcm_vk_write(struct file *p_file, const char __user *buf,
-		     size_t count, loff_t *f_pos);
+ssize_t bcm_vk_read(struct kiocb *iocb, struct iov_iter *to);
+ssize_t bcm_vk_write(struct kiocb *iocb, struct iov_iter *from);
 __poll_t bcm_vk_poll(struct file *p_file, struct poll_table_struct *wait);
 int bcm_vk_release(struct inode *inode, struct file *p_file);
 void bcm_vk_release_data(struct kref *kref);

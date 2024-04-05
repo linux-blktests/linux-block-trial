@@ -13,6 +13,7 @@
 #include <linux/sizes.h>
 #include <linux/spinlock.h>
 #include <linux/timer.h>
+#include <linux/uio.h>
 
 #include "bcm_vk.h"
 #include "bcm_vk_msg.h"
@@ -998,13 +999,10 @@ int bcm_vk_open(struct inode *inode, struct file *p_file)
 	return rc;
 }
 
-ssize_t bcm_vk_read(struct file *p_file,
-		    char __user *buf,
-		    size_t count,
-		    loff_t *f_pos)
+ssize_t bcm_vk_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	ssize_t rc = -ENOMSG;
-	struct bcm_vk_ctx *ctx = p_file->private_data;
+	struct bcm_vk_ctx *ctx = iocb->ki_filp->private_data;
 	struct bcm_vk *vk = container_of(ctx->miscdev, struct bcm_vk,
 					 miscdev);
 	struct device *dev = &vk->pdev->dev;
@@ -1013,6 +1011,7 @@ ssize_t bcm_vk_read(struct file *p_file,
 	struct vk_msg_blk tmp_msg;
 	u32 tmp_usr_msg_id;
 	u32 tmp_blks;
+	size_t count = iov_iter_count(to);
 	u32 q_num;
 	u32 rsp_length;
 
@@ -1053,7 +1052,7 @@ read_loop_exit:
 		/* retrieve the passed down msg_id */
 		set_msg_id(&entry->to_h_msg[0], entry->usr_msg_id);
 		rsp_length = entry->to_h_blks * VK_MSGQ_BLK_SIZE;
-		if (copy_to_user(buf, entry->to_h_msg, rsp_length) == 0)
+		if (!copy_to_iter_full(entry->to_h_msg, rsp_length, to))
 			rc = rsp_length;
 
 		bcm_vk_free_wkent(dev, entry);
@@ -1064,7 +1063,7 @@ read_loop_exit:
 		 */
 		set_msg_id(&tmp_msg, tmp_usr_msg_id);
 		tmp_msg.size = tmp_blks - 1;
-		if (copy_to_user(buf, &tmp_msg, VK_MSGQ_BLK_SIZE) != 0) {
+		if (!copy_to_iter_full(&tmp_msg, VK_MSGQ_BLK_SIZE, to)) {
 			dev_err(dev, "Error return 1st block in -EMSGSIZE\n");
 			rc = -EFAULT;
 		}
@@ -1072,17 +1071,15 @@ read_loop_exit:
 	return rc;
 }
 
-ssize_t bcm_vk_write(struct file *p_file,
-		     const char __user *buf,
-		     size_t count,
-		     loff_t *f_pos)
+ssize_t bcm_vk_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	ssize_t rc;
-	struct bcm_vk_ctx *ctx = p_file->private_data;
+	struct bcm_vk_ctx *ctx = iocb->ki_filp->private_data;
 	struct bcm_vk *vk = container_of(ctx->miscdev, struct bcm_vk,
 					 miscdev);
 	struct bcm_vk_msgq __iomem *msgq;
 	struct device *dev = &vk->pdev->dev;
+	size_t count = iov_iter_count(from);
 	struct bcm_vk_wkent *entry;
 	u32 sgl_extra_blks;
 	u32 q_num;
@@ -1111,7 +1108,7 @@ ssize_t bcm_vk_write(struct file *p_file,
 	}
 
 	/* now copy msg from user space, and then formulate the work entry */
-	if (copy_from_user(&entry->to_v_msg[0], buf, count)) {
+	if (!copy_from_iter_full(&entry->to_v_msg[0], count, from)) {
 		rc = -EFAULT;
 		goto write_free_ent;
 	}

@@ -1258,8 +1258,8 @@ static long bcm_vk_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 static const struct file_operations bcm_vk_fops = {
 	.owner = THIS_MODULE,
 	.open = bcm_vk_open,
-	.read = bcm_vk_read,
-	.write = bcm_vk_write,
+	.read_iter = bcm_vk_read,
+	.write_iter = bcm_vk_write,
 	.poll = bcm_vk_poll,
 	.release = bcm_vk_release,
 	.mmap = bcm_vk_mmap,
