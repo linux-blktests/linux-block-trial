@@ -79,10 +79,10 @@ static const struct nci_ops virtual_nci_ops = {
 	.send = virtual_nci_send
 };
 
-static ssize_t virtual_ncidev_read(struct file *file, char __user *buf,
-				   size_t count, loff_t *ppos)
+static ssize_t virtual_ncidev_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct virtual_nci_dev *vdev = file->private_data;
+	struct virtual_nci_dev *vdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	size_t actual_len;
 
 	mutex_lock(&vdev->mtx);
@@ -95,7 +95,7 @@ static ssize_t virtual_ncidev_read(struct file *file, char __user *buf,
 
 	actual_len = min_t(size_t, count, vdev->send_buff->len);
 
-	if (copy_to_user(buf, vdev->send_buff->data, actual_len)) {
+	if (!copy_to_iter_full(vdev->send_buff->data, actual_len, to)) {
 		mutex_unlock(&vdev->mtx);
 		return -EFAULT;
 	}
@@ -110,18 +110,17 @@ static ssize_t virtual_ncidev_read(struct file *file, char __user *buf,
 	return actual_len;
 }
 
-static ssize_t virtual_ncidev_write(struct file *file,
-				    const char __user *buf,
-				    size_t count, loff_t *ppos)
+static ssize_t virtual_ncidev_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct virtual_nci_dev *vdev = file->private_data;
+	struct virtual_nci_dev *vdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct sk_buff *skb;
 
 	skb = alloc_skb(count, GFP_KERNEL);
 	if (!skb)
 		return -ENOMEM;
 
-	if (copy_from_user(skb_put(skb, count), buf, count)) {
+	if (!copy_from_iter_full(skb_put(skb, count), count, from)) {
 		kfree_skb(skb);
 		return -EFAULT;
 	}
@@ -191,8 +190,8 @@ static long virtual_ncidev_ioctl(struct file *file, unsigned int cmd,
 
 static const struct file_operations virtual_ncidev_fops = {
 	.owner = THIS_MODULE,
-	.read = virtual_ncidev_read,
-	.write = virtual_ncidev_write,
+	.read_iter = virtual_ncidev_read,
+	.write_iter = virtual_ncidev_write,
 	.open = virtual_ncidev_open,
 	.release = virtual_ncidev_close,
 	.unlocked_ioctl = virtual_ncidev_ioctl
