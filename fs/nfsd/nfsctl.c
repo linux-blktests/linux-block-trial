@@ -115,6 +115,7 @@ static ssize_t nfsctl_transaction_write(struct file *file, const char __user *bu
 	simple_transaction_set(file, rv);
 	return size;
 }
+FOPS_WRITE_ITER_HELPER(nfsctl_transaction_write);
 
 static ssize_t nfsctl_transaction_read(struct file *file, char __user *buf, size_t size, loff_t *pos)
 {
@@ -129,10 +130,11 @@ static ssize_t nfsctl_transaction_read(struct file *file, char __user *buf, size
 	}
 	return simple_transaction_read(file, buf, size, pos);
 }
+FOPS_READ_ITER_HELPER(nfsctl_transaction_read);
 
 static const struct file_operations transaction_ops = {
-	.write		= nfsctl_transaction_write,
-	.read		= nfsctl_transaction_read,
+	.write_iter	= nfsctl_transaction_write_iter,
+	.read_iter	= nfsctl_transaction_read_iter,
 	.release	= simple_transaction_release,
 	.llseek		= default_llseek,
 };
@@ -159,7 +161,7 @@ static int exports_nfsd_open(struct inode *inode, struct file *file)
 
 static const struct file_operations exports_nfsd_operations = {
 	.open		= exports_nfsd_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
@@ -181,7 +183,7 @@ static int nfsd_pool_stats_open(struct inode *inode, struct file *file)
 
 static const struct file_operations pool_stats_operations = {
 	.open		= nfsd_pool_stats_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
