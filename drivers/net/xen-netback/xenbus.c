@@ -102,26 +102,21 @@ static int xenvif_read_io_ring(struct seq_file *m, void *v)
 #define XENVIF_KICK_STR "kick"
 #define BUFFER_SIZE     32
 
-static ssize_t
-xenvif_write_io_ring(struct file *filp, const char __user *buf, size_t count,
-		     loff_t *ppos)
+static ssize_t xenvif_write_io_ring(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct xenvif_queue *queue =
-		((struct seq_file *)filp->private_data)->private;
+		((struct seq_file *)iocb->ki_filp->private_data)->private;
+	size_t count = iov_iter_count(from);
 	int len;
 	char write[BUFFER_SIZE];
 
 	/* don't allow partial writes and check the length */
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 	if (count >= sizeof(write))
 		return -ENOSPC;
 
-	len = simple_write_to_buffer(write,
-				     sizeof(write) - 1,
-				     ppos,
-				     buf,
-				     count);
+	len = simple_copy_from_iter(write, &iocb->ki_pos, sizeof(write) - 1, from);
 	if (len < 0)
 		return len;
 
@@ -152,10 +147,10 @@ static int xenvif_io_ring_open(struct inode *inode, struct file *filp)
 static const struct file_operations xenvif_dbg_io_ring_ops_fops = {
 	.owner = THIS_MODULE,
 	.open = xenvif_io_ring_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = xenvif_write_io_ring,
+	.write_iter = xenvif_write_io_ring,
 };
 
 static int xenvif_ctrl_show(struct seq_file *m, void *v)
