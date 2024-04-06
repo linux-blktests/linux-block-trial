@@ -2308,18 +2308,6 @@ static void idt_unregister_device(struct idt_ntb_dev *ndev)
  *=============================================================================
  */
 
-static ssize_t idt_dbgfs_info_read(struct file *filp, char __user *ubuf,
-				   size_t count, loff_t *offp);
-
-/*
- * Driver DebugFS info file operations
- */
-static const struct file_operations idt_dbgfs_info_ops = {
-	.owner = THIS_MODULE,
-	.open = simple_open,
-	.read = idt_dbgfs_info_read
-};
-
 /*
  * idt_dbgfs_info_read() - DebugFS read info node callback
  * @file:	File node descriptor.
@@ -2327,10 +2315,10 @@ static const struct file_operations idt_dbgfs_info_ops = {
  * @count:	Size of the buffer
  * @offp:	Offset within the buffer
  */
-static ssize_t idt_dbgfs_info_read(struct file *filp, char __user *ubuf,
-				   size_t count, loff_t *offp)
+static ssize_t idt_dbgfs_info_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct idt_ntb_dev *ndev = filp->private_data;
+	struct idt_ntb_dev *ndev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	unsigned char idx, pidx, cnt;
 	unsigned long irqflags, mdeg;
 	ssize_t ret = 0, off = 0;
@@ -2488,11 +2476,20 @@ static ssize_t idt_dbgfs_info_read(struct file *filp, char __user *ubuf,
 		idt_get_deg(mdeg), idt_get_deg_frac(mdeg));
 
 	/* Copy the buffer to the User Space */
-	ret = simple_read_from_buffer(ubuf, count, offp, strbuf, off);
+	ret = simple_copy_to_iter(strbuf, &iocb->ki_pos, off, to);
 	kfree(strbuf);
 
 	return ret;
 }
+
+/*
+ * Driver DebugFS info file operations
+ */
+static const struct file_operations idt_dbgfs_info_ops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read_iter = idt_dbgfs_info_read
+};
 
 /*
  * idt_init_dbgfs() - initialize DebugFS node

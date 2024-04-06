@@ -101,8 +101,7 @@ static inline void gen3_db_iowrite(u64 bits, void __iomem *mmio)
 	iowrite64(bits, mmio);
 }
 
-ssize_t ndev_ntb3_debugfs_read(struct file *filp, char __user *ubuf,
-				      size_t count, loff_t *offp);
+ssize_t ndev_ntb3_debugfs_read(struct kiocb *iocb, struct iov_iter *to);
 int gen3_init_dev(struct intel_ntb_dev *ndev);
 int intel_ntb3_link_enable(struct ntb_dev *ntb, enum ntb_speed max_speed,
 		enum ntb_width max_width);

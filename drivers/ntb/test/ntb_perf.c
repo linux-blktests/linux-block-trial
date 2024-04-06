@@ -1177,10 +1177,10 @@ static void perf_clear_threads(struct perf_ctx *perf)
  *==============================================================================
  */
 
-static ssize_t perf_dbgfs_read_info(struct file *filep, char __user *ubuf,
-				    size_t size, loff_t *offp)
+static ssize_t perf_dbgfs_read_info(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct perf_ctx *perf = filep->private_data;
+	struct perf_ctx *perf = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(to);
 	struct perf_peer *peer;
 	size_t buf_size;
 	ssize_t pos = 0;
@@ -1249,7 +1249,7 @@ static ssize_t perf_dbgfs_read_info(struct file *filep, char __user *ubuf,
 			"\tIn buffer xlat %pad[p]\n", &peer->inbuf_xlat);
 	}
 
-	ret = simple_read_from_buffer(ubuf, size, offp, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 
 	return ret;
@@ -1257,13 +1257,12 @@ static ssize_t perf_dbgfs_read_info(struct file *filep, char __user *ubuf,
 
 static const struct file_operations perf_dbgfs_info = {
 	.open = simple_open,
-	.read = perf_dbgfs_read_info
+	.read_iter = perf_dbgfs_read_info
 };
 
-static ssize_t perf_dbgfs_read_run(struct file *filep, char __user *ubuf,
-				   size_t size, loff_t *offp)
+static ssize_t perf_dbgfs_read_run(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct perf_ctx *perf = filep->private_data;
+	struct perf_ctx *perf = iocb->ki_filp->private_data;
 	ssize_t ret, pos = 0;
 	char *buf;
 
@@ -1275,21 +1274,21 @@ static ssize_t perf_dbgfs_read_run(struct file *filep, char __user *ubuf,
 	if (ret)
 		goto err_free;
 
-	ret = simple_read_from_buffer(ubuf, size, offp, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 err_free:
 	kfree(buf);
 
 	return ret;
 }
 
-static ssize_t perf_dbgfs_write_run(struct file *filep, const char __user *ubuf,
-				    size_t size, loff_t *offp)
+static ssize_t perf_dbgfs_write_run(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct perf_ctx *perf = filep->private_data;
+	struct perf_ctx *perf = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(from);
 	struct perf_peer *peer;
 	int pidx, ret;
 
-	ret = kstrtoint_from_user(ubuf, size, 0, &pidx);
+	ret = kstrtoint_from_iter(from, size, 0, &pidx);
 	if (ret)
 		return ret;
 
@@ -1307,31 +1306,29 @@ static ssize_t perf_dbgfs_write_run(struct file *filep, const char __user *ubuf,
 
 static const struct file_operations perf_dbgfs_run = {
 	.open = simple_open,
-	.read = perf_dbgfs_read_run,
-	.write = perf_dbgfs_write_run
+	.read_iter = perf_dbgfs_read_run,
+	.write_iter = perf_dbgfs_write_run,
 };
 
-static ssize_t perf_dbgfs_read_tcnt(struct file *filep, char __user *ubuf,
-				    size_t size, loff_t *offp)
+static ssize_t perf_dbgfs_read_tcnt(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct perf_ctx *perf = filep->private_data;
+	struct perf_ctx *perf = iocb->ki_filp->private_data;
 	char buf[8];
 	ssize_t pos;
 
 	pos = scnprintf(buf, sizeof(buf), "%hhu\n", perf->tcnt);
 
-	return simple_read_from_buffer(ubuf, size, offp, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
-static ssize_t perf_dbgfs_write_tcnt(struct file *filep,
-				     const char __user *ubuf,
-				     size_t size, loff_t *offp)
+static ssize_t perf_dbgfs_write_tcnt(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct perf_ctx *perf = filep->private_data;
+	struct perf_ctx *perf = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(from);
 	int ret;
 	u8 val;
 
-	ret = kstrtou8_from_user(ubuf, size, 0, &val);
+	ret = kstrtou8_from_iter(from, size, 0, &val);
 	if (ret)
 		return ret;
 
@@ -1344,8 +1341,8 @@ static ssize_t perf_dbgfs_write_tcnt(struct file *filep,
 
 static const struct file_operations perf_dbgfs_tcnt = {
 	.open = simple_open,
-	.read = perf_dbgfs_read_tcnt,
-	.write = perf_dbgfs_write_tcnt
+	.read_iter = perf_dbgfs_read_tcnt,
+	.write_iter = perf_dbgfs_write_tcnt,
 };
 
 static void perf_setup_dbgfs(struct perf_ctx *perf)

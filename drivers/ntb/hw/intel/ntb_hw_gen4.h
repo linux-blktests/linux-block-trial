@@ -105,11 +105,8 @@
 
 #define GEN6_PPD0_OFFSET		0xf0d4
 
-ssize_t ndev_ntb4_debugfs_read(struct file *filp, char __user *ubuf,
-				      size_t count, loff_t *offp);
+ssize_t ndev_ntb4_debugfs_read(struct kiocb *iocb, struct iov_iter *to);
 int gen4_init_dev(struct intel_ntb_dev *ndev);
-ssize_t ndev_ntb4_debugfs_read(struct file *filp, char __user *ubuf,
-				      size_t count, loff_t *offp);
 
 extern const struct ntb_dev_ops intel_ntb4_ops;
 

@@ -844,8 +844,7 @@ static void ndev_deinit_isr(struct amd_ntb_dev *ndev)
 	}
 }
 
-static ssize_t ndev_debugfs_read(struct file *filp, char __user *ubuf,
-				 size_t count, loff_t *offp)
+static ssize_t ndev_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct amd_ntb_dev *ndev;
 	void __iomem *mmio;
@@ -853,8 +852,9 @@ static ssize_t ndev_debugfs_read(struct file *filp, char __user *ubuf,
 	size_t buf_size;
 	ssize_t ret, off;
 	union { u64 v64; u32 v32; u16 v16; } u;
+	size_t count = iov_iter_count(to);
 
-	ndev = filp->private_data;
+	ndev = iocb->ki_filp->private_data;
 	mmio = ndev->self_mmio;
 
 	buf_size = min(count, 0x800ul);
@@ -936,7 +936,7 @@ static ssize_t ndev_debugfs_read(struct file *filp, char __user *ubuf,
 	off += scnprintf(buf + off, buf_size - off,
 			 "LMT45 -\t\t\t%#018llx\n", u.v64);
 
-	ret = simple_read_from_buffer(ubuf, count, offp, buf, off);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, off, to);
 	kfree(buf);
 	return ret;
 }
@@ -1308,7 +1308,7 @@ static void amd_ntb_pci_shutdown(struct pci_dev *pdev)
 static const struct file_operations amd_ntb_debugfs_info = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = ndev_debugfs_read,
+	.read_iter = ndev_debugfs_read,
 };
 
 static const struct ntb_dev_data dev_data[] = {

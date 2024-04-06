@@ -273,8 +273,8 @@ struct tool_ctx {
 	const struct file_operations __name = {	\
 		.owner = THIS_MODULE,		\
 		.open = simple_open,		\
-		.read = __read,			\
-		.write = __write,		\
+		.read_iter = __read,		\
+		.write_iter = __write,		\
 	}
 
 #define TOOL_BUF_LEN 32
@@ -338,8 +338,8 @@ static const struct ntb_ctx_ops tool_ops = {
  *==============================================================================
  */
 
-static ssize_t tool_fn_read(struct tool_ctx *tc, char __user *ubuf,
-			    size_t size, loff_t *offp,
+static ssize_t tool_fn_read(struct tool_ctx *tc, struct kiocb *iocb,
+			    struct iov_iter *to,
 			    u64 (*fn_read)(struct ntb_dev *))
 {
 	size_t buf_size;
@@ -349,28 +349,28 @@ static ssize_t tool_fn_read(struct tool_ctx *tc, char __user *ubuf,
 	if (!fn_read)
 		return -EINVAL;
 
-	buf_size = min(size, sizeof(buf));
+	buf_size = min(iov_iter_count(to), sizeof(buf));
 
 	pos = scnprintf(buf, buf_size, "%#llx\n", fn_read(tc->ntb));
 
-	return simple_read_from_buffer(ubuf, size, offp, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
-static ssize_t tool_fn_write(struct tool_ctx *tc,
-			     const char __user *ubuf,
-			     size_t size, loff_t *offp,
+static ssize_t tool_fn_write(struct tool_ctx *tc, struct kiocb *iocb,
+			     struct iov_iter *from,
 			     int (*fn_set)(struct ntb_dev *, u64),
 			     int (*fn_clear)(struct ntb_dev *, u64))
 {
+	size_t size = iov_iter_count(from);
 	char *buf, cmd;
 	ssize_t ret;
 	u64 bits;
 	int n;
 
-	if (*offp)
+	if (iocb->ki_pos)
 		return 0;
 
-	buf = memdup_user_nul(ubuf, size);
+	buf = iterdup_nul(from, size);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -402,26 +402,24 @@ static ssize_t tool_fn_write(struct tool_ctx *tc,
  *==============================================================================
  */
 
-static ssize_t tool_port_read(struct file *filep, char __user *ubuf,
-			      size_t size, loff_t *offp)
+static ssize_t tool_port_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 	char buf[TOOL_BUF_LEN];
 	int pos;
 
 	pos = scnprintf(buf, sizeof(buf), "%d\n", ntb_port_number(tc->ntb));
 
-	return simple_read_from_buffer(ubuf, size, offp, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 static TOOL_FOPS_RDWR(tool_port_fops,
 		      tool_port_read,
 		      NULL);
 
-static ssize_t tool_peer_port_read(struct file *filep, char __user *ubuf,
-				   size_t size, loff_t *offp)
+static ssize_t tool_peer_port_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_peer *peer = filep->private_data;
+	struct tool_peer *peer = iocb->ki_filp->private_data;
 	struct tool_ctx *tc = peer->tc;
 	char buf[TOOL_BUF_LEN];
 	int pos;
@@ -429,7 +427,7 @@ static ssize_t tool_peer_port_read(struct file *filep, char __user *ubuf,
 	pos = scnprintf(buf, sizeof(buf), "%d\n",
 		ntb_peer_port_number(tc->ntb, peer->pidx));
 
-	return simple_read_from_buffer(ubuf, size, offp, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 static TOOL_FOPS_RDWR(tool_peer_port_fops,
@@ -459,14 +457,14 @@ static int tool_init_peers(struct tool_ctx *tc)
  *==============================================================================
  */
 
-static ssize_t tool_link_write(struct file *filep, const char __user *ubuf,
-			       size_t size, loff_t *offp)
+static ssize_t tool_link_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(from);
 	bool val;
 	int ret;
 
-	ret = kstrtobool_from_user(ubuf, size, &val);
+	ret = kstrtobool_from_iter(from, size, &val);
 	if (ret)
 		return ret;
 
@@ -485,10 +483,9 @@ static TOOL_FOPS_RDWR(tool_link_fops,
 		      NULL,
 		      tool_link_write);
 
-static ssize_t tool_peer_link_read(struct file *filep, char __user *ubuf,
-				   size_t size, loff_t *offp)
+static ssize_t tool_peer_link_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_peer *peer = filep->private_data;
+	struct tool_peer *peer = iocb->ki_filp->private_data;
 	struct tool_ctx *tc = peer->tc;
 	char buf[3];
 
@@ -499,24 +496,24 @@ static ssize_t tool_peer_link_read(struct file *filep, char __user *ubuf,
 	buf[1] = '\n';
 	buf[2] = '\0';
 
-	return simple_read_from_buffer(ubuf, size, offp, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
 static TOOL_FOPS_RDWR(tool_peer_link_fops,
 		      tool_peer_link_read,
 		      NULL);
 
-static ssize_t tool_peer_link_event_write(struct file *filep,
-					  const char __user *ubuf,
-					  size_t size, loff_t *offp)
+static ssize_t tool_peer_link_event_write(struct kiocb *iocb,
+					  struct iov_iter *from)
 {
-	struct tool_peer *peer = filep->private_data;
+	struct tool_peer *peer = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(from);
 	struct tool_ctx *tc = peer->tc;
 	u64 link_msk;
 	bool val;
 	int ret;
 
-	ret = kstrtobool_from_user(ubuf, size, &val);
+	ret = kstrtobool_from_iter(from, size, &val);
 	if (ret)
 		return ret;
 
@@ -538,28 +535,25 @@ static TOOL_FOPS_RDWR(tool_peer_link_event_fops,
  *==============================================================================
  */
 
-static ssize_t tool_mw_read(struct file *filep, char __user *ubuf,
-			    size_t size, loff_t *offp)
+static ssize_t tool_mw_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_mw *inmw = filep->private_data;
+	struct tool_mw *inmw = iocb->ki_filp->private_data;
 
 	if (inmw->mm_base == NULL)
 		return -ENXIO;
 
-	return simple_read_from_buffer(ubuf, size, offp,
-				       inmw->mm_base, inmw->size);
+	return simple_copy_to_iter(inmw->mm_base, &iocb->ki_pos, inmw->size, to);
 }
 
-static ssize_t tool_mw_write(struct file *filep, const char __user *ubuf,
-			     size_t size, loff_t *offp)
+static ssize_t tool_mw_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_mw *inmw = filep->private_data;
+	struct tool_mw *inmw = iocb->ki_filp->private_data;
 
 	if (inmw->mm_base == NULL)
 		return -ENXIO;
 
-	return simple_write_to_buffer(inmw->mm_base, inmw->size, offp,
-				      ubuf, size);
+	return simple_copy_from_iter(inmw->mm_base, &iocb->ki_pos, inmw->size,
+				     from);
 }
 
 static TOOL_FOPS_RDWR(tool_mw_fops,
@@ -634,10 +628,10 @@ static void tool_free_mw(struct tool_ctx *tc, int pidx, int widx)
 	inmw->dbgfs_file = NULL;
 }
 
-static ssize_t tool_mw_trans_read(struct file *filep, char __user *ubuf,
-				  size_t size, loff_t *offp)
+static ssize_t tool_mw_trans_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_mw *inmw = filep->private_data;
+	struct tool_mw *inmw = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(to);
 	resource_size_t addr_align;
 	resource_size_t size_align;
 	resource_size_t size_max;
@@ -688,7 +682,7 @@ static ssize_t tool_mw_trans_read(struct file *filep, char __user *ubuf,
 			 "Size Max       \t%pap\n",
 			 &size_max);
 
-	ret = simple_read_from_buffer(ubuf, size, offp, buf, off);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, off, to);
 
 err:
 	kfree(buf);
@@ -696,14 +690,14 @@ err:
 	return ret;
 }
 
-static ssize_t tool_mw_trans_write(struct file *filep, const char __user *ubuf,
-				   size_t size, loff_t *offp)
+static ssize_t tool_mw_trans_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_mw *inmw = filep->private_data;
+	struct tool_mw *inmw = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(from);
 	unsigned int val;
 	int ret;
 
-	ret = kstrtouint_from_user(ubuf, size, 0, &val);
+	ret = kstrtouint_from_iter(from, size, 0, &val);
 	if (ret)
 		return ret;
 
@@ -721,11 +715,11 @@ static TOOL_FOPS_RDWR(tool_mw_trans_fops,
 		      tool_mw_trans_read,
 		      tool_mw_trans_write);
 
-static ssize_t tool_peer_mw_read(struct file *filep, char __user *ubuf,
-				 size_t size, loff_t *offp)
+static ssize_t tool_peer_mw_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_mw *outmw = filep->private_data;
-	loff_t pos = *offp;
+	struct tool_mw *outmw = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(to);
+	loff_t pos = iocb->ki_pos;
 	ssize_t ret;
 	void *buf;
 
@@ -743,14 +737,14 @@ static ssize_t tool_peer_mw_read(struct file *filep, char __user *ubuf,
 		return -ENOMEM;
 
 	memcpy_fromio(buf, outmw->io_base + pos, size);
-	ret = copy_to_user(ubuf, buf, size);
-	if (ret == size) {
+	ret = copy_to_iter(buf, size, to);
+	if (!ret) {
 		ret = -EFAULT;
 		goto err_free;
 	}
 
 	size -= ret;
-	*offp = pos + size;
+	iocb->ki_pos = pos + size;
 	ret = size;
 
 err_free:
@@ -759,12 +753,12 @@ err_free:
 	return ret;
 }
 
-static ssize_t tool_peer_mw_write(struct file *filep, const char __user *ubuf,
-				  size_t size, loff_t *offp)
+static ssize_t tool_peer_mw_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_mw *outmw = filep->private_data;
+	struct tool_mw *outmw = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(from);
 	ssize_t ret;
-	loff_t pos = *offp;
+	loff_t pos = iocb->ki_pos;
 	void *buf;
 
 	if (outmw->io_base == NULL)
@@ -779,14 +773,14 @@ static ssize_t tool_peer_mw_write(struct file *filep, const char __user *ubuf,
 	if (!buf)
 		return -ENOMEM;
 
-	ret = copy_from_user(buf, ubuf, size);
-	if (ret == size) {
+	ret = copy_from_iter(buf, size, from);
+	if (!ret) {
 		ret = -EFAULT;
 		goto err_free;
 	}
 
 	size -= ret;
-	*offp = pos + size;
+	iocb->ki_pos = pos + size;
 	ret = size;
 
 	memcpy_toio(outmw->io_base + pos, buf, size);
@@ -862,11 +856,11 @@ static void tool_free_peer_mw(struct tool_ctx *tc, int widx)
 	outmw->dbgfs_file = NULL;
 }
 
-static ssize_t tool_peer_mw_trans_read(struct file *filep, char __user *ubuf,
-					size_t size, loff_t *offp)
+static ssize_t tool_peer_mw_trans_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_mw_wrap *outmw_wrap = filep->private_data;
+	struct tool_mw_wrap *outmw_wrap = iocb->ki_filp->private_data;
 	struct tool_mw *outmw = outmw_wrap->mw;
+	size_t size = iov_iter_count(to);
 	resource_size_t map_size;
 	phys_addr_t map_base;
 	ssize_t off = 0;
@@ -913,25 +907,25 @@ static ssize_t tool_peer_mw_trans_read(struct file *filep, char __user *ubuf,
 	off += scnprintf(buf + off, buf_size - off,
 			 "Window Size         \t%pap\n", &outmw->size);
 
-	ret = simple_read_from_buffer(ubuf, size, offp, buf, off);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, off, to);
 	kfree(buf);
 
 	return ret;
 }
 
-static ssize_t tool_peer_mw_trans_write(struct file *filep,
-					const char __user *ubuf,
-					size_t size, loff_t *offp)
+static ssize_t tool_peer_mw_trans_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct tool_mw_wrap *outmw_wrap = filep->private_data;
+	struct tool_mw_wrap *outmw_wrap = iocb->ki_filp->private_data;
 	struct tool_mw *outmw = outmw_wrap->mw;
+	size_t size = iov_iter_count(from);
 	size_t buf_size, wsize;
 	char buf[TOOL_BUF_LEN];
 	int ret, n;
 	u64 addr;
 
 	buf_size = min(size, (sizeof(buf) - 1));
-	if (copy_from_user(buf, ubuf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 
 	buf[buf_size] = '\0';
@@ -1022,20 +1016,18 @@ static void tool_clear_mws(struct tool_ctx *tc)
  *==============================================================================
  */
 
-static ssize_t tool_db_read(struct file *filep, char __user *ubuf,
-			    size_t size, loff_t *offp)
+static ssize_t tool_db_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_read(tc, ubuf, size, offp, tc->ntb->ops->db_read);
+	return tool_fn_read(tc, iocb, to, tc->ntb->ops->db_read);
 }
 
-static ssize_t tool_db_write(struct file *filep, const char __user *ubuf,
-			     size_t size, loff_t *offp)
+static ssize_t tool_db_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_write(tc, ubuf, size, offp, tc->ntb->ops->db_set,
+	return tool_fn_write(tc, iocb, from, tc->ntb->ops->db_set,
 			     tc->ntb->ops->db_clear);
 }
 
@@ -1043,32 +1035,29 @@ static TOOL_FOPS_RDWR(tool_db_fops,
 		      tool_db_read,
 		      tool_db_write);
 
-static ssize_t tool_db_valid_mask_read(struct file *filep, char __user *ubuf,
-				       size_t size, loff_t *offp)
+static ssize_t tool_db_valid_mask_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_read(tc, ubuf, size, offp, tc->ntb->ops->db_valid_mask);
+	return tool_fn_read(tc, iocb, to, tc->ntb->ops->db_valid_mask);
 }
 
 static TOOL_FOPS_RDWR(tool_db_valid_mask_fops,
 		      tool_db_valid_mask_read,
 		      NULL);
 
-static ssize_t tool_db_mask_read(struct file *filep, char __user *ubuf,
-				 size_t size, loff_t *offp)
+static ssize_t tool_db_mask_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_read(tc, ubuf, size, offp, tc->ntb->ops->db_read_mask);
+	return tool_fn_read(tc, iocb, to, tc->ntb->ops->db_read_mask);
 }
 
-static ssize_t tool_db_mask_write(struct file *filep, const char __user *ubuf,
-			       size_t size, loff_t *offp)
+static ssize_t tool_db_mask_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_write(tc, ubuf, size, offp, tc->ntb->ops->db_set_mask,
+	return tool_fn_write(tc, iocb, from, tc->ntb->ops->db_set_mask,
 			     tc->ntb->ops->db_clear_mask);
 }
 
@@ -1076,20 +1065,18 @@ static TOOL_FOPS_RDWR(tool_db_mask_fops,
 		      tool_db_mask_read,
 		      tool_db_mask_write);
 
-static ssize_t tool_peer_db_read(struct file *filep, char __user *ubuf,
-				 size_t size, loff_t *offp)
+static ssize_t tool_peer_db_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_read(tc, ubuf, size, offp, tc->ntb->ops->peer_db_read);
+	return tool_fn_read(tc, iocb, to, tc->ntb->ops->peer_db_read);
 }
 
-static ssize_t tool_peer_db_write(struct file *filep, const char __user *ubuf,
-				  size_t size, loff_t *offp)
+static ssize_t tool_peer_db_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_write(tc, ubuf, size, offp, tc->ntb->ops->peer_db_set,
+	return tool_fn_write(tc, iocb, from, tc->ntb->ops->peer_db_set,
 			     tc->ntb->ops->peer_db_clear);
 }
 
@@ -1097,23 +1084,18 @@ static TOOL_FOPS_RDWR(tool_peer_db_fops,
 		      tool_peer_db_read,
 		      tool_peer_db_write);
 
-static ssize_t tool_peer_db_mask_read(struct file *filep, char __user *ubuf,
-				   size_t size, loff_t *offp)
+static ssize_t tool_peer_db_mask_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_read(tc, ubuf, size, offp,
-			    tc->ntb->ops->peer_db_read_mask);
+	return tool_fn_read(tc, iocb, to, tc->ntb->ops->peer_db_read_mask);
 }
 
-static ssize_t tool_peer_db_mask_write(struct file *filep,
-				       const char __user *ubuf,
-				       size_t size, loff_t *offp)
+static ssize_t tool_peer_db_mask_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_write(tc, ubuf, size, offp,
-			     tc->ntb->ops->peer_db_set_mask,
+	return tool_fn_write(tc, iocb, from, tc->ntb->ops->peer_db_set_mask,
 			     tc->ntb->ops->peer_db_clear_mask);
 }
 
@@ -1121,15 +1103,14 @@ static TOOL_FOPS_RDWR(tool_peer_db_mask_fops,
 		      tool_peer_db_mask_read,
 		      tool_peer_db_mask_write);
 
-static ssize_t tool_db_event_write(struct file *filep,
-				   const char __user *ubuf,
-				   size_t size, loff_t *offp)
+static ssize_t tool_db_event_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(from);
 	u64 val;
 	int ret;
 
-	ret = kstrtou64_from_user(ubuf, size, 0, &val);
+	ret = kstrtou64_from_iter(from, size, 0, &val);
 	if (ret)
 		return ret;
 
@@ -1148,10 +1129,9 @@ static TOOL_FOPS_RDWR(tool_db_event_fops,
  *==============================================================================
  */
 
-static ssize_t tool_spad_read(struct file *filep, char __user *ubuf,
-			      size_t size, loff_t *offp)
+static ssize_t tool_spad_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_spad *spad = filep->private_data;
+	struct tool_spad *spad = iocb->ki_filp->private_data;
 	char buf[TOOL_BUF_LEN];
 	ssize_t pos;
 
@@ -1161,13 +1141,13 @@ static ssize_t tool_spad_read(struct file *filep, char __user *ubuf,
 	pos = scnprintf(buf, sizeof(buf), "%#x\n",
 		ntb_spad_read(spad->tc->ntb, spad->sidx));
 
-	return simple_read_from_buffer(ubuf, size, offp, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
-static ssize_t tool_spad_write(struct file *filep, const char __user *ubuf,
-			       size_t size, loff_t *offp)
+static ssize_t tool_spad_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_spad *spad = filep->private_data;
+	struct tool_spad *spad = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(from);
 	u32 val;
 	int ret;
 
@@ -1176,7 +1156,7 @@ static ssize_t tool_spad_write(struct file *filep, const char __user *ubuf,
 		return -EINVAL;
 	}
 
-	ret = kstrtou32_from_user(ubuf, size, 0, &val);
+	ret = kstrtou32_from_iter(from, size, 0, &val);
 	if (ret)
 		return ret;
 
@@ -1189,10 +1169,9 @@ static TOOL_FOPS_RDWR(tool_spad_fops,
 		      tool_spad_read,
 		      tool_spad_write);
 
-static ssize_t tool_peer_spad_read(struct file *filep, char __user *ubuf,
-				   size_t size, loff_t *offp)
+static ssize_t tool_peer_spad_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_spad *spad = filep->private_data;
+	struct tool_spad *spad = iocb->ki_filp->private_data;
 	char buf[TOOL_BUF_LEN];
 	ssize_t pos;
 
@@ -1202,13 +1181,13 @@ static ssize_t tool_peer_spad_read(struct file *filep, char __user *ubuf,
 	pos = scnprintf(buf, sizeof(buf), "%#x\n",
 		ntb_peer_spad_read(spad->tc->ntb, spad->pidx, spad->sidx));
 
-	return simple_read_from_buffer(ubuf, size, offp, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
-static ssize_t tool_peer_spad_write(struct file *filep, const char __user *ubuf,
-				    size_t size, loff_t *offp)
+static ssize_t tool_peer_spad_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_spad *spad = filep->private_data;
+	struct tool_spad *spad = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(from);
 	u32 val;
 	int ret;
 
@@ -1217,7 +1196,7 @@ static ssize_t tool_peer_spad_write(struct file *filep, const char __user *ubuf,
 		return -EINVAL;
 	}
 
-	ret = kstrtou32_from_user(ubuf, size, 0, &val);
+	ret = kstrtou32_from_iter(from, size, 0, &val);
 	if (ret)
 		return ret;
 
@@ -1271,10 +1250,9 @@ static int tool_init_spads(struct tool_ctx *tc)
  *==============================================================================
  */
 
-static ssize_t tool_inmsg_read(struct file *filep, char __user *ubuf,
-			       size_t size, loff_t *offp)
+static ssize_t tool_inmsg_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_msg *msg = filep->private_data;
+	struct tool_msg *msg = iocb->ki_filp->private_data;
 	char buf[TOOL_BUF_LEN];
 	ssize_t pos;
 	u32 data;
@@ -1284,22 +1262,21 @@ static ssize_t tool_inmsg_read(struct file *filep, char __user *ubuf,
 
 	pos = scnprintf(buf, sizeof(buf), "0x%08x<-%d\n", data, pidx);
 
-	return simple_read_from_buffer(ubuf, size, offp, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 static TOOL_FOPS_RDWR(tool_inmsg_fops,
 		      tool_inmsg_read,
 		      NULL);
 
-static ssize_t tool_outmsg_write(struct file *filep,
-				 const char __user *ubuf,
-				 size_t size, loff_t *offp)
+static ssize_t tool_outmsg_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_msg *msg = filep->private_data;
+	struct tool_msg *msg = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(from);
 	u32 val;
 	int ret;
 
-	ret = kstrtou32_from_user(ubuf, size, 0, &val);
+	ret = kstrtou32_from_iter(from, size, 0, &val);
 	if (ret)
 		return ret;
 
@@ -1312,58 +1289,51 @@ static TOOL_FOPS_RDWR(tool_outmsg_fops,
 		      NULL,
 		      tool_outmsg_write);
 
-static ssize_t tool_msg_sts_read(struct file *filep, char __user *ubuf,
-				 size_t size, loff_t *offp)
+static ssize_t tool_msg_sts_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_read(tc, ubuf, size, offp, tc->ntb->ops->msg_read_sts);
+	return tool_fn_read(tc, iocb, to, tc->ntb->ops->msg_read_sts);
 }
 
-static ssize_t tool_msg_sts_write(struct file *filep, const char __user *ubuf,
-				  size_t size, loff_t *offp)
+static ssize_t tool_msg_sts_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_write(tc, ubuf, size, offp, NULL,
-			     tc->ntb->ops->msg_clear_sts);
+	return tool_fn_write(tc, iocb, from, NULL, tc->ntb->ops->msg_clear_sts);
 }
 
 static TOOL_FOPS_RDWR(tool_msg_sts_fops,
 		      tool_msg_sts_read,
 		      tool_msg_sts_write);
 
-static ssize_t tool_msg_inbits_read(struct file *filep, char __user *ubuf,
-				    size_t size, loff_t *offp)
+static ssize_t tool_msg_inbits_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_read(tc, ubuf, size, offp, tc->ntb->ops->msg_inbits);
+	return tool_fn_read(tc, iocb, to, tc->ntb->ops->msg_inbits);
 }
 
 static TOOL_FOPS_RDWR(tool_msg_inbits_fops,
 		      tool_msg_inbits_read,
 		      NULL);
 
-static ssize_t tool_msg_outbits_read(struct file *filep, char __user *ubuf,
-				     size_t size, loff_t *offp)
+static ssize_t tool_msg_outbits_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_read(tc, ubuf, size, offp, tc->ntb->ops->msg_outbits);
+	return tool_fn_read(tc, iocb, to, tc->ntb->ops->msg_outbits);
 }
 
 static TOOL_FOPS_RDWR(tool_msg_outbits_fops,
 		      tool_msg_outbits_read,
 		      NULL);
 
-static ssize_t tool_msg_mask_write(struct file *filep, const char __user *ubuf,
-				   size_t size, loff_t *offp)
+static ssize_t tool_msg_mask_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
 
-	return tool_fn_write(tc, ubuf, size, offp,
-			     tc->ntb->ops->msg_set_mask,
+	return tool_fn_write(tc, iocb, from, tc->ntb->ops->msg_set_mask,
 			     tc->ntb->ops->msg_clear_mask);
 }
 
@@ -1371,15 +1341,14 @@ static TOOL_FOPS_RDWR(tool_msg_mask_fops,
 		      NULL,
 		      tool_msg_mask_write);
 
-static ssize_t tool_msg_event_write(struct file *filep,
-				    const char __user *ubuf,
-				    size_t size, loff_t *offp)
+static ssize_t tool_msg_event_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct tool_ctx *tc = filep->private_data;
+	struct tool_ctx *tc = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(from);
 	u64 val;
 	int ret;
 
-	ret = kstrtou64_from_user(ubuf, size, 0, &val);
+	ret = kstrtou64_from_iter(from, size, 0, &val);
 	if (ret)
 		return ret;
 
