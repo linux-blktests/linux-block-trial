@@ -484,11 +484,10 @@ static void wwan_hwsim_dev_del_work(struct work_struct *work)
 	wwan_hwsim_dev_del(dev);
 }
 
-static ssize_t wwan_hwsim_debugfs_portdestroy_write(struct file *file,
-						    const char __user *usrbuf,
-						    size_t count, loff_t *ppos)
+static ssize_t wwan_hwsim_debugfs_portdestroy_write(struct kiocb *iocb,
+						    struct iov_iter *from)
 {
-	struct wwan_hwsim_port *port = file->private_data;
+	struct wwan_hwsim_port *port = iocb->ki_filp->private_data;
 
 	/* We can not delete port here since it will cause a deadlock due to
 	 * waiting this callback to finish in the debugfs_remove() call. So,
@@ -496,20 +495,19 @@ static ssize_t wwan_hwsim_debugfs_portdestroy_write(struct file *file,
 	 */
 	queue_work(wwan_wq, &port->del_work);
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations wwan_hwsim_debugfs_portdestroy_fops = {
-	.write = wwan_hwsim_debugfs_portdestroy_write,
+	.write_iter = wwan_hwsim_debugfs_portdestroy_write,
 	.open = simple_open,
 	.llseek = noop_llseek,
 };
 
-static ssize_t wwan_hwsim_debugfs_portcreate_write(struct file *file,
-						   const char __user *usrbuf,
-						   size_t count, loff_t *ppos)
+static ssize_t wwan_hwsim_debugfs_portcreate_write(struct kiocb *iocb,
+						   struct iov_iter *from)
 {
-	struct wwan_hwsim_dev *dev = file->private_data;
+	struct wwan_hwsim_dev *dev = iocb->ki_filp->private_data;
 	struct wwan_hwsim_port *port;
 
 	port = wwan_hwsim_port_new(dev, WWAN_PORT_AT);
@@ -520,20 +518,19 @@ static ssize_t wwan_hwsim_debugfs_portcreate_write(struct file *file,
 	list_add_tail(&port->list, &dev->ports);
 	spin_unlock(&dev->ports_lock);
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations wwan_hwsim_debugfs_portcreate_fops = {
-	.write = wwan_hwsim_debugfs_portcreate_write,
+	.write_iter = wwan_hwsim_debugfs_portcreate_write,
 	.open = simple_open,
 	.llseek = noop_llseek,
 };
 
-static ssize_t wwan_hwsim_debugfs_devdestroy_write(struct file *file,
-						   const char __user *usrbuf,
-						   size_t count, loff_t *ppos)
+static ssize_t wwan_hwsim_debugfs_devdestroy_write(struct kiocb *iocb,
+						   struct iov_iter *from)
 {
-	struct wwan_hwsim_dev *dev = file->private_data;
+	struct wwan_hwsim_dev *dev = iocb->ki_filp->private_data;
 
 	/* We can not delete device here since it will cause a deadlock due to
 	 * waiting this callback to finish in the debugfs_remove() call. So,
@@ -541,18 +538,17 @@ static ssize_t wwan_hwsim_debugfs_devdestroy_write(struct file *file,
 	 */
 	queue_work(wwan_wq, &dev->del_work);
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations wwan_hwsim_debugfs_devdestroy_fops = {
-	.write = wwan_hwsim_debugfs_devdestroy_write,
+	.write_iter = wwan_hwsim_debugfs_devdestroy_write,
 	.open = simple_open,
 	.llseek = noop_llseek,
 };
 
-static ssize_t wwan_hwsim_debugfs_devcreate_write(struct file *file,
-						  const char __user *usrbuf,
-						  size_t count, loff_t *ppos)
+static ssize_t wwan_hwsim_debugfs_devcreate_write(struct kiocb *iocb,
+						  struct iov_iter *from)
 {
 	struct wwan_hwsim_dev *dev;
 
@@ -564,11 +560,11 @@ static ssize_t wwan_hwsim_debugfs_devcreate_write(struct file *file,
 	list_add_tail(&dev->list, &wwan_hwsim_devs);
 	spin_unlock(&wwan_hwsim_devs_lock);
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations wwan_hwsim_debugfs_devcreate_fops = {
-	.write = wwan_hwsim_debugfs_devcreate_write,
+	.write_iter = wwan_hwsim_debugfs_devcreate_write,
 	.open = simple_open,
 	.llseek = noop_llseek,
 };

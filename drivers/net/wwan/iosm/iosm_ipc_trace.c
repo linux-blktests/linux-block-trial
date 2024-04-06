@@ -69,10 +69,9 @@ static struct rchan_callbacks relay_callbacks = {
 };
 
 /* Copy the trace control mode to user buffer */
-static ssize_t ipc_trace_ctrl_file_read(struct file *filp, char __user *buffer,
-					size_t count, loff_t *ppos)
+static ssize_t ipc_trace_ctrl_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct iosm_trace *ipc_trace = filp->private_data;
+	struct iosm_trace *ipc_trace = iocb->ki_filp->private_data;
 	char buf[16];
 	int len;
 
@@ -80,19 +79,19 @@ static ssize_t ipc_trace_ctrl_file_read(struct file *filp, char __user *buffer,
 	len = snprintf(buf, sizeof(buf), "%d\n", ipc_trace->mode);
 	mutex_unlock(&ipc_trace->trc_mutex);
 
-	return simple_read_from_buffer(buffer, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 /* Open and close the trace channel depending on user input */
-static ssize_t ipc_trace_ctrl_file_write(struct file *filp,
-					 const char __user *buffer,
-					 size_t count, loff_t *ppos)
+static ssize_t ipc_trace_ctrl_file_write(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct iosm_trace *ipc_trace = filp->private_data;
+	struct iosm_trace *ipc_trace = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long val;
 	int ret;
 
-	ret = kstrtoul_from_user(buffer, count, 10, &val);
+	ret = kstrtoul_from_iter(from, count, 10, &val);
 	if (ret)
 		return ret;
 
@@ -121,8 +120,8 @@ unlock:
 
 static const struct file_operations ipc_trace_fops = {
 	.open = simple_open,
-	.write = ipc_trace_ctrl_file_write,
-	.read  = ipc_trace_ctrl_file_read,
+	.write_iter = ipc_trace_ctrl_file_write,
+	.read_iter  = ipc_trace_ctrl_file_read,
 };
 
 /**
