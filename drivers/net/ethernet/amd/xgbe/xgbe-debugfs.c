@@ -12,36 +12,30 @@
 #include "xgbe.h"
 #include "xgbe-common.h"
 
-static ssize_t xgbe_common_read(char __user *buffer, size_t count,
-				loff_t *ppos, unsigned int value)
+static ssize_t xgbe_common_read_iter(struct iov_iter *to, loff_t *ppos,
+				     unsigned int value)
 {
-	char *buf;
-	ssize_t len;
+	char buf[16];
+	int len;
+	size_t count = iov_iter_count(to);
 
 	if (*ppos != 0)
 		return 0;
 
-	buf = kasprintf(GFP_KERNEL, "0x%08x\n", value);
-	if (!buf)
-		return -ENOMEM;
-
-	if (count < strlen(buf)) {
-		kfree(buf);
+	len = sprintf(buf, "0x%08x\n", value);
+	if (count < len)
 		return -ENOSPC;
-	}
 
-	len = simple_read_from_buffer(buffer, count, ppos, buf, strlen(buf));
-	kfree(buf);
-
-	return len;
+	return simple_copy_to_iter(buf, ppos, len, to);
 }
 
-static ssize_t xgbe_common_write(const char __user *buffer, size_t count,
-				 loff_t *ppos, unsigned int *value)
+static ssize_t xgbe_common_write_iter(struct iov_iter *from, loff_t *ppos,
+				      unsigned int *value)
 {
 	char workarea[32];
 	ssize_t len;
 	int ret;
+	size_t count = iov_iter_count(from);
 
 	if (*ppos != 0)
 		return -EINVAL;
@@ -49,8 +43,8 @@ static ssize_t xgbe_common_write(const char __user *buffer, size_t count,
 	if (count >= sizeof(workarea))
 		return -ENOSPC;
 
-	len = simple_write_to_buffer(workarea, sizeof(workarea) - 1, ppos,
-				     buffer, count);
+	len = simple_copy_from_iter(workarea, ppos, sizeof(workarea) - 1,
+				    from);
 	if (len < 0)
 		return len;
 
@@ -62,44 +56,43 @@ static ssize_t xgbe_common_write(const char __user *buffer, size_t count,
 	return len;
 }
 
-static ssize_t xgmac_reg_addr_read(struct file *filp, char __user *buffer,
-				   size_t count, loff_t *ppos)
+static ssize_t xgmac_reg_addr_read_iter(struct kiocb *iocb,
+					struct iov_iter *to)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 
-	return xgbe_common_read(buffer, count, ppos, pdata->debugfs_xgmac_reg);
+	return xgbe_common_read_iter(to, &iocb->ki_pos,
+				     pdata->debugfs_xgmac_reg);
 }
 
-static ssize_t xgmac_reg_addr_write(struct file *filp,
-				    const char __user *buffer,
-				    size_t count, loff_t *ppos)
+static ssize_t xgmac_reg_addr_write_iter(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 
-	return xgbe_common_write(buffer, count, ppos,
-				 &pdata->debugfs_xgmac_reg);
+	return xgbe_common_write_iter(from, &iocb->ki_pos,
+				      &pdata->debugfs_xgmac_reg);
 }
 
-static ssize_t xgmac_reg_value_read(struct file *filp, char __user *buffer,
-				    size_t count, loff_t *ppos)
+static ssize_t xgmac_reg_value_read_iter(struct kiocb *iocb,
+					 struct iov_iter *to)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 	unsigned int value;
 
 	value = XGMAC_IOREAD(pdata, pdata->debugfs_xgmac_reg);
 
-	return xgbe_common_read(buffer, count, ppos, value);
+	return xgbe_common_read_iter(to, &iocb->ki_pos, value);
 }
 
-static ssize_t xgmac_reg_value_write(struct file *filp,
-				     const char __user *buffer,
-				     size_t count, loff_t *ppos)
+static ssize_t xgmac_reg_value_write_iter(struct kiocb *iocb,
+					  struct iov_iter *from)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 	unsigned int value;
 	ssize_t len;
 
-	len = xgbe_common_write(buffer, count, ppos, &value);
+	len = xgbe_common_write_iter(from, &iocb->ki_pos, &value);
 	if (len < 0)
 		return len;
 
@@ -111,72 +104,73 @@ static ssize_t xgmac_reg_value_write(struct file *filp,
 static const struct file_operations xgmac_reg_addr_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read =  xgmac_reg_addr_read,
-	.write = xgmac_reg_addr_write,
+	.read_iter =  xgmac_reg_addr_read_iter,
+	.write_iter = xgmac_reg_addr_write_iter,
 };
 
 static const struct file_operations xgmac_reg_value_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read =  xgmac_reg_value_read,
-	.write = xgmac_reg_value_write,
+	.read_iter =  xgmac_reg_value_read_iter,
+	.write_iter = xgmac_reg_value_write_iter,
 };
 
-static ssize_t xpcs_mmd_read(struct file *filp, char __user *buffer,
-			     size_t count, loff_t *ppos)
+static ssize_t xpcs_mmd_read_iter(struct kiocb *iocb,
+				  struct iov_iter *to)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 
-	return xgbe_common_read(buffer, count, ppos, pdata->debugfs_xpcs_mmd);
+	return xgbe_common_read_iter(to, &iocb->ki_pos,
+				     pdata->debugfs_xpcs_mmd);
 }
 
-static ssize_t xpcs_mmd_write(struct file *filp, const char __user *buffer,
-			      size_t count, loff_t *ppos)
+static ssize_t xpcs_mmd_write_iter(struct kiocb *iocb,
+				   struct iov_iter *from)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 
-	return xgbe_common_write(buffer, count, ppos,
-				 &pdata->debugfs_xpcs_mmd);
+	return xgbe_common_write_iter(from, &iocb->ki_pos,
+				      &pdata->debugfs_xpcs_mmd);
 }
 
-static ssize_t xpcs_reg_addr_read(struct file *filp, char __user *buffer,
-				  size_t count, loff_t *ppos)
+static ssize_t xpcs_reg_addr_read_iter(struct kiocb *iocb,
+				       struct iov_iter *to)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 
-	return xgbe_common_read(buffer, count, ppos, pdata->debugfs_xpcs_reg);
+	return xgbe_common_read_iter(to, &iocb->ki_pos,
+				     pdata->debugfs_xpcs_reg);
 }
 
-static ssize_t xpcs_reg_addr_write(struct file *filp, const char __user *buffer,
-				   size_t count, loff_t *ppos)
+static ssize_t xpcs_reg_addr_write_iter(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 
-	return xgbe_common_write(buffer, count, ppos,
-				 &pdata->debugfs_xpcs_reg);
+	return xgbe_common_write_iter(from, &iocb->ki_pos,
+				      &pdata->debugfs_xpcs_reg);
 }
 
-static ssize_t xpcs_reg_value_read(struct file *filp, char __user *buffer,
-				   size_t count, loff_t *ppos)
+static ssize_t xpcs_reg_value_read_iter(struct kiocb *iocb,
+					struct iov_iter *to)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 	unsigned int value;
 
 	value = XMDIO_READ(pdata, pdata->debugfs_xpcs_mmd,
 			   pdata->debugfs_xpcs_reg);
 
-	return xgbe_common_read(buffer, count, ppos, value);
+	return xgbe_common_read_iter(to, &iocb->ki_pos, value);
 }
 
-static ssize_t xpcs_reg_value_write(struct file *filp,
-				    const char __user *buffer,
-				    size_t count, loff_t *ppos)
+static ssize_t xpcs_reg_value_write_iter(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 	unsigned int value;
 	ssize_t len;
 
-	len = xgbe_common_write(buffer, count, ppos, &value);
+	len = xgbe_common_write_iter(from, &iocb->ki_pos, &value);
 	if (len < 0)
 		return len;
 
@@ -189,62 +183,61 @@ static ssize_t xpcs_reg_value_write(struct file *filp,
 static const struct file_operations xpcs_mmd_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read =  xpcs_mmd_read,
-	.write = xpcs_mmd_write,
+	.read_iter =  xpcs_mmd_read_iter,
+	.write_iter = xpcs_mmd_write_iter,
 };
 
 static const struct file_operations xpcs_reg_addr_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read =  xpcs_reg_addr_read,
-	.write = xpcs_reg_addr_write,
+	.read_iter =  xpcs_reg_addr_read_iter,
+	.write_iter = xpcs_reg_addr_write_iter,
 };
 
 static const struct file_operations xpcs_reg_value_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read =  xpcs_reg_value_read,
-	.write = xpcs_reg_value_write,
+	.read_iter =  xpcs_reg_value_read_iter,
+	.write_iter = xpcs_reg_value_write_iter,
 };
 
-static ssize_t xprop_reg_addr_read(struct file *filp, char __user *buffer,
-				   size_t count, loff_t *ppos)
+static ssize_t xprop_reg_addr_read_iter(struct kiocb *iocb,
+					struct iov_iter *to)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 
-	return xgbe_common_read(buffer, count, ppos, pdata->debugfs_xprop_reg);
+	return xgbe_common_read_iter(to, &iocb->ki_pos,
+				     pdata->debugfs_xprop_reg);
 }
 
-static ssize_t xprop_reg_addr_write(struct file *filp,
-				    const char __user *buffer,
-				    size_t count, loff_t *ppos)
+static ssize_t xprop_reg_addr_write_iter(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 
-	return xgbe_common_write(buffer, count, ppos,
-				 &pdata->debugfs_xprop_reg);
+	return xgbe_common_write_iter(from, &iocb->ki_pos,
+				      &pdata->debugfs_xprop_reg);
 }
 
-static ssize_t xprop_reg_value_read(struct file *filp, char __user *buffer,
-				    size_t count, loff_t *ppos)
+static ssize_t xprop_reg_value_read_iter(struct kiocb *iocb,
+					 struct iov_iter *to)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 	unsigned int value;
 
 	value = XP_IOREAD(pdata, pdata->debugfs_xprop_reg);
 
-	return xgbe_common_read(buffer, count, ppos, value);
+	return xgbe_common_read_iter(to, &iocb->ki_pos, value);
 }
 
-static ssize_t xprop_reg_value_write(struct file *filp,
-				     const char __user *buffer,
-				     size_t count, loff_t *ppos)
+static ssize_t xprop_reg_value_write_iter(struct kiocb *iocb,
+					  struct iov_iter *from)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 	unsigned int value;
 	ssize_t len;
 
-	len = xgbe_common_write(buffer, count, ppos, &value);
+	len = xgbe_common_write_iter(from, &iocb->ki_pos, &value);
 	if (len < 0)
 		return len;
 
@@ -256,55 +249,53 @@ static ssize_t xprop_reg_value_write(struct file *filp,
 static const struct file_operations xprop_reg_addr_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read =  xprop_reg_addr_read,
-	.write = xprop_reg_addr_write,
+	.read_iter =  xprop_reg_addr_read_iter,
+	.write_iter = xprop_reg_addr_write_iter,
 };
 
 static const struct file_operations xprop_reg_value_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read =  xprop_reg_value_read,
-	.write = xprop_reg_value_write,
+	.read_iter =  xprop_reg_value_read_iter,
+	.write_iter = xprop_reg_value_write_iter,
 };
 
-static ssize_t xi2c_reg_addr_read(struct file *filp, char __user *buffer,
-				  size_t count, loff_t *ppos)
+static ssize_t xi2c_reg_addr_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 
-	return xgbe_common_read(buffer, count, ppos, pdata->debugfs_xi2c_reg);
+	return xgbe_common_read_iter(to, &iocb->ki_pos,
+				     pdata->debugfs_xi2c_reg);
 }
 
-static ssize_t xi2c_reg_addr_write(struct file *filp,
-				   const char __user *buffer,
-				   size_t count, loff_t *ppos)
+static ssize_t xi2c_reg_addr_write_iter(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 
-	return xgbe_common_write(buffer, count, ppos,
-				 &pdata->debugfs_xi2c_reg);
+	return xgbe_common_write_iter(from, &iocb->ki_pos,
+				      &pdata->debugfs_xi2c_reg);
 }
 
-static ssize_t xi2c_reg_value_read(struct file *filp, char __user *buffer,
-				   size_t count, loff_t *ppos)
+static ssize_t xi2c_reg_value_read_iter(struct kiocb *iocb,
+					struct iov_iter *to)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 	unsigned int value;
 
 	value = XI2C_IOREAD(pdata, pdata->debugfs_xi2c_reg);
 
-	return xgbe_common_read(buffer, count, ppos, value);
+	return xgbe_common_read_iter(to, &iocb->ki_pos, value);
 }
 
-static ssize_t xi2c_reg_value_write(struct file *filp,
-				    const char __user *buffer,
-				    size_t count, loff_t *ppos)
+static ssize_t xi2c_reg_value_write_iter(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct xgbe_prv_data *pdata = filp->private_data;
+	struct xgbe_prv_data *pdata = iocb->ki_filp->private_data;
 	unsigned int value;
 	ssize_t len;
 
-	len = xgbe_common_write(buffer, count, ppos, &value);
+	len = xgbe_common_write_iter(from, &iocb->ki_pos, &value);
 	if (len < 0)
 		return len;
 
@@ -316,15 +307,15 @@ static ssize_t xi2c_reg_value_write(struct file *filp,
 static const struct file_operations xi2c_reg_addr_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read =  xi2c_reg_addr_read,
-	.write = xi2c_reg_addr_write,
+	.read_iter =  xi2c_reg_addr_read_iter,
+	.write_iter = xi2c_reg_addr_write_iter,
 };
 
 static const struct file_operations xi2c_reg_value_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read =  xi2c_reg_value_read,
-	.write = xi2c_reg_value_write,
+	.read_iter =  xi2c_reg_value_read_iter,
+	.write_iter = xi2c_reg_value_write_iter,
 };
 
 void xgbe_debugfs_init(struct xgbe_prv_data *pdata)
