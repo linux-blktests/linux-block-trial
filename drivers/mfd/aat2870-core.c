@@ -248,10 +248,9 @@ static ssize_t aat2870_dump_reg(struct aat2870_data *aat2870, char *buf)
 	return count;
 }
 
-static ssize_t aat2870_reg_read_file(struct file *file, char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t aat2870_reg_read_file(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct aat2870_data *aat2870 = file->private_data;
+	struct aat2870_data *aat2870 = iocb->ki_filp->private_data;
 	char *buf;
 	ssize_t ret;
 
@@ -261,18 +260,17 @@ static ssize_t aat2870_reg_read_file(struct file *file, char __user *user_buf,
 
 	ret = aat2870_dump_reg(aat2870, buf);
 	if (ret >= 0)
-		ret = simple_read_from_buffer(user_buf, count, ppos, buf, ret);
+		ret = simple_copy_from_iter(buf, &iocb->ki_pos, ret, to);
 
 	kfree(buf);
 
 	return ret;
 }
 
-static ssize_t aat2870_reg_write_file(struct file *file,
-				      const char __user *user_buf, size_t count,
-				      loff_t *ppos)
+static ssize_t aat2870_reg_write_file(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct aat2870_data *aat2870 = file->private_data;
+	struct aat2870_data *aat2870 = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char buf[32];
 	ssize_t buf_size;
 	char *start = buf;
@@ -280,7 +278,7 @@ static ssize_t aat2870_reg_write_file(struct file *file,
 	int ret;
 
 	buf_size = min(count, (size_t)(sizeof(buf)-1));
-	if (copy_from_user(buf, user_buf, buf_size)) {
+	if (!copy_from_iter_full(buf, buf_size, from)) {
 		dev_err(aat2870->dev, "Failed to copy from user\n");
 		return -EFAULT;
 	}
@@ -314,8 +312,8 @@ static ssize_t aat2870_reg_write_file(struct file *file,
 
 static const struct file_operations aat2870_reg_fops = {
 	.open = simple_open,
-	.read = aat2870_reg_read_file,
-	.write = aat2870_reg_write_file,
+	.read_iter = aat2870_reg_read_file,
+	.write_iter = aat2870_reg_write_file,
 };
 
 static void aat2870_init_debugfs(struct aat2870_data *aat2870)
