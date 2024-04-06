@@ -332,15 +332,15 @@ static int cw1200_counters_show(struct seq_file *seq, void *v)
 
 DEFINE_SHOW_ATTRIBUTE(cw1200_counters);
 
-static ssize_t cw1200_wsm_dumps(struct file *file,
-	const char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t cw1200_wsm_dumps(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct cw1200_common *priv = file->private_data;
+	struct cw1200_common *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char buf[1];
 
 	if (!count)
 		return -EINVAL;
-	if (copy_from_user(buf, user_buf, 1))
+	if (!copy_from_iter_full(buf, 1, from))
 		return -EFAULT;
 
 	if (buf[0] == '1')
@@ -353,7 +353,7 @@ static ssize_t cw1200_wsm_dumps(struct file *file,
 
 static const struct file_operations fops_wsm_dumps = {
 	.open = simple_open,
-	.write = cw1200_wsm_dumps,
+	.write_iter = cw1200_wsm_dumps,
 	.llseek = default_llseek,
 };
 
