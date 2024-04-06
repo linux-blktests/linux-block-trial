@@ -498,6 +498,7 @@ static ssize_t ppp_read(struct file *file, char __user *buf,
  out:
 	return ret;
 }
+FOPS_READ_ITER_HELPER(ppp_read);
 
 static bool ppp_check_packet(struct sk_buff *skb, size_t count)
 {
@@ -508,10 +509,10 @@ static bool ppp_check_packet(struct sk_buff *skb, size_t count)
 		count >= PPP_PROTO_LEN + PPP_LCP_HDRLEN;
 }
 
-static ssize_t ppp_write(struct file *file, const char __user *buf,
-			 size_t count, loff_t *ppos)
+static ssize_t ppp_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ppp_file *pf = file->private_data;
+	struct ppp_file *pf = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct sk_buff *skb;
 	ssize_t ret;
 
@@ -526,7 +527,7 @@ static ssize_t ppp_write(struct file *file, const char __user *buf,
 		goto out;
 	skb_reserve(skb, pf->hdrlen);
 	ret = -EFAULT;
-	if (copy_from_user(skb_put(skb, count), buf, count)) {
+	if (!copy_from_iter_full(skb_put(skb, count), count, from)) {
 		kfree_skb(skb);
 		goto out;
 	}
@@ -1112,8 +1113,8 @@ static int ppp_unattached_ioctl(struct net *net, struct ppp_file *pf,
 
 static const struct file_operations ppp_device_fops = {
 	.owner		= THIS_MODULE,
-	.read		= ppp_read,
-	.write		= ppp_write,
+	.read_iter	= ppp_read_iter,
+	.write_iter	= ppp_write,
 	.poll		= ppp_poll,
 	.unlocked_ioctl	= ppp_ioctl,
 #ifdef CONFIG_COMPAT
