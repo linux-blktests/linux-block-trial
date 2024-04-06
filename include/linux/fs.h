@@ -360,6 +360,8 @@ struct readahead_control;
 /* kiocb is a read or write operation submitted by fs/aio.c. */
 #define IOCB_AIO_RW		(1 << 22)
 #define IOCB_HAS_METADATA	(1 << 23)
+/* came from readv/writev */
+#define IOCB_VECTORED		(1 << 24)
 
 /* for use in trace events */
 #define TRACE_IOCB_STRINGS \

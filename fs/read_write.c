@@ -821,6 +821,7 @@ static ssize_t do_iter_readv_writev(struct file *filp, struct iov_iter *iter,
 	ret = kiocb_set_rw_flags(&kiocb, flags, type);
 	if (ret)
 		return ret;
+	kiocb.ki_flags |= IOCB_VECTORED;
 	kiocb.ki_pos = (ppos ? *ppos : 0);
 
 	if (type == READ)
