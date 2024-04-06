@@ -487,6 +487,7 @@ static ssize_t sbprof_tb_read(struct file *filp, char __user *buf,
 
 	return count;
 }
+FOPS_READ_ITER_HELPER(sbprof_tb_read);
 
 static long sbprof_tb_ioctl(struct file *filp,
 			    unsigned int command,
@@ -528,7 +529,7 @@ static const struct file_operations sbprof_tb_fops = {
 	.owner		= THIS_MODULE,
 	.open		= sbprof_tb_open,
 	.release	= sbprof_tb_release,
-	.read		= sbprof_tb_read,
+	.read_iter	= sbprof_tb_read_iter,
 	.unlocked_ioctl = sbprof_tb_ioctl,
 	.compat_ioctl	= sbprof_tb_ioctl,
 	.mmap		= NULL,

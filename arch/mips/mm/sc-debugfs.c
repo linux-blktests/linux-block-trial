@@ -10,8 +10,7 @@
 #include <linux/debugfs.h>
 #include <linux/init.h>
 
-static ssize_t sc_prefetch_read(struct file *file, char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t sc_prefetch_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	bool enabled = bc_prefetch_is_enabled();
 	char buf[3];
@@ -20,17 +19,16 @@ static ssize_t sc_prefetch_read(struct file *file, char __user *user_buf,
 	buf[1] = '\n';
 	buf[2] = 0;
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
-static ssize_t sc_prefetch_write(struct file *file,
-				 const char __user *user_buf,
-				 size_t count, loff_t *ppos)
+static ssize_t sc_prefetch_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	bool enabled;
 	int err;
 
-	err = kstrtobool_from_user(user_buf, count, &enabled);
+	err = kstrtobool_from_iter(from, count, &enabled);
 	if (err)
 		return err;
 
@@ -45,8 +43,8 @@ static ssize_t sc_prefetch_write(struct file *file,
 static const struct file_operations sc_prefetch_fops = {
 	.open = simple_open,
 	.llseek = default_llseek,
-	.read = sc_prefetch_read,
-	.write = sc_prefetch_write,
+	.read_iter = sc_prefetch_read,
+	.write_iter = sc_prefetch_write,
 };
 
 static int __init sc_debugfs_init(void)

@@ -369,6 +369,7 @@ static ssize_t file_read(struct file *file, char __user *buffer, size_t count,
 
 	return rtlx_read(minor, buffer, count);
 }
+FOPS_READ_ITER_HELPER(file_read);
 
 static ssize_t file_write(struct file *file, const char __user *buffer,
 			  size_t count, loff_t *ppos)
@@ -390,13 +391,14 @@ static ssize_t file_write(struct file *file, const char __user *buffer,
 
 	return rtlx_write(minor, buffer, count);
 }
+FOPS_WRITE_ITER_HELPER(file_write);
 
 const struct file_operations rtlx_fops = {
 	.owner =   THIS_MODULE,
 	.open =    file_open,
 	.release = file_release,
-	.write =   file_write,
-	.read =    file_read,
+	.write_iter =   file_write_iter,
+	.read_iter = file_read_iter,
 	.poll =    file_poll,
 	.llseek =  noop_llseek,
 };

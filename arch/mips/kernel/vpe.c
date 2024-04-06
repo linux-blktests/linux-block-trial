@@ -835,13 +835,13 @@ static int vpe_release(struct inode *inode, struct file *filp)
 #endif
 }
 
-static ssize_t vpe_write(struct file *file, const char __user *buffer,
-			 size_t count, loff_t *ppos)
+static ssize_t vpe_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	size_t ret = count;
 	struct vpe *v;
 
-	if (iminor(file_inode(file)) != VPE_MODULE_MINOR)
+	if (iminor(file_inode(iocb->ki_filp)) != VPE_MODULE_MINOR)
 		return -ENODEV;
 
 	v = get_vpe(aprp_cpu_index());
@@ -854,19 +854,19 @@ static ssize_t vpe_write(struct file *file, const char __user *buffer,
 		return -ENOMEM;
 	}
 
-	count -= copy_from_user(v->pbuffer + v->len, buffer, count);
-	if (!count)
+	ret = !copy_from_iter_full(v->pbuffer + v->len, count, from);
+	if (ret)
 		return -EFAULT;
 
 	v->len += count;
-	return ret;
+	return count;
 }
 
 const struct file_operations vpe_fops = {
 	.owner = THIS_MODULE,
 	.open = vpe_open,
 	.release = vpe_release,
-	.write = vpe_write,
+	.write_iter = vpe_write,
 	.llseek = noop_llseek,
 };
 
