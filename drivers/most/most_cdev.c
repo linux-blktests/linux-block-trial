@@ -174,24 +174,22 @@ static int comp_close(struct inode *inode, struct file *filp)
 
 /**
  * comp_write - implements the syscall to write to the device
- * @filp: file pointer
- * @buf: pointer to user buffer
- * @count: number of bytes to write
- * @offset: offset from where to start writing
+ * @iocb: metadata for IO
+ * @from: pointer to user buffer
  */
-static ssize_t comp_write(struct file *filp, const char __user *buf,
-			  size_t count, loff_t *offset)
+static ssize_t comp_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int ret;
-	size_t to_copy, left;
+	size_t to_copy;
 	struct mbo *mbo = NULL;
-	struct comp_channel *c = filp->private_data;
+	struct comp_channel *c = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 
 	mutex_lock(&c->io_mutex);
 	while (c->dev && !ch_get_mbo(c, &mbo)) {
 		mutex_unlock(&c->io_mutex);
 
-		if ((filp->f_flags & O_NONBLOCK))
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 		if (wait_event_interruptible(c->wq, ch_has_mbo(c) || !c->dev))
 			return -ERESTARTSYS;
@@ -204,13 +202,13 @@ static ssize_t comp_write(struct file *filp, const char __user *buf,
 	}
 
 	to_copy = min(count, c->cfg->buffer_size - c->mbo_offs);
-	left = copy_from_user(mbo->virt_address + c->mbo_offs, buf, to_copy);
-	if (left == to_copy) {
+	ret = copy_from_iter(mbo->virt_address + c->mbo_offs, to_copy, from);
+	if (ret != to_copy) {
 		ret = -EFAULT;
 		goto unlock;
 	}
 
-	c->mbo_offs += to_copy - left;
+	c->mbo_offs += ret;
 	if (c->mbo_offs >= c->cfg->buffer_size ||
 	    c->cfg->data_type == MOST_CH_CONTROL ||
 	    c->cfg->data_type == MOST_CH_ASYNC) {
@@ -219,8 +217,6 @@ static ssize_t comp_write(struct file *filp, const char __user *buf,
 		c->mbo_offs = 0;
 		most_submit_mbo(mbo);
 	}
-
-	ret = to_copy - left;
 unlock:
 	mutex_unlock(&c->io_mutex);
 	return ret;
@@ -228,22 +224,20 @@ unlock:
 
 /**
  * comp_read - implements the syscall to read from the device
- * @filp: file pointer
- * @buf: pointer to user buffer
- * @count: number of bytes to read
- * @offset: offset from where to start reading
+ * @iocb: metadata for IO
+ * @to: pointer to user buffer
  */
-static ssize_t
-comp_read(struct file *filp, char __user *buf, size_t count, loff_t *offset)
+static ssize_t comp_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	size_t to_copy, not_copied, copied;
+	size_t to_copy, copied;
 	struct mbo *mbo = NULL;
-	struct comp_channel *c = filp->private_data;
+	struct comp_channel *c = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 
 	mutex_lock(&c->io_mutex);
 	while (c->dev && !kfifo_peek(&c->fifo, &mbo)) {
 		mutex_unlock(&c->io_mutex);
-		if (filp->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 		if (wait_event_interruptible(c->wq,
 					     (!kfifo_is_empty(&c->fifo) ||
@@ -262,11 +256,7 @@ comp_read(struct file *filp, char __user *buf, size_t count, loff_t *offset)
 			count,
 			mbo->processed_length - c->mbo_offs);
 
-	not_copied = copy_to_user(buf,
-				  mbo->virt_address + c->mbo_offs,
-				  to_copy);
-
-	copied = to_copy - not_copied;
+	copied = copy_to_iter(mbo->virt_address + c->mbo_offs, to_copy, to);
 
 	c->mbo_offs += copied;
 	if (c->mbo_offs >= mbo->processed_length) {
@@ -302,8 +292,8 @@ static __poll_t comp_poll(struct file *filp, poll_table *wait)
  */
 static const struct file_operations channel_fops = {
 	.owner = THIS_MODULE,
-	.read = comp_read,
-	.write = comp_write,
+	.read_iter = comp_read,
+	.write_iter = comp_write,
 	.open = comp_open,
 	.release = comp_close,
 	.poll = comp_poll,
