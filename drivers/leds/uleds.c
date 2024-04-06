@@ -70,10 +70,10 @@ static int uleds_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t uleds_write(struct file *file, const char __user *buffer,
-			   size_t count, loff_t *ppos)
+static ssize_t uleds_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct uleds_device *udev = file->private_data;
+	struct uleds_device *udev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	const char *name;
 	int ret;
 
@@ -94,8 +94,8 @@ static ssize_t uleds_write(struct file *file, const char __user *buffer,
 		goto out;
 	}
 
-	if (copy_from_user(&udev->user_dev, buffer,
-			   sizeof(struct uleds_user_dev))) {
+	if (!copy_from_iter_full(&udev->user_dev, sizeof(struct uleds_user_dev),
+				 from)) {
 		ret = -EFAULT;
 		goto out;
 	}
@@ -128,10 +128,10 @@ out:
 	return ret;
 }
 
-static ssize_t uleds_read(struct file *file, char __user *buffer, size_t count,
-			  loff_t *ppos)
+static ssize_t uleds_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct uleds_device *udev = file->private_data;
+	struct uleds_device *udev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	ssize_t retval;
 
 	if (count < sizeof(udev->brightness))
@@ -144,13 +144,16 @@ static ssize_t uleds_read(struct file *file, char __user *buffer, size_t count,
 
 		if (udev->state != ULEDS_STATE_REGISTERED) {
 			retval = -ENODEV;
-		} else if (!udev->new_data && (file->f_flags & O_NONBLOCK)) {
+		} else if (!udev->new_data && (iocb->ki_filp->f_flags & O_NONBLOCK)) {
 			retval = -EAGAIN;
 		} else if (udev->new_data) {
-			retval = copy_to_user(buffer, &udev->brightness,
-					      sizeof(udev->brightness));
+			retval = !copy_to_iter_full(&udev->brightness,
+					      sizeof(udev->brightness), to);
 			udev->new_data = false;
-			retval = sizeof(udev->brightness);
+			if (retval)
+				retval = -EFAULT;
+			else
+				retval = sizeof(udev->brightness);
 		}
 
 		mutex_unlock(&udev->mutex);
@@ -158,7 +161,7 @@ static ssize_t uleds_read(struct file *file, char __user *buffer, size_t count,
 		if (retval)
 			break;
 
-		if (!(file->f_flags & O_NONBLOCK))
+		if (!(iocb->ki_filp->f_flags & O_NONBLOCK))
 			retval = wait_event_interruptible(udev->waitq,
 					udev->new_data ||
 					udev->state != ULEDS_STATE_REGISTERED);
@@ -197,8 +200,8 @@ static const struct file_operations uleds_fops = {
 	.owner		= THIS_MODULE,
 	.open		= uleds_open,
 	.release	= uleds_release,
-	.read		= uleds_read,
-	.write		= uleds_write,
+	.read_iter	= uleds_read,
+	.write_iter	= uleds_write,
 	.poll		= uleds_poll,
 };
 
