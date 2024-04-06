@@ -642,10 +642,10 @@ unlock_out:
 
 /* -------- file_operations for capidev ----------------------------- */
 
-static ssize_t
-capi_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+static ssize_t capi_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct capidev *cdev = file->private_data;
+	struct capidev *cdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	struct sk_buff *skb;
 	size_t copied;
 	int err;
@@ -655,7 +655,7 @@ capi_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 
 	skb = skb_dequeue(&cdev->recvqueue);
 	if (!skb) {
-		if (file->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 		err = wait_event_interruptible(cdev->recvwait,
 					       (skb = skb_dequeue(&cdev->recvqueue)));
@@ -666,7 +666,7 @@ capi_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 		skb_queue_head(&cdev->recvqueue, skb);
 		return -EMSGSIZE;
 	}
-	if (copy_to_user(buf, skb->data, skb->len)) {
+	if (!copy_to_iter_full(skb->data, skb->len, to)) {
 		skb_queue_head(&cdev->recvqueue, skb);
 		return -EFAULT;
 	}
@@ -677,10 +677,10 @@ capi_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 	return copied;
 }
 
-static ssize_t
-capi_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+static ssize_t capi_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct capidev *cdev = file->private_data;
+	struct capidev *cdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct sk_buff *skb;
 	u16 mlen;
 
@@ -694,7 +694,7 @@ capi_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos
 	if (!skb)
 		return -ENOMEM;
 
-	if (copy_from_user(skb_put(skb, count), buf, count)) {
+	if (!copy_from_iter_full(skb_put(skb, count), count, from)) {
 		kfree_skb(skb);
 		return -EFAULT;
 	}
@@ -1018,8 +1018,8 @@ static int capi_release(struct inode *inode, struct file *file)
 static const struct file_operations capi_fops =
 {
 	.owner		= THIS_MODULE,
-	.read		= capi_read,
-	.write		= capi_write,
+	.read_iter	= capi_read,
+	.write_iter	= capi_write,
 	.poll		= capi_poll,
 	.unlocked_ioctl	= capi_unlocked_ioctl,
 #ifdef CONFIG_COMPAT

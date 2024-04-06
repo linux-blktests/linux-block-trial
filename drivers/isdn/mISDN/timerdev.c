@@ -89,17 +89,17 @@ mISDN_close(struct inode *ino, struct file *filep)
 	return 0;
 }
 
-static ssize_t
-mISDN_read(struct file *filep, char __user *buf, size_t count, loff_t *off)
+static ssize_t mISDN_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mISDNtimerdev	*dev = filep->private_data;
+	struct mISDNtimerdev	*dev = iocb->ki_filp->private_data;
+	size_t			count = iov_iter_count(to);
 	struct list_head *list = &dev->expired;
 	struct mISDNtimer	*timer;
 	int	ret = 0;
 
 	if (*debug & DEBUG_TIMER)
-		printk(KERN_DEBUG "%s(%p, %p, %d, %p)\n", __func__,
-		       filep, buf, (int)count, off);
+		printk(KERN_DEBUG "%s(%p, %d)\n", __func__,
+		       iocb->ki_filp, (int)count);
 
 	if (count < sizeof(int))
 		return -ENOSPC;
@@ -107,7 +107,7 @@ mISDN_read(struct file *filep, char __user *buf, size_t count, loff_t *off)
 	spin_lock_irq(&dev->lock);
 	while (list_empty(list) && (dev->work == 0)) {
 		spin_unlock_irq(&dev->lock);
-		if (filep->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 		wait_event_interruptible(dev->wait, (READ_ONCE(dev->work) ||
 						     !list_empty(list)));
@@ -121,7 +121,7 @@ mISDN_read(struct file *filep, char __user *buf, size_t count, loff_t *off)
 		timer = list_first_entry(list, struct mISDNtimer, list);
 		list_del(&timer->list);
 		spin_unlock_irq(&dev->lock);
-		if (put_user(timer->id, (int __user *)buf))
+		if (put_iter(timer->id, to))
 			ret = -EFAULT;
 		else
 			ret = sizeof(int);
@@ -264,7 +264,7 @@ mISDN_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 
 static const struct file_operations mISDN_fops = {
 	.owner		= THIS_MODULE,
-	.read		= mISDN_read,
+	.read_iter	= mISDN_read,
 	.poll		= mISDN_poll,
 	.unlocked_ioctl	= mISDN_ioctl,
 	.open		= mISDN_open,
