@@ -168,10 +168,10 @@ static bool dump_pred(struct keybuf *buf, struct bkey *k)
 	return true;
 }
 
-static ssize_t bch_dump_read(struct file *file, char __user *buf,
-			     size_t size, loff_t *ppos)
+static ssize_t bch_dump_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dump_iterator *i = file->private_data;
+	struct dump_iterator *i = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(to);
 	ssize_t ret = 0;
 	char kbuf[80];
 
@@ -179,11 +179,10 @@ static ssize_t bch_dump_read(struct file *file, char __user *buf,
 		struct keybuf_key *w;
 		unsigned int bytes = min(i->bytes, size);
 
-		if (copy_to_user(buf, i->buf, bytes))
+		if (!copy_to_iter_full(i->buf, bytes, to))
 			return -EFAULT;
 
 		ret	 += bytes;
-		buf	 += bytes;
 		size	 -= bytes;
 		i->bytes -= bytes;
 		memmove(i->buf, i->buf + bytes, i->bytes);
@@ -229,7 +228,7 @@ static int bch_dump_release(struct inode *inode, struct file *file)
 static const struct file_operations cache_set_debug_ops = {
 	.owner		= THIS_MODULE,
 	.open		= bch_dump_open,
-	.read		= bch_dump_read,
+	.read_iter	= bch_dump_read,
 	.release	= bch_dump_release
 };
 
