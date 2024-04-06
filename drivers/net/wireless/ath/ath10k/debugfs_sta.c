@@ -174,11 +174,10 @@ void ath10k_sta_update_rx_duration(struct ath10k *ar,
 		ath10k_sta_update_stats_rx_duration(ar, stats);
 }
 
-static ssize_t ath10k_dbg_sta_read_aggr_mode(struct file *file,
-					     char __user *user_buf,
-					     size_t count, loff_t *ppos)
+static ssize_t ath10k_dbg_sta_read_aggr_mode(struct kiocb *iocb,
+					     struct iov_iter *to)
 {
-	struct ieee80211_sta *sta = file->private_data;
+	struct ieee80211_sta *sta = iocb->ki_filp->private_data;
 	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
 	struct ath10k *ar = arsta->arvif->ar;
 	char buf[32];
@@ -190,20 +189,20 @@ static ssize_t ath10k_dbg_sta_read_aggr_mode(struct file *file,
 			"auto" : "manual");
 	mutex_unlock(&ar->conf_mutex);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t ath10k_dbg_sta_write_aggr_mode(struct file *file,
-					      const char __user *user_buf,
-					      size_t count, loff_t *ppos)
+static ssize_t ath10k_dbg_sta_write_aggr_mode(struct kiocb *iocb,
+					      struct iov_iter *from)
 {
-	struct ieee80211_sta *sta = file->private_data;
+	struct ieee80211_sta *sta = iocb->ki_filp->private_data;
 	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
 	struct ath10k *ar = arsta->arvif->ar;
+	size_t count = iov_iter_count(from);
 	u32 aggr_mode;
 	int ret;
 
-	if (kstrtouint_from_user(user_buf, count, 0, &aggr_mode))
+	if (kstrtouint_from_iter(from, count, 0, &aggr_mode))
 		return -EINVAL;
 
 	if (aggr_mode >= ATH10K_DBG_AGGR_MODE_MAX)
@@ -229,26 +228,25 @@ out:
 }
 
 static const struct file_operations fops_aggr_mode = {
-	.read = ath10k_dbg_sta_read_aggr_mode,
-	.write = ath10k_dbg_sta_write_aggr_mode,
+	.read_iter = ath10k_dbg_sta_read_aggr_mode,
+	.write_iter = ath10k_dbg_sta_write_aggr_mode,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t ath10k_dbg_sta_write_addba(struct file *file,
-					  const char __user *user_buf,
-					  size_t count, loff_t *ppos)
+static ssize_t ath10k_dbg_sta_write_addba(struct kiocb *iocb,
+					  struct iov_iter *from)
 {
-	struct ieee80211_sta *sta = file->private_data;
+	struct ieee80211_sta *sta = iocb->ki_filp->private_data;
 	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
 	struct ath10k *ar = arsta->arvif->ar;
+	size_t count = iov_iter_count(from);
 	u32 tid, buf_size;
 	int ret;
 	char buf[64] = {};
 
-	ret = simple_write_to_buffer(buf, sizeof(buf) - 1, ppos,
-				     user_buf, count);
+	ret = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf) - 1, from);
 	if (ret <= 0)
 		return ret;
 
@@ -281,25 +279,24 @@ out:
 }
 
 static const struct file_operations fops_addba = {
-	.write = ath10k_dbg_sta_write_addba,
+	.write_iter = ath10k_dbg_sta_write_addba,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t ath10k_dbg_sta_write_addba_resp(struct file *file,
-					       const char __user *user_buf,
-					       size_t count, loff_t *ppos)
+static ssize_t ath10k_dbg_sta_write_addba_resp(struct kiocb *iocb,
+					       struct iov_iter *from)
 {
-	struct ieee80211_sta *sta = file->private_data;
+	struct ieee80211_sta *sta = iocb->ki_filp->private_data;
 	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
 	struct ath10k *ar = arsta->arvif->ar;
+	size_t count = iov_iter_count(from);
 	u32 tid, status;
 	int ret;
 	char buf[64] = {};
 
-	ret = simple_write_to_buffer(buf, sizeof(buf) - 1, ppos,
-				     user_buf, count);
+	ret = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf) - 1, from);
 	if (ret <= 0)
 		return ret;
 
@@ -331,25 +328,24 @@ out:
 }
 
 static const struct file_operations fops_addba_resp = {
-	.write = ath10k_dbg_sta_write_addba_resp,
+	.write_iter = ath10k_dbg_sta_write_addba_resp,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t ath10k_dbg_sta_write_delba(struct file *file,
-					  const char __user *user_buf,
-					  size_t count, loff_t *ppos)
+static ssize_t ath10k_dbg_sta_write_delba(struct kiocb *iocb,
+					  struct iov_iter *from)
 {
-	struct ieee80211_sta *sta = file->private_data;
+	struct ieee80211_sta *sta = iocb->ki_filp->private_data;
 	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
 	struct ath10k *ar = arsta->arvif->ar;
+	size_t count = iov_iter_count(from);
 	u32 tid, initiator, reason;
 	int ret;
 	char buf[64] = {};
 
-	ret = simple_write_to_buffer(buf, sizeof(buf) - 1, ppos,
-				     user_buf, count);
+	ret = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf) - 1, from);
 	if (ret <= 0)
 		return ret;
 
@@ -382,18 +378,16 @@ out:
 }
 
 static const struct file_operations fops_delba = {
-	.write = ath10k_dbg_sta_write_delba,
+	.write_iter = ath10k_dbg_sta_write_delba,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t ath10k_dbg_sta_read_peer_debug_trigger(struct file *file,
-						      char __user *user_buf,
-						      size_t count,
-						      loff_t *ppos)
+static ssize_t ath10k_dbg_sta_read_peer_debug_trigger(struct kiocb *iocb,
+						      struct iov_iter *to)
 {
-	struct ieee80211_sta *sta = file->private_data;
+	struct ieee80211_sta *sta = iocb->ki_filp->private_data;
 	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
 	struct ath10k *ar = arsta->arvif->ar;
 	char buf[8];
@@ -404,21 +398,21 @@ static ssize_t ath10k_dbg_sta_read_peer_debug_trigger(struct file *file,
 			"Write 1 to once trigger the debug logs\n");
 	mutex_unlock(&ar->conf_mutex);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static ssize_t
-ath10k_dbg_sta_write_peer_debug_trigger(struct file *file,
-					const char __user *user_buf,
-					size_t count, loff_t *ppos)
+ath10k_dbg_sta_write_peer_debug_trigger(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct ieee80211_sta *sta = file->private_data;
+	struct ieee80211_sta *sta = iocb->ki_filp->private_data;
 	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
 	struct ath10k *ar = arsta->arvif->ar;
+	size_t count = iov_iter_count(from);
 	u8 peer_debug_trigger;
 	int ret;
 
-	if (kstrtou8_from_user(user_buf, count, 0, &peer_debug_trigger))
+	if (kstrtou8_from_iter(from, count, 0, &peer_debug_trigger))
 		return -EINVAL;
 
 	if (peer_debug_trigger != 1)
@@ -445,17 +439,16 @@ out:
 
 static const struct file_operations fops_peer_debug_trigger = {
 	.open = simple_open,
-	.read = ath10k_dbg_sta_read_peer_debug_trigger,
-	.write = ath10k_dbg_sta_write_peer_debug_trigger,
+	.read_iter = ath10k_dbg_sta_read_peer_debug_trigger,
+	.write_iter = ath10k_dbg_sta_write_peer_debug_trigger,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t ath10k_dbg_sta_read_peer_ps_state(struct file *file,
-						 char __user *user_buf,
-						 size_t count, loff_t *ppos)
+static ssize_t ath10k_dbg_sta_read_peer_ps_state(struct kiocb *iocb,
+						 struct iov_iter *to)
 {
-	struct ieee80211_sta *sta = file->private_data;
+	struct ieee80211_sta *sta = iocb->ki_filp->private_data;
 	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
 	struct ath10k *ar = arsta->arvif->ar;
 	char buf[20];
@@ -468,12 +461,12 @@ static ssize_t ath10k_dbg_sta_read_peer_ps_state(struct file *file,
 
 	spin_unlock_bh(&ar->data_lock);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations fops_peer_ps_state = {
 	.open = simple_open,
-	.read = ath10k_dbg_sta_read_peer_ps_state,
+	.read_iter = ath10k_dbg_sta_read_peer_ps_state,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
@@ -561,11 +554,10 @@ static char *get_num_amsdu_subfrm_str(enum ath10k_amsdu_subfrm_num i)
 		len += scnprintf(buf + len, buf_len - len, "\n"); \
 	} while (0)
 
-static ssize_t ath10k_dbg_sta_read_tid_stats(struct file *file,
-					     char __user *user_buf,
-					     size_t count, loff_t *ppos)
+static ssize_t ath10k_dbg_sta_read_tid_stats(struct kiocb *iocb,
+					     struct iov_iter *to)
 {
-	struct ieee80211_sta *sta = file->private_data;
+	struct ieee80211_sta *sta = iocb->ki_filp->private_data;
 	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
 	struct ath10k *ar = arsta->arvif->ar;
 	struct ath10k_sta_tid_stats *stats = arsta->tid_stats;
@@ -628,7 +620,7 @@ static ssize_t ath10k_dbg_sta_read_tid_stats(struct file *file,
 
 	spin_unlock_bh(&ar->data_lock);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 
 	kfree(buf);
 
@@ -639,16 +631,15 @@ static ssize_t ath10k_dbg_sta_read_tid_stats(struct file *file,
 
 static const struct file_operations fops_tid_stats_dump = {
 	.open = simple_open,
-	.read = ath10k_dbg_sta_read_tid_stats,
+	.read_iter = ath10k_dbg_sta_read_tid_stats,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t ath10k_dbg_sta_dump_tx_stats(struct file *file,
-					    char __user *user_buf,
-					    size_t count, loff_t *ppos)
+static ssize_t ath10k_dbg_sta_dump_tx_stats(struct kiocb *iocb,
+					    struct iov_iter *to)
 {
-	struct ieee80211_sta *sta = file->private_data;
+	struct ieee80211_sta *sta = iocb->ki_filp->private_data;
 	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
 	struct ath10k *ar = arsta->arvif->ar;
 	struct ath10k_htt_data_stats *stats;
@@ -742,7 +733,7 @@ static ssize_t ath10k_dbg_sta_dump_tx_stats(struct file *file,
 
 	if (len > size)
 		len = size;
-	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	retval = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 
 	mutex_unlock(&ar->conf_mutex);
@@ -750,7 +741,7 @@ static ssize_t ath10k_dbg_sta_dump_tx_stats(struct file *file,
 }
 
 static const struct file_operations fops_tx_stats = {
-	.read = ath10k_dbg_sta_dump_tx_stats,
+	.read_iter = ath10k_dbg_sta_dump_tx_stats,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,

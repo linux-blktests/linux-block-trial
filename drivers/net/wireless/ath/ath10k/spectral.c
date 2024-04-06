@@ -270,10 +270,9 @@ static int ath10k_spectral_scan_config(struct ath10k *ar,
 	return 0;
 }
 
-static ssize_t read_file_spec_scan_ctl(struct file *file, char __user *user_buf,
-				       size_t count, loff_t *ppos)
+static ssize_t read_file_spec_scan_ctl(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath10k *ar = file->private_data;
+	struct ath10k *ar = iocb->ki_filp->private_data;
 	char *mode = "";
 	size_t len;
 	enum ath10k_spectral_mode spectral_mode;
@@ -295,20 +294,20 @@ static ssize_t read_file_spec_scan_ctl(struct file *file, char __user *user_buf,
 	}
 
 	len = strlen(mode);
-	return simple_read_from_buffer(user_buf, count, ppos, mode, len);
+	return simple_copy_to_iter(mode, &iocb->ki_pos, len, to);
 }
 
-static ssize_t write_file_spec_scan_ctl(struct file *file,
-					const char __user *user_buf,
-					size_t count, loff_t *ppos)
+static ssize_t write_file_spec_scan_ctl(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct ath10k *ar = file->private_data;
+	struct ath10k *ar = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char buf[32];
 	ssize_t len;
 	int res;
 
 	len = min(count, sizeof(buf) - 1);
-	if (copy_from_user(buf, user_buf, len))
+	if (!copy_from_iter_full(buf, len, from))
 		return -EFAULT;
 
 	buf[len] = '\0';
@@ -354,18 +353,16 @@ static ssize_t write_file_spec_scan_ctl(struct file *file,
 }
 
 static const struct file_operations fops_spec_scan_ctl = {
-	.read = read_file_spec_scan_ctl,
-	.write = write_file_spec_scan_ctl,
+	.read_iter = read_file_spec_scan_ctl,
+	.write_iter = write_file_spec_scan_ctl,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t read_file_spectral_count(struct file *file,
-					char __user *user_buf,
-					size_t count, loff_t *ppos)
+static ssize_t read_file_spectral_count(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath10k *ar = file->private_data;
+	struct ath10k *ar = iocb->ki_filp->private_data;
 	char buf[32];
 	size_t len;
 	u8 spectral_count;
@@ -375,18 +372,18 @@ static ssize_t read_file_spectral_count(struct file *file,
 	mutex_unlock(&ar->conf_mutex);
 
 	len = sprintf(buf, "%d\n", spectral_count);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t write_file_spectral_count(struct file *file,
-					 const char __user *user_buf,
-					 size_t count, loff_t *ppos)
+static ssize_t write_file_spectral_count(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct ath10k *ar = file->private_data;
+	struct ath10k *ar = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long val;
 	ssize_t ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &val);
+	ret = kstrtoul_from_iter(from, count, 0, &val);
 	if (ret)
 		return ret;
 
@@ -401,18 +398,16 @@ static ssize_t write_file_spectral_count(struct file *file,
 }
 
 static const struct file_operations fops_spectral_count = {
-	.read = read_file_spectral_count,
-	.write = write_file_spectral_count,
+	.read_iter = read_file_spectral_count,
+	.write_iter = write_file_spectral_count,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t read_file_spectral_bins(struct file *file,
-				       char __user *user_buf,
-				       size_t count, loff_t *ppos)
+static ssize_t read_file_spectral_bins(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath10k *ar = file->private_data;
+	struct ath10k *ar = iocb->ki_filp->private_data;
 	char buf[32];
 	unsigned int bins, fft_size, bin_scale;
 	size_t len;
@@ -426,18 +421,18 @@ static ssize_t read_file_spectral_bins(struct file *file,
 	mutex_unlock(&ar->conf_mutex);
 
 	len = sprintf(buf, "%d\n", bins);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t write_file_spectral_bins(struct file *file,
-					const char __user *user_buf,
-					size_t count, loff_t *ppos)
+static ssize_t write_file_spectral_bins(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct ath10k *ar = file->private_data;
+	struct ath10k *ar = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long val;
 	ssize_t ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &val);
+	ret = kstrtoul_from_iter(from, count, 0, &val);
 	if (ret)
 		return ret;
 
@@ -456,8 +451,8 @@ static ssize_t write_file_spectral_bins(struct file *file,
 }
 
 static const struct file_operations fops_spectral_bins = {
-	.read = read_file_spectral_bins,
-	.write = write_file_spectral_bins,
+	.read_iter = read_file_spectral_bins,
+	.write_iter = write_file_spectral_bins,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
