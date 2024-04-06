@@ -881,16 +881,17 @@ unlock:
 	return ret;
 }
 
-static ssize_t mtty_save_read(struct file *filp, char __user *buf,
-			      size_t len, loff_t *pos)
+static ssize_t mtty_save_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mtty_migration_file *migf = filp->private_data;
+	struct mtty_migration_file *migf = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	ssize_t ret = 0;
+	loff_t *pos;
 
-	if (pos)
+	if (iocb->ki_pos)
 		return -ESPIPE;
 
-	pos = &filp->f_pos;
+	pos = &iocb->ki_filp->f_pos;
 
 	mutex_lock(&migf->lock);
 
@@ -908,7 +909,7 @@ static ssize_t mtty_save_read(struct file *filp, char __user *buf,
 
 	len = min_t(size_t, migf->filled_size - *pos, len);
 	if (len) {
-		if (copy_to_user(buf, (void *)&migf->data + *pos, len)) {
+		if (!copy_to_iter_full((void *)&migf->data + *pos, len, to)) {
 			ret = -EFAULT;
 			goto out_unlock;
 		}
@@ -923,7 +924,7 @@ out_unlock:
 
 static const struct file_operations mtty_save_fops = {
 	.owner = THIS_MODULE,
-	.read = mtty_save_read,
+	.read_iter = mtty_save_read,
 	.unlocked_ioctl = mtty_precopy_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
 	.release = mtty_release_migf,
@@ -1017,18 +1018,19 @@ fill_data:
 	return ret;
 }
 
-static ssize_t mtty_resume_write(struct file *filp, const char __user *buf,
-				 size_t len, loff_t *pos)
+static ssize_t mtty_resume_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mtty_migration_file *migf = filp->private_data;
+	struct mtty_migration_file *migf = iocb->ki_filp->private_data;
 	struct mdev_state *mdev_state = migf->mdev_state;
+	size_t len = iov_iter_count(from);
 	loff_t requested_length;
 	ssize_t ret = 0;
+	loff_t *pos;
 
-	if (pos)
+	if (iocb->ki_pos)
 		return -ESPIPE;
 
-	pos = &filp->f_pos;
+	pos = &iocb->ki_filp->f_pos;
 
 	if (*pos < 0 ||
 	    check_add_overflow((loff_t)len, *pos, &requested_length))
@@ -1044,7 +1046,7 @@ static ssize_t mtty_resume_write(struct file *filp, const char __user *buf,
 		goto out_unlock;
 	}
 
-	if (copy_from_user((void *)&migf->data + *pos, buf, len)) {
+	if (!copy_from_iter_full((void *)&migf->data + *pos, len, from)) {
 		ret = -EFAULT;
 		goto out_unlock;
 	}
@@ -1079,7 +1081,7 @@ out_unlock:
 
 static const struct file_operations mtty_resume_fops = {
 	.owner = THIS_MODULE,
-	.write = mtty_resume_write,
+	.write_iter = mtty_resume_write,
 	.release = mtty_release_migf,
 };
 
