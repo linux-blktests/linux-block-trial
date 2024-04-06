@@ -181,7 +181,7 @@ static const uint64_t *bitmask_array;   /* array of bitmasks to use */
 static int perf_config(uint32_t *image_ptr);
 static int perf_release(struct inode *inode, struct file *file);
 static int perf_open(struct inode *inode, struct file *file);
-static ssize_t perf_read(struct file *file, char __user *buf, size_t cnt, loff_t *ppos);
+static ssize_t perf_read(struct kiocb *iocb, struct iov_iter *to);
 static ssize_t perf_write(struct file *file, const char __user *buf,
 	size_t count, loff_t *ppos);
 static long perf_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
@@ -273,7 +273,7 @@ static int perf_release(struct inode *inode, struct file *file)
 /*
  * Read does nothing for this driver
  */
-static ssize_t perf_read(struct file *file, char __user *buf, size_t cnt, loff_t *ppos)
+static ssize_t perf_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return 0;
 }
@@ -285,9 +285,9 @@ static ssize_t perf_read(struct file *file, char __user *buf, size_t cnt, loff_t
  * called on the processor that the download should happen
  * on.
  */
-static ssize_t perf_write(struct file *file, const char __user *buf,
-	size_t count, loff_t *ppos)
+static ssize_t perf_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	size_t image_size __maybe_unused;
 	uint32_t image_type;
 	uint32_t interface_type;
@@ -306,7 +306,7 @@ static ssize_t perf_write(struct file *file, const char __user *buf,
 	if (count != sizeof(uint32_t))
 		return -EIO;
 
-	if (copy_from_user(&image_type, buf, sizeof(uint32_t)))
+	if (!copy_from_iter_full(&image_type, sizeof(uint32_t), from))
 		return -EFAULT;
 
 	/* Get the interface type and test type */
@@ -466,8 +466,8 @@ static long perf_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 }
 
 static const struct file_operations perf_fops = {
-	.read = perf_read,
-	.write = perf_write,
+	.read_iter = perf_read,
+	.write_iter = perf_write,
 	.unlocked_ioctl = perf_ioctl,
 	.compat_ioctl = perf_ioctl,
 	.open = perf_open,
