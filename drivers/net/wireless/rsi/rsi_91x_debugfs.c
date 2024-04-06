@@ -222,25 +222,21 @@ static int rsi_debug_read(struct inode *inode,
 /**
  * rsi_debug_zone_write() - This function writes into hal queues as per user
  *			    requirement.
- * @filp: Pointer to the file structure.
- * @buff: Pointer to the character buffer.
- * @len: Length of the data to be written into buffer.
- * @data: Pointer to the data.
+ * @iocb: Metadata for IO.
+ * @from: iov_iter to copy data from.
  *
  * Return: len: Number of bytes read.
  */
-static ssize_t rsi_debug_zone_write(struct file *filp,
-				    const char __user *buff,
-				    size_t len,
-				    loff_t *data)
+static ssize_t rsi_debug_zone_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	unsigned long dbg_zone;
 	int ret;
 
 	if (!len)
 		return 0;
 
-	ret = kstrtoul_from_user(buff, len, 16, &dbg_zone);
+	ret = kstrtoul_from_iter(from, len, 16, &dbg_zone);
 
 	if (ret)
 		return ret;
@@ -252,16 +248,16 @@ static ssize_t rsi_debug_zone_write(struct file *filp,
 #define FOPS(fopen) { \
 	.owner = THIS_MODULE, \
 	.open = (fopen), \
-	.read = seq_read, \
+	.read_iter = seq_read_iter, \
 	.llseek = seq_lseek, \
 }
 
 #define FOPS_RW(fopen, fwrite) { \
 	.owner = THIS_MODULE, \
 	.open = (fopen), \
-	.read = seq_read, \
+	.read_iter = seq_read_iter, \
 	.llseek = seq_lseek, \
-	.write = (fwrite), \
+	.write_iter = (fwrite), \
 }
 
 static const struct rsi_dbg_files dev_debugfs_files[] = {
