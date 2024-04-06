@@ -39,17 +39,16 @@ static const char * const rproc_coredump_str[] = {
 };
 
 /* Expose the current coredump configuration via debugfs */
-static ssize_t rproc_coredump_read(struct file *filp, char __user *userbuf,
-				   size_t count, loff_t *ppos)
+static ssize_t rproc_coredump_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct rproc *rproc = filp->private_data;
+	struct rproc *rproc = iocb->ki_filp->private_data;
 	char buf[20];
 	int len;
 
 	len = scnprintf(buf, sizeof(buf), "%s\n",
 			rproc_coredump_str[rproc->dump_conf]);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 /*
@@ -68,18 +67,17 @@ static ssize_t rproc_coredump_read(struct file *filp, char __user *userbuf,
  *		recovery process will have to wait until data is read by
  *		userspace. But this avoid usage of extra memory.
  */
-static ssize_t rproc_coredump_write(struct file *filp,
-				    const char __user *user_buf, size_t count,
-				    loff_t *ppos)
+static ssize_t rproc_coredump_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct rproc *rproc = filp->private_data;
+	struct rproc *rproc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int ret, err = 0;
 	char buf[20];
 
 	if (count < 1 || count > sizeof(buf))
 		return -EINVAL;
 
-	ret = copy_from_user(buf, user_buf, count);
+	ret = !copy_from_iter_full(buf, count, from);
 	if (ret)
 		return -EFAULT;
 
@@ -108,8 +106,8 @@ out:
 }
 
 static const struct file_operations rproc_coredump_fops = {
-	.read = rproc_coredump_read,
-	.write = rproc_coredump_write,
+	.read_iter = rproc_coredump_read,
+	.write_iter = rproc_coredump_write,
 	.open = simple_open,
 	.llseek = generic_file_llseek,
 };
@@ -123,10 +121,9 @@ static const struct file_operations rproc_coredump_fops = {
  * but this kind of lightweight and simple mechanism is always good to have,
  * as it provides very early tracing with little to no dependencies at all.
  */
-static ssize_t rproc_trace_read(struct file *filp, char __user *userbuf,
-				size_t count, loff_t *ppos)
+static ssize_t rproc_trace_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct rproc_debug_trace *data = filp->private_data;
+	struct rproc_debug_trace *data = iocb->ki_filp->private_data;
 	struct rproc_mem_entry *trace = &data->trace_mem;
 	void *va;
 	char buf[100];
@@ -142,43 +139,41 @@ static ssize_t rproc_trace_read(struct file *filp, char __user *userbuf,
 		len = strnlen(va, trace->len);
 	}
 
-	return simple_read_from_buffer(userbuf, count, ppos, va, len);
+	return simple_copy_to_iter(va, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations trace_rproc_ops = {
-	.read = rproc_trace_read,
+	.read_iter = rproc_trace_read,
 	.open = simple_open,
 	.llseek	= generic_file_llseek,
 };
 
 /* expose the name of the remote processor via debugfs */
-static ssize_t rproc_name_read(struct file *filp, char __user *userbuf,
-			       size_t count, loff_t *ppos)
+static ssize_t rproc_name_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct rproc *rproc = filp->private_data;
+	struct rproc *rproc = iocb->ki_filp->private_data;
 	/* need room for the name, a newline and a terminating null */
 	char buf[100];
 	int i;
 
 	i = scnprintf(buf, sizeof(buf), "%.98s\n", rproc->name);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, i);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, i, to);
 }
 
 static const struct file_operations rproc_name_ops = {
-	.read = rproc_name_read,
+	.read_iter = rproc_name_read,
 	.open = simple_open,
 	.llseek	= generic_file_llseek,
 };
 
 /* expose recovery flag via debugfs */
-static ssize_t rproc_recovery_read(struct file *filp, char __user *userbuf,
-				   size_t count, loff_t *ppos)
+static ssize_t rproc_recovery_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct rproc *rproc = filp->private_data;
+	struct rproc *rproc = iocb->ki_filp->private_data;
 	char *buf = rproc->recovery_disabled ? "disabled\n" : "enabled\n";
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, strlen(buf));
+	return simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 }
 
 /*
@@ -206,17 +201,17 @@ static ssize_t rproc_recovery_read(struct file *filp, char __user *userbuf,
  *		instead use the "recover" command as needed.
  */
 static ssize_t
-rproc_recovery_write(struct file *filp, const char __user *user_buf,
-		     size_t count, loff_t *ppos)
+rproc_recovery_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct rproc *rproc = filp->private_data;
+	struct rproc *rproc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char buf[10];
 	int ret;
 
 	if (count < 1 || count > sizeof(buf))
 		return -EINVAL;
 
-	ret = copy_from_user(buf, user_buf, count);
+	ret = !copy_from_iter_full(buf, count, from);
 	if (ret)
 		return -EFAULT;
 
@@ -241,22 +236,21 @@ rproc_recovery_write(struct file *filp, const char __user *user_buf,
 }
 
 static const struct file_operations rproc_recovery_ops = {
-	.read = rproc_recovery_read,
-	.write = rproc_recovery_write,
+	.read_iter = rproc_recovery_read,
+	.write_iter = rproc_recovery_write,
 	.open = simple_open,
 	.llseek = generic_file_llseek,
 };
 
 /* expose the crash trigger via debugfs */
-static ssize_t
-rproc_crash_write(struct file *filp, const char __user *user_buf,
-		  size_t count, loff_t *ppos)
+static ssize_t rproc_crash_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct rproc *rproc = filp->private_data;
+	struct rproc *rproc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned int type;
 	int ret;
 
-	ret = kstrtouint_from_user(user_buf, count, 0, &type);
+	ret = kstrtouint_from_iter(from, count, 0, &type);
 	if (ret < 0)
 		return ret;
 
@@ -266,7 +260,7 @@ rproc_crash_write(struct file *filp, const char __user *user_buf,
 }
 
 static const struct file_operations rproc_crash_ops = {
-	.write = rproc_crash_write,
+	.write_iter = rproc_crash_write,
 	.open = simple_open,
 	.llseek = generic_file_llseek,
 };

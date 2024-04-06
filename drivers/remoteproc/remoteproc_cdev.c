@@ -18,16 +18,17 @@
 #define NUM_RPROC_DEVICES	64
 static dev_t rproc_major;
 
-static ssize_t rproc_cdev_write(struct file *filp, const char __user *buf, size_t len, loff_t *pos)
+static ssize_t rproc_cdev_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct rproc *rproc = container_of(filp->f_inode->i_cdev, struct rproc, cdev);
+	struct rproc *rproc = container_of(iocb->ki_filp->f_inode->i_cdev, struct rproc, cdev);
+	size_t len = iov_iter_count(from);
 	int ret = 0;
 	char cmd[10];
 
 	if (!len || len > sizeof(cmd))
 		return -EINVAL;
 
-	ret = copy_from_user(cmd, buf, len);
+	ret = !copy_from_iter_full(cmd, len, from);
 	if (ret)
 		return -EFAULT;
 
@@ -89,7 +90,7 @@ static int rproc_cdev_release(struct inode *inode, struct file *filp)
 }
 
 static const struct file_operations rproc_fops = {
-	.write = rproc_cdev_write,
+	.write_iter = rproc_cdev_write,
 	.unlocked_ioctl = rproc_device_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
 	.release = rproc_cdev_release,
