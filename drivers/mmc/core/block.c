@@ -3151,13 +3151,11 @@ out_free:
 	return err;
 }
 
-static ssize_t mmc_ext_csd_read(struct file *filp, char __user *ubuf,
-				size_t cnt, loff_t *ppos)
+static ssize_t mmc_ext_csd_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	char *buf = filp->private_data;
+	char *buf = iocb->ki_filp->private_data;
 
-	return simple_read_from_buffer(ubuf, cnt, ppos,
-				       buf, EXT_CSD_STR_LEN);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, EXT_CSD_STR_LEN, to);
 }
 
 static int mmc_ext_csd_release(struct inode *inode, struct file *file)
@@ -3168,7 +3166,7 @@ static int mmc_ext_csd_release(struct inode *inode, struct file *file)
 
 static const struct file_operations mmc_dbg_ext_csd_fops = {
 	.open		= mmc_ext_csd_open,
-	.read		= mmc_ext_csd_read,
+	.read_iter	= mmc_ext_csd_read,
 	.release	= mmc_ext_csd_release,
 	.llseek		= default_llseek,
 };

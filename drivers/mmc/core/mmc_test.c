@@ -3086,16 +3086,16 @@ static int mtf_test_open(struct inode *inode, struct file *file)
 	return single_open(file, mtf_test_show, inode->i_private);
 }
 
-static ssize_t mtf_test_write(struct file *file, const char __user *buf,
-	size_t count, loff_t *pos)
+static ssize_t mtf_test_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *sf = file->private_data;
+	struct seq_file *sf = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct mmc_card *card = sf->private;
 	struct mmc_test_card *test;
 	long testcase;
 	int ret;
 
-	ret = kstrtol_from_user(buf, count, 10, &testcase);
+	ret = kstrtol_from_iter(from, count, 10, &testcase);
 	if (ret)
 		return ret;
 
@@ -3138,8 +3138,8 @@ free_test_buffer:
 
 static const struct file_operations mmc_test_fops_test = {
 	.open		= mtf_test_open,
-	.read		= seq_read,
-	.write		= mtf_test_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= mtf_test_write,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };

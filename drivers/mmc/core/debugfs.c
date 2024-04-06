@@ -283,21 +283,20 @@ static int mmc_err_stats_open(struct inode *inode, struct file *file)
 	return single_open(file, mmc_err_stats_show, inode->i_private);
 }
 
-static ssize_t mmc_err_stats_write(struct file *filp, const char __user *ubuf,
-				   size_t cnt, loff_t *ppos)
+static ssize_t mmc_err_stats_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mmc_host *host = filp->f_mapping->host->i_private;
+	struct mmc_host *host = iocb->ki_filp->f_mapping->host->i_private;
 
 	pr_debug("%s: Resetting MMC error statistics\n", __func__);
 	memset(host->err_stats, 0, sizeof(host->err_stats));
 
-	return cnt;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations mmc_err_stats_fops = {
 	.open	= mmc_err_stats_open,
-	.read	= seq_read,
-	.write	= mmc_err_stats_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= mmc_err_stats_write,
 	.release = single_release,
 };
 
