@@ -202,21 +202,21 @@ static int wfx_tx_power_loop_show(struct seq_file *seq, void *v)
 }
 DEFINE_SHOW_ATTRIBUTE(wfx_tx_power_loop);
 
-static ssize_t wfx_send_pds_write(struct file *file, const char __user *user_buf,
-				  size_t count, loff_t *ppos)
+static ssize_t wfx_send_pds_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wfx_dev *wdev = file->private_data;
+	struct wfx_dev *wdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char *buf;
 	int ret;
 
-	if (*ppos != 0) {
+	if (iocb->ki_pos != 0) {
 		dev_dbg(wdev->dev, "PDS data must be written in one transaction");
 		return -EBUSY;
 	}
-	buf = memdup_user(user_buf, count);
+	buf = iterdup(from, count);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
-	*ppos = *ppos + count;
+	iocb->ki_pos += count;
 	ret = wfx_send_pds(wdev, buf, count);
 	kfree(buf);
 	if (ret < 0)
@@ -226,7 +226,7 @@ static ssize_t wfx_send_pds_write(struct file *file, const char __user *user_buf
 
 static const struct file_operations wfx_send_pds_fops = {
 	.open = simple_open,
-	.write = wfx_send_pds_write,
+	.write_iter = wfx_send_pds_write,
 };
 
 struct dbgfs_hif_msg {
@@ -236,10 +236,10 @@ struct dbgfs_hif_msg {
 	int ret;
 };
 
-static ssize_t wfx_send_hif_msg_write(struct file *file, const char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t wfx_send_hif_msg_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct dbgfs_hif_msg *context = file->private_data;
+	struct dbgfs_hif_msg *context = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct wfx_dev *wdev = context->wdev;
 	struct wfx_hif_msg *request;
 
@@ -255,7 +255,7 @@ static ssize_t wfx_send_hif_msg_write(struct file *file, const char __user *user
 	 * memory pattern may help user.
 	 */
 	memset(context->reply, 0xFF, sizeof(context->reply));
-	request = memdup_user(user_buf, count);
+	request = iterdup(from, count);
 	if (IS_ERR(request))
 		return PTR_ERR(request);
 	if (le16_to_cpu(request->len) != count) {
@@ -269,10 +269,10 @@ static ssize_t wfx_send_hif_msg_write(struct file *file, const char __user *user
 	return count;
 }
 
-static ssize_t wfx_send_hif_msg_read(struct file *file, char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t wfx_send_hif_msg_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dbgfs_hif_msg *context = file->private_data;
+	struct dbgfs_hif_msg *context = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	int ret;
 
 	if (count > sizeof(context->reply))
@@ -283,7 +283,7 @@ static ssize_t wfx_send_hif_msg_read(struct file *file, char __user *user_buf,
 	if (context->ret < 0)
 		return context->ret;
 	/* Be careful, write() is waiting for a full message while read() only returns a payload */
-	if (copy_to_user(user_buf, context->reply, count))
+	if (!copy_to_iter_full(context->reply, count, to))
 		return -EFAULT;
 
 	return count;
@@ -312,8 +312,8 @@ static int wfx_send_hif_msg_release(struct inode *inode, struct file *file)
 static const struct file_operations wfx_send_hif_msg_fops = {
 	.open = wfx_send_hif_msg_open,
 	.release = wfx_send_hif_msg_release,
-	.write = wfx_send_hif_msg_write,
-	.read = wfx_send_hif_msg_read,
+	.write_iter = wfx_send_hif_msg_write,
+	.read_iter = wfx_send_hif_msg_read,
 };
 
 int wfx_debug_init(struct wfx_dev *wdev)
