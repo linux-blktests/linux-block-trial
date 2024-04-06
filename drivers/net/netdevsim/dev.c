@@ -94,11 +94,10 @@ nsim_dev_take_snapshot(struct devlink *devlink,
 	return 0;
 }
 
-static ssize_t nsim_dev_take_snapshot_write(struct file *file,
-					    const char __user *data,
-					    size_t count, loff_t *ppos)
+static ssize_t nsim_dev_take_snapshot_write(struct kiocb *iocb,
+					    struct iov_iter *from)
 {
-	struct nsim_dev *nsim_dev = file->private_data;
+	struct nsim_dev *nsim_dev = iocb->ki_filp->private_data;
 	struct devlink *devlink;
 	u8 *dummy_data;
 	int err;
@@ -125,21 +124,20 @@ static ssize_t nsim_dev_take_snapshot_write(struct file *file,
 		return err;
 	}
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations nsim_dev_take_snapshot_fops = {
 	.open = simple_open,
-	.write = nsim_dev_take_snapshot_write,
+	.write_iter = nsim_dev_take_snapshot_write,
 	.llseek = generic_file_llseek,
 	.owner = THIS_MODULE,
 };
 
-static ssize_t nsim_dev_trap_fa_cookie_read(struct file *file,
-					    char __user *data,
-					    size_t count, loff_t *ppos)
+static ssize_t nsim_dev_trap_fa_cookie_read(struct kiocb *iocb,
+					    struct iov_iter *to)
 {
-	struct nsim_dev *nsim_dev = file->private_data;
+	struct nsim_dev *nsim_dev = iocb->ki_filp->private_data;
 	struct flow_action_cookie *fa_cookie;
 	unsigned int buf_len;
 	ssize_t ret;
@@ -160,7 +158,7 @@ static ssize_t nsim_dev_trap_fa_cookie_read(struct file *file,
 	bin2hex(buf, fa_cookie->cookie, fa_cookie->cookie_len);
 	spin_unlock(&nsim_dev->fa_cookie_lock);
 
-	ret = simple_read_from_buffer(data, count, ppos, buf, buf_len);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, buf_len, to);
 
 	kfree(buf);
 	return ret;
@@ -170,23 +168,23 @@ errout:
 	return ret;
 }
 
-static ssize_t nsim_dev_trap_fa_cookie_write(struct file *file,
-					     const char __user *data,
-					     size_t count, loff_t *ppos)
+static ssize_t nsim_dev_trap_fa_cookie_write(struct kiocb *iocb,
+					     struct iov_iter *from)
 {
-	struct nsim_dev *nsim_dev = file->private_data;
+	struct nsim_dev *nsim_dev = iocb->ki_filp->private_data;
 	struct flow_action_cookie *fa_cookie;
+	size_t count = iov_iter_count(from);
 	size_t cookie_len;
 	ssize_t ret;
 	char *buf;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return -EINVAL;
 	cookie_len = (count - 1) / 2;
 	if ((count - 1) % 2)
 		return -EINVAL;
 
-	buf = memdup_user(data, count);
+	buf = iterdup(from, count);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -219,42 +217,42 @@ free_buf:
 
 static const struct file_operations nsim_dev_trap_fa_cookie_fops = {
 	.open = simple_open,
-	.read = nsim_dev_trap_fa_cookie_read,
-	.write = nsim_dev_trap_fa_cookie_write,
+	.read_iter = nsim_dev_trap_fa_cookie_read,
+	.write_iter = nsim_dev_trap_fa_cookie_write,
 	.llseek = generic_file_llseek,
 	.owner = THIS_MODULE,
 };
 
-static ssize_t nsim_bus_dev_max_vfs_read(struct file *file, char __user *data,
-					 size_t count, loff_t *ppos)
+static ssize_t nsim_bus_dev_max_vfs_read(struct kiocb *iocb,
+					 struct iov_iter *to)
 {
-	struct nsim_dev *nsim_dev = file->private_data;
+	struct nsim_dev *nsim_dev = iocb->ki_filp->private_data;
 	char buf[11];
 	ssize_t len;
 
 	len = scnprintf(buf, sizeof(buf), "%u\n",
 			READ_ONCE(nsim_dev->nsim_bus_dev->max_vfs));
 
-	return simple_read_from_buffer(data, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t nsim_bus_dev_max_vfs_write(struct file *file,
-					  const char __user *data,
-					  size_t count, loff_t *ppos)
+static ssize_t nsim_bus_dev_max_vfs_write(struct kiocb *iocb,
+					  struct iov_iter *from)
 {
 	struct nsim_vf_config *vfconfigs;
+	size_t count = iov_iter_count(from);
 	struct nsim_dev *nsim_dev;
 	char buf[10];
 	ssize_t ret;
 	u32 val;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	if (count >= sizeof(buf))
 		return -ENOSPC;
 
-	ret = copy_from_user(buf, data, count);
+	ret = !copy_from_iter_full(buf, count, from);
 	if (ret)
 		return -EFAULT;
 	buf[count] = '\0';
@@ -272,7 +270,7 @@ static ssize_t nsim_bus_dev_max_vfs_write(struct file *file,
 	if (!vfconfigs)
 		return -ENOMEM;
 
-	nsim_dev = file->private_data;
+	nsim_dev = iocb->ki_filp->private_data;
 	devl_lock(priv_to_devlink(nsim_dev));
 	/* Reject if VFs are configured */
 	if (nsim_dev_get_vfs(nsim_dev)) {
@@ -280,7 +278,7 @@ static ssize_t nsim_bus_dev_max_vfs_write(struct file *file,
 	} else {
 		swap(nsim_dev->vfconfigs, vfconfigs);
 		WRITE_ONCE(nsim_dev->nsim_bus_dev->max_vfs, val);
-		*ppos += count;
+		iocb->ki_pos += count;
 		ret = count;
 	}
 	devl_unlock(priv_to_devlink(nsim_dev));
@@ -291,8 +289,8 @@ static ssize_t nsim_bus_dev_max_vfs_write(struct file *file,
 
 static const struct file_operations nsim_dev_max_vfs_fops = {
 	.open = simple_open,
-	.read = nsim_bus_dev_max_vfs_read,
-	.write = nsim_bus_dev_max_vfs_write,
+	.read_iter = nsim_bus_dev_max_vfs_read,
+	.write_iter = nsim_bus_dev_max_vfs_write,
 	.llseek = generic_file_llseek,
 	.owner = THIS_MODULE,
 };
@@ -372,23 +370,22 @@ static void nsim_dev_debugfs_exit(struct nsim_dev *nsim_dev)
 	debugfs_remove_recursive(nsim_dev->ddir);
 }
 
-static ssize_t nsim_dev_rate_parent_read(struct file *file,
-					 char __user *data,
-					 size_t count, loff_t *ppos)
+static ssize_t nsim_dev_rate_parent_read(struct kiocb *iocb,
+					 struct iov_iter *to)
 {
-	char **name_ptr = file->private_data;
+	char **name_ptr = iocb->ki_filp->private_data;
 	size_t len;
 
 	if (!*name_ptr)
 		return 0;
 
 	len = strlen(*name_ptr);
-	return simple_read_from_buffer(data, count, ppos, *name_ptr, len);
+	return simple_copy_to_iter(*name_ptr, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations nsim_dev_rate_parent_fops = {
 	.open = simple_open,
-	.read = nsim_dev_rate_parent_read,
+	.read_iter = nsim_dev_rate_parent_read,
 	.llseek = generic_file_llseek,
 	.owner = THIS_MODULE,
 };

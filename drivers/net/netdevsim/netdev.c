@@ -15,6 +15,7 @@
 
 #include <linux/debugfs.h>
 #include <linux/etherdevice.h>
+#include <linux/kstrtox.h>
 #include <linux/ethtool_netlink.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -906,34 +907,35 @@ exit_unlock:
 	return ret;
 }
 
+FOPS_WRITE_ITER_HELPER(nsim_qreset_write);
+
 static const struct file_operations nsim_qreset_fops = {
 	.open = simple_open,
-	.write = nsim_qreset_write,
+	.write_iter = nsim_qreset_write_iter,
 	.owner = THIS_MODULE,
 };
 
 static ssize_t
-nsim_pp_hold_read(struct file *file, char __user *data,
-		  size_t count, loff_t *ppos)
+nsim_pp_hold_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct netdevsim *ns = file->private_data;
+	struct netdevsim *ns = iocb->ki_filp->private_data;
 	char buf[3] = "n\n";
 
 	if (ns->page)
 		buf[0] = 'y';
 
-	return simple_read_from_buffer(data, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
 static ssize_t
-nsim_pp_hold_write(struct file *file, const char __user *data,
-		   size_t count, loff_t *ppos)
+nsim_pp_hold_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct netdevsim *ns = file->private_data;
+	struct netdevsim *ns = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	ssize_t ret;
 	bool val;
 
-	ret = kstrtobool_from_user(data, count, &val);
+	ret = kstrtobool_from_iter(from, count, &val);
 	if (ret)
 		return ret;
 
@@ -961,8 +963,8 @@ exit:
 
 static const struct file_operations nsim_pp_hold_fops = {
 	.open = simple_open,
-	.read = nsim_pp_hold_read,
-	.write = nsim_pp_hold_write,
+	.read_iter = nsim_pp_hold_read,
+	.write_iter = nsim_pp_hold_write,
 	.llseek = generic_file_llseek,
 	.owner = THIS_MODULE,
 };

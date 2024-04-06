@@ -1361,15 +1361,15 @@ static void nsim_nexthop_free(void *ptr, void *arg)
 	nsim_nexthop_destroy(nexthop);
 }
 
-static ssize_t nsim_nexthop_bucket_activity_write(struct file *file,
-						  const char __user *user_buf,
-						  size_t size, loff_t *ppos)
+static ssize_t nsim_nexthop_bucket_activity_write(struct kiocb *iocb,
+						  struct iov_iter *from)
 {
-	struct nsim_fib_data *data = file->private_data;
+	struct nsim_fib_data *data = iocb->ki_filp->private_data;
 	struct net *net = devlink_net(data->devlink);
+	size_t size = iov_iter_count(from);
 	struct nsim_nexthop *nexthop;
 	unsigned long *activity;
-	loff_t pos = *ppos;
+	loff_t pos = iocb->ki_pos;
 	u16 bucket_index;
 	char buf[128];
 	int err = 0;
@@ -1379,7 +1379,7 @@ static ssize_t nsim_nexthop_bucket_activity_write(struct file *file,
 		return -EINVAL;
 	if (size > sizeof(buf) - 1)
 		return -EINVAL;
-	if (copy_from_user(buf, user_buf, size))
+	if (!copy_from_iter_full(buf, size, from))
 		return -EFAULT;
 	buf[size] = 0;
 
@@ -1409,13 +1409,13 @@ static ssize_t nsim_nexthop_bucket_activity_write(struct file *file,
 out:
 	rtnl_unlock();
 
-	*ppos = size;
+	iocb->ki_pos = size;
 	return err ?: size;
 }
 
 static const struct file_operations nsim_nexthop_bucket_activity_fops = {
 	.open = simple_open,
-	.write = nsim_nexthop_bucket_activity_write,
+	.write_iter = nsim_nexthop_bucket_activity_write,
 	.owner = THIS_MODULE,
 };
 

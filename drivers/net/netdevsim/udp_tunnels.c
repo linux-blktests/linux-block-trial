@@ -101,10 +101,9 @@ static const struct udp_tunnel_nic_info nsim_udp_tunnel_info = {
 };
 
 static ssize_t
-nsim_udp_tunnels_info_reset_write(struct file *file, const char __user *data,
-				  size_t count, loff_t *ppos)
+nsim_udp_tunnels_info_reset_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct net_device *dev = file->private_data;
+	struct net_device *dev = iocb->ki_filp->private_data;
 	struct netdevsim *ns = netdev_priv(dev);
 
 	if (dev->reg_state == NETREG_REGISTERED) {
@@ -112,12 +111,12 @@ nsim_udp_tunnels_info_reset_write(struct file *file, const char __user *data,
 		udp_tunnel_nic_reset_ntf(dev);
 	}
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations nsim_udp_tunnels_info_reset_fops = {
 	.open = simple_open,
-	.write = nsim_udp_tunnels_info_reset_write,
+	.write_iter = nsim_udp_tunnels_info_reset_write,
 	.llseek = generic_file_llseek,
 	.owner = THIS_MODULE,
 };

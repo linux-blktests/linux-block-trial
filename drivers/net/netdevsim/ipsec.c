@@ -9,11 +9,9 @@
 
 #define NSIM_IPSEC_AUTH_BITS	128
 
-static ssize_t nsim_dbg_netdev_ops_read(struct file *filp,
-					char __user *buffer,
-					size_t count, loff_t *ppos)
+static ssize_t nsim_dbg_netdev_ops_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct netdevsim *ns = filp->private_data;
+	struct netdevsim *ns = iocb->ki_filp->private_data;
 	struct nsim_ipsec *ipsec = &ns->ipsec;
 	size_t bufsize;
 	char *buf, *p;
@@ -57,7 +55,7 @@ static ssize_t nsim_dbg_netdev_ops_read(struct file *filp,
 			       sap->key[2], sap->key[3]);
 	}
 
-	len = simple_read_from_buffer(buffer, count, ppos, buf, p - buf);
+	len = simple_copy_to_iter(buf, &iocb->ki_pos, p - buf, to);
 
 	kfree(buf);
 	return len;
@@ -66,7 +64,7 @@ static ssize_t nsim_dbg_netdev_ops_read(struct file *filp,
 static const struct file_operations ipsec_dbg_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = nsim_dbg_netdev_ops_read,
+	.read_iter = nsim_dbg_netdev_ops_read,
 };
 
 static int nsim_ipsec_find_empty_idx(struct nsim_ipsec *ipsec)

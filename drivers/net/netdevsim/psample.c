@@ -168,15 +168,15 @@ static int nsim_dev_psample_disable(struct nsim_dev *nsim_dev)
 	return 0;
 }
 
-static ssize_t nsim_dev_psample_enable_write(struct file *file,
-					     const char __user *data,
-					     size_t count, loff_t *ppos)
+static ssize_t nsim_dev_psample_enable_write(struct kiocb *iocb,
+					     struct iov_iter *from)
 {
-	struct nsim_dev *nsim_dev = file->private_data;
+	struct nsim_dev *nsim_dev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	bool enable;
 	int err;
 
-	err = kstrtobool_from_user(data, count, &enable);
+	err = kstrtobool_from_iter(from, count, &enable);
 	if (err)
 		return err;
 
@@ -190,7 +190,7 @@ static ssize_t nsim_dev_psample_enable_write(struct file *file,
 
 static const struct file_operations nsim_psample_enable_fops = {
 	.open = simple_open,
-	.write = nsim_dev_psample_enable_write,
+	.write_iter = nsim_dev_psample_enable_write,
 	.llseek = generic_file_llseek,
 	.owner = THIS_MODULE,
 };

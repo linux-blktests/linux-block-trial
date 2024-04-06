@@ -168,9 +168,11 @@ out:
 	return err ?: count;
 }
 
+FOPS_WRITE_ITER_HELPER(nsim_dev_health_break_write);
+
 static const struct file_operations nsim_dev_health_break_fops = {
 	.open = simple_open,
-	.write = nsim_dev_health_break_write,
+	.write_iter = nsim_dev_health_break_write_iter,
 	.llseek = generic_file_llseek,
 	.owner = THIS_MODULE,
 };
