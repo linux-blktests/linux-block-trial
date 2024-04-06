@@ -231,9 +231,10 @@ static ssize_t ath11k_dbg_sta_dump_tx_stats(struct file *file,
 	mutex_unlock(&ar->conf_mutex);
 	return retval;
 }
+FOPS_READ_ITER_HELPER(ath11k_dbg_sta_dump_tx_stats);
 
 static const struct file_operations fops_tx_stats = {
-	.read = ath11k_dbg_sta_dump_tx_stats,
+	.read_iter = ath11k_dbg_sta_dump_tx_stats_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -337,6 +338,7 @@ static ssize_t ath11k_dbg_sta_write_cfr_capture(struct file *file,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_dbg_sta_write_cfr_capture);
 
 static ssize_t ath11k_dbg_sta_read_cfr_capture(struct file *file,
 					       char __user *user_buf,
@@ -363,10 +365,11 @@ static ssize_t ath11k_dbg_sta_read_cfr_capture(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_dbg_sta_read_cfr_capture);
 
 static const struct file_operations fops_peer_cfr_capture = {
-	.write = ath11k_dbg_sta_write_cfr_capture,
-	.read = ath11k_dbg_sta_read_cfr_capture,
+	.write_iter = ath11k_dbg_sta_write_cfr_capture_iter,
+	.read_iter = ath11k_dbg_sta_read_cfr_capture_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -463,9 +466,10 @@ static ssize_t ath11k_dbg_sta_dump_rx_stats(struct file *file,
 	mutex_unlock(&ar->conf_mutex);
 	return retval;
 }
+FOPS_READ_ITER_HELPER(ath11k_dbg_sta_dump_rx_stats);
 
 static const struct file_operations fops_rx_stats = {
-	.read = ath11k_dbg_sta_dump_rx_stats,
+	.read_iter = ath11k_dbg_sta_dump_rx_stats_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -534,22 +538,23 @@ static ssize_t ath11k_dbg_sta_read_htt_peer_stats(struct file *file,
 	length = min_t(u32, stats_req->buf_len, ATH11K_HTT_STATS_BUF_SIZE);
 	return simple_read_from_buffer(user_buf, count, ppos, buf, length);
 }
+FOPS_READ_ITER_HELPER(ath11k_dbg_sta_read_htt_peer_stats);
 
 static const struct file_operations fops_htt_peer_stats = {
 	.open = ath11k_dbg_sta_open_htt_peer_stats,
 	.release = ath11k_dbg_sta_release_htt_peer_stats,
-	.read = ath11k_dbg_sta_read_htt_peer_stats,
+	.read_iter = ath11k_dbg_sta_read_htt_peer_stats_iter,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t ath11k_dbg_sta_write_peer_pktlog(struct file *file,
-						const char __user *buf,
-						size_t count, loff_t *ppos)
+static ssize_t ath11k_dbg_sta_write_peer_pktlog(struct kiocb *iocb,
+						struct iov_iter *from)
 {
-	struct ieee80211_sta *sta = file->private_data;
+	struct ieee80211_sta *sta = iocb->ki_filp->private_data;
 	struct ath11k_sta *arsta = ath11k_sta_to_arsta(sta);
 	struct ath11k *ar = arsta->arvif->ar;
+	size_t count = iov_iter_count(from);
 	int ret, enable;
 
 	mutex_lock(&ar->conf_mutex);
@@ -559,7 +564,7 @@ static ssize_t ath11k_dbg_sta_write_peer_pktlog(struct file *file,
 		goto out;
 	}
 
-	ret = kstrtoint_from_user(buf, count, 0, &enable);
+	ret = kstrtoint_from_iter(from, count, 0, &enable);
 	if (ret)
 		goto out;
 
@@ -582,7 +587,6 @@ out:
 	mutex_unlock(&ar->conf_mutex);
 	return ret;
 }
-
 static ssize_t ath11k_dbg_sta_read_peer_pktlog(struct file *file,
 					       char __user *ubuf,
 					       size_t count, loff_t *ppos)
@@ -601,10 +605,11 @@ static ssize_t ath11k_dbg_sta_read_peer_pktlog(struct file *file,
 
 	return simple_read_from_buffer(ubuf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_dbg_sta_read_peer_pktlog);
 
 static const struct file_operations fops_peer_pktlog = {
-	.write = ath11k_dbg_sta_write_peer_pktlog,
-	.read = ath11k_dbg_sta_read_peer_pktlog,
+	.write_iter = ath11k_dbg_sta_write_peer_pktlog,
+	.read_iter = ath11k_dbg_sta_read_peer_pktlog_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -653,9 +658,10 @@ out:
 	mutex_unlock(&ar->conf_mutex);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_dbg_sta_write_delba);
 
 static const struct file_operations fops_delba = {
-	.write = ath11k_dbg_sta_write_delba,
+	.write_iter = ath11k_dbg_sta_write_delba_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -703,9 +709,10 @@ out:
 	mutex_unlock(&ar->conf_mutex);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_dbg_sta_write_addba_resp);
 
 static const struct file_operations fops_addba_resp = {
-	.write = ath11k_dbg_sta_write_addba_resp,
+	.write_iter = ath11k_dbg_sta_write_addba_resp_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -754,9 +761,10 @@ out:
 	mutex_unlock(&ar->conf_mutex);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_dbg_sta_write_addba);
 
 static const struct file_operations fops_addba = {
-	.write = ath11k_dbg_sta_write_addba,
+	.write_iter = ath11k_dbg_sta_write_addba_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -781,6 +789,7 @@ static ssize_t ath11k_dbg_sta_read_aggr_mode(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_dbg_sta_read_aggr_mode);
 
 static ssize_t ath11k_dbg_sta_write_aggr_mode(struct file *file,
 					      const char __user *user_buf,
@@ -789,10 +798,15 @@ static ssize_t ath11k_dbg_sta_write_aggr_mode(struct file *file,
 	struct ieee80211_sta *sta = file->private_data;
 	struct ath11k_sta *arsta = ath11k_sta_to_arsta(sta);
 	struct ath11k *ar = arsta->arvif->ar;
+	char kbuf[16];
+	size_t len = min(count, sizeof(kbuf) - 1);
 	u32 aggr_mode;
 	int ret;
 
-	if (kstrtouint_from_user(user_buf, count, 0, &aggr_mode))
+	if (copy_from_user(kbuf, user_buf, len))
+		return -EFAULT;
+	kbuf[len] = '\0';
+	if (kstrtouint(kbuf, 0, &aggr_mode))
 		return -EINVAL;
 
 	if (aggr_mode >= ATH11K_DBG_AGGR_MODE_MAX)
@@ -817,28 +831,28 @@ out:
 	mutex_unlock(&ar->conf_mutex);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_dbg_sta_write_aggr_mode);
 
 static const struct file_operations fops_aggr_mode = {
-	.read = ath11k_dbg_sta_read_aggr_mode,
-	.write = ath11k_dbg_sta_write_aggr_mode,
+	.read_iter = ath11k_dbg_sta_read_aggr_mode_iter,
+	.write_iter = ath11k_dbg_sta_write_aggr_mode_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
 static ssize_t
-ath11k_write_htt_peer_stats_reset(struct file *file,
-				  const char __user *user_buf,
-				  size_t count, loff_t *ppos)
+ath11k_write_htt_peer_stats_reset(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ieee80211_sta *sta = file->private_data;
+	struct ieee80211_sta *sta = iocb->ki_filp->private_data;
 	struct ath11k_sta *arsta = ath11k_sta_to_arsta(sta);
 	struct ath11k *ar = arsta->arvif->ar;
 	struct htt_ext_stats_cfg_params cfg_params = {};
+	size_t count = iov_iter_count(from);
 	int ret;
 	u8 type;
 
-	ret = kstrtou8_from_user(user_buf, count, 0, &type);
+	ret = kstrtou8_from_iter(from, count, 0, &type);
 	if (ret)
 		return ret;
 
@@ -878,9 +892,8 @@ ath11k_write_htt_peer_stats_reset(struct file *file,
 
 	return ret;
 }
-
 static const struct file_operations fops_htt_peer_stats_reset = {
-	.write = ath11k_write_htt_peer_stats_reset,
+	.write_iter = ath11k_write_htt_peer_stats_reset,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -904,10 +917,11 @@ static ssize_t ath11k_dbg_sta_read_peer_ps_state(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_dbg_sta_read_peer_ps_state);
 
 static const struct file_operations fops_peer_ps_state = {
 	.open = simple_open,
-	.read = ath11k_dbg_sta_read_peer_ps_state,
+	.read_iter = ath11k_dbg_sta_read_peer_ps_state_iter,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
@@ -939,10 +953,11 @@ static ssize_t ath11k_dbg_sta_read_current_ps_duration(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_dbg_sta_read_current_ps_duration);
 
 static const struct file_operations fops_current_ps_duration = {
 	.open = simple_open,
-	.read = ath11k_dbg_sta_read_current_ps_duration,
+	.read_iter = ath11k_dbg_sta_read_current_ps_duration_iter,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
@@ -974,10 +989,11 @@ static ssize_t ath11k_dbg_sta_read_total_ps_duration(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_dbg_sta_read_total_ps_duration);
 
 static const struct file_operations fops_total_ps_duration = {
 	.open = simple_open,
-	.read = ath11k_dbg_sta_read_total_ps_duration,
+	.read_iter = ath11k_dbg_sta_read_total_ps_duration_iter,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };

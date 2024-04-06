@@ -4602,28 +4602,27 @@ void ath11k_debugfs_htt_ext_stats_handler(struct ath11k_base *ab,
 		complete(&stats_req->cmpln);
 }
 
-static ssize_t ath11k_read_htt_stats_type(struct file *file,
-					  char __user *user_buf,
-					  size_t count, loff_t *ppos)
+static ssize_t ath11k_read_htt_stats_type(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
-	struct ath11k *ar = file->private_data;
+	struct ath11k *ar = iocb->ki_filp->private_data;
 	char buf[32];
 	size_t len;
 
 	len = scnprintf(buf, sizeof(buf), "%u\n", ar->debug.htt_stats.type);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t ath11k_write_htt_stats_type(struct file *file,
-					   const char __user *user_buf,
-					   size_t count, loff_t *ppos)
+static ssize_t ath11k_write_htt_stats_type(struct kiocb *iocb,
+					   struct iov_iter *from)
 {
-	struct ath11k *ar = file->private_data;
+	struct ath11k *ar = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	u8 type;
 	int ret;
 
-	ret = kstrtou8_from_user(user_buf, count, 0, &type);
+	ret = kstrtou8_from_iter(from, count, 0, &type);
 	if (ret)
 		return ret;
 
@@ -4641,8 +4640,8 @@ static ssize_t ath11k_write_htt_stats_type(struct file *file,
 }
 
 static const struct file_operations fops_htt_stats_type = {
-	.read = ath11k_read_htt_stats_type,
-	.write = ath11k_write_htt_stats_type,
+	.read_iter = ath11k_read_htt_stats_type,
+	.write_iter = ath11k_write_htt_stats_type,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -4813,50 +4812,47 @@ static int ath11k_release_htt_stats(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t ath11k_read_htt_stats(struct file *file,
-				     char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t ath11k_read_htt_stats(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct debug_htt_stats_req *stats_req = file->private_data;
+	struct debug_htt_stats_req *stats_req = iocb->ki_filp->private_data;
 	char *buf;
 	u32 length = 0;
 
 	buf = stats_req->buf;
 	length = min_t(u32, stats_req->buf_len, ATH11K_HTT_STATS_BUF_SIZE);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, length);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, length, to);
 }
 
 static const struct file_operations fops_dump_htt_stats = {
 	.open = ath11k_open_htt_stats,
 	.release = ath11k_release_htt_stats,
-	.read = ath11k_read_htt_stats,
+	.read_iter = ath11k_read_htt_stats,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t ath11k_read_htt_stats_reset(struct file *file,
-					   char __user *user_buf,
-					   size_t count, loff_t *ppos)
+static ssize_t ath11k_read_htt_stats_reset(struct kiocb *iocb,
+					   struct iov_iter *to)
 {
-	struct ath11k *ar = file->private_data;
+	struct ath11k *ar = iocb->ki_filp->private_data;
 	char buf[32];
 	size_t len;
 
 	len = scnprintf(buf, sizeof(buf), "%u\n", ar->debug.htt_stats.reset);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t ath11k_write_htt_stats_reset(struct file *file,
-					    const char __user *user_buf,
-					    size_t count, loff_t *ppos)
+static ssize_t ath11k_write_htt_stats_reset(struct kiocb *iocb,
+					    struct iov_iter *from)
 {
-	struct ath11k *ar = file->private_data;
+	struct ath11k *ar = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	u8 type;
 	struct htt_ext_stats_cfg_params cfg_params = {};
 	int ret;
 
-	ret = kstrtou8_from_user(user_buf, count, 0, &type);
+	ret = kstrtou8_from_iter(from, count, 0, &type);
 	if (ret)
 		return ret;
 
@@ -4886,8 +4882,8 @@ static ssize_t ath11k_write_htt_stats_reset(struct file *file,
 }
 
 static const struct file_operations fops_htt_stats_reset = {
-	.read = ath11k_read_htt_stats_reset,
-	.write = ath11k_write_htt_stats_reset,
+	.read_iter = ath11k_read_htt_stats_reset,
+	.write_iter = ath11k_write_htt_stats_reset,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,

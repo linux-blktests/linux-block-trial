@@ -185,11 +185,12 @@ static ssize_t ath11k_read_pdev_stats(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_read_pdev_stats);
 
 static const struct file_operations fops_pdev_stats = {
 	.open = ath11k_open_pdev_stats,
 	.release = ath11k_release_pdev_stats,
-	.read = ath11k_read_pdev_stats,
+	.read_iter = ath11k_read_pdev_stats_iter,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
@@ -256,11 +257,12 @@ static ssize_t ath11k_read_vdev_stats(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_read_vdev_stats);
 
 static const struct file_operations fops_vdev_stats = {
 	.open = ath11k_open_vdev_stats,
 	.release = ath11k_release_vdev_stats,
-	.read = ath11k_read_vdev_stats,
+	.read_iter = ath11k_read_vdev_stats_iter,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
@@ -340,11 +342,12 @@ static ssize_t ath11k_read_bcn_stats(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_read_bcn_stats);
 
 static const struct file_operations fops_bcn_stats = {
 	.open = ath11k_open_bcn_stats,
 	.release = ath11k_release_bcn_stats,
-	.read = ath11k_read_bcn_stats,
+	.read_iter = ath11k_read_bcn_stats_iter,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
@@ -360,6 +363,7 @@ static ssize_t ath11k_read_simulate_fw_crash(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, strlen(buf));
 }
+FOPS_READ_ITER_HELPER(ath11k_read_simulate_fw_crash);
 
 /* Simulate firmware crash:
  * 'soft': Call wmi command causing firmware hang. This firmware hang is
@@ -428,10 +432,11 @@ static ssize_t ath11k_write_simulate_fw_crash(struct file *file,
 exit:
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_write_simulate_fw_crash);
 
 static const struct file_operations fops_simulate_fw_crash = {
-	.read = ath11k_read_simulate_fw_crash,
-	.write = ath11k_write_simulate_fw_crash,
+	.read_iter = ath11k_read_simulate_fw_crash_iter,
+	.write_iter = ath11k_write_simulate_fw_crash_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -442,10 +447,15 @@ static ssize_t ath11k_write_enable_extd_tx_stats(struct file *file,
 						 size_t count, loff_t *ppos)
 {
 	struct ath11k *ar = file->private_data;
+	char kbuf[16];
+	size_t len = min(count, sizeof(kbuf) - 1);
 	u32 filter;
 	int ret;
 
-	if (kstrtouint_from_user(ubuf, count, 0, &filter))
+	if (copy_from_user(kbuf, ubuf, len))
+		return -EFAULT;
+	kbuf[len] = '\0';
+	if (kstrtouint(kbuf, 0, &filter))
 		return -EINVAL;
 
 	mutex_lock(&ar->conf_mutex);
@@ -467,6 +477,7 @@ out:
 	mutex_unlock(&ar->conf_mutex);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_write_enable_extd_tx_stats);
 
 static ssize_t ath11k_read_enable_extd_tx_stats(struct file *file,
 						char __user *ubuf,
@@ -484,10 +495,11 @@ static ssize_t ath11k_read_enable_extd_tx_stats(struct file *file,
 
 	return simple_read_from_buffer(ubuf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_read_enable_extd_tx_stats);
 
 static const struct file_operations fops_extd_tx_stats = {
-	.read = ath11k_read_enable_extd_tx_stats,
-	.write = ath11k_write_enable_extd_tx_stats,
+	.read_iter = ath11k_read_enable_extd_tx_stats_iter,
+	.write_iter = ath11k_write_enable_extd_tx_stats_iter,
 	.open = simple_open
 };
 
@@ -498,11 +510,16 @@ static ssize_t ath11k_write_extd_rx_stats(struct file *file,
 	struct ath11k *ar = file->private_data;
 	struct ath11k_base *ab = ar->ab;
 	struct htt_rx_ring_tlv_filter tlv_filter = {};
+	char kbuf[16];
+	size_t len = min(count, sizeof(kbuf) - 1);
 	u32 enable, rx_filter = 0, ring_id;
 	int i;
 	int ret;
 
-	if (kstrtouint_from_user(ubuf, count, 0, &enable))
+	if (copy_from_user(kbuf, ubuf, len))
+		return -EFAULT;
+	kbuf[len] = '\0';
+	if (kstrtouint(kbuf, 0, &enable))
 		return -EINVAL;
 
 	mutex_lock(&ar->conf_mutex);
@@ -566,6 +583,7 @@ exit:
 	mutex_unlock(&ar->conf_mutex);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_write_extd_rx_stats);
 
 static ssize_t ath11k_read_extd_rx_stats(struct file *file,
 					 char __user *ubuf,
@@ -582,10 +600,11 @@ static ssize_t ath11k_read_extd_rx_stats(struct file *file,
 
 	return simple_read_from_buffer(ubuf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_read_extd_rx_stats);
 
 static const struct file_operations fops_extd_rx_stats = {
-	.read = ath11k_read_extd_rx_stats,
-	.write = ath11k_write_extd_rx_stats,
+	.read_iter = ath11k_read_extd_rx_stats_iter,
+	.write_iter = ath11k_write_extd_rx_stats_iter,
 	.open = simple_open,
 };
 
@@ -724,9 +743,10 @@ static ssize_t ath11k_debugfs_dump_soc_dp_stats(struct file *file,
 
 	return retval;
 }
+FOPS_READ_ITER_HELPER(ath11k_debugfs_dump_soc_dp_stats);
 
 static const struct file_operations fops_soc_dp_stats = {
-	.read = ath11k_debugfs_dump_soc_dp_stats,
+	.read_iter = ath11k_debugfs_dump_soc_dp_stats_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -787,9 +807,10 @@ out:
 	mutex_unlock(&ar->conf_mutex);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_write_fw_dbglog);
 
 static const struct file_operations fops_fw_dbglog = {
-	.write = ath11k_write_fw_dbglog,
+	.write_iter = ath11k_write_fw_dbglog_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -835,6 +856,7 @@ static ssize_t ath11k_read_sram_dump(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_read_sram_dump);
 
 static int ath11k_release_sram_dump(struct inode *inode, struct file *file)
 {
@@ -846,7 +868,7 @@ static int ath11k_release_sram_dump(struct inode *inode, struct file *file)
 
 static const struct file_operations fops_sram_dump = {
 	.open = ath11k_open_sram_dump,
-	.read = ath11k_read_sram_dump,
+	.read_iter = ath11k_read_sram_dump_iter,
 	.release = ath11k_release_sram_dump,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -1075,6 +1097,7 @@ out:
 	mutex_unlock(&ar->conf_mutex);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_write_pktlog_filter);
 
 static ssize_t ath11k_read_pktlog_filter(struct file *file,
 					 char __user *ubuf,
@@ -1093,10 +1116,11 @@ static ssize_t ath11k_read_pktlog_filter(struct file *file,
 
 	return simple_read_from_buffer(ubuf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_read_pktlog_filter);
 
 static const struct file_operations fops_pktlog_filter = {
-	.read = ath11k_read_pktlog_filter,
-	.write = ath11k_write_pktlog_filter,
+	.read_iter = ath11k_read_pktlog_filter_iter,
+	.write_iter = ath11k_write_pktlog_filter_iter,
 	.open = simple_open
 };
 
@@ -1113,9 +1137,10 @@ static ssize_t ath11k_write_simulate_radar(struct file *file,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_write_simulate_radar);
 
 static const struct file_operations fops_simulate_radar = {
-	.write = ath11k_write_simulate_radar,
+	.write_iter = ath11k_write_simulate_radar_iter,
 	.open = simple_open
 };
 
@@ -1159,9 +1184,10 @@ static ssize_t ath11k_debug_dump_dbr_entries(struct file *file,
 
 	return ret;
 }
+FOPS_READ_ITER_HELPER(ath11k_debug_dump_dbr_entries);
 
 static const struct file_operations fops_debug_dump_dbr_entries = {
-	.read = ath11k_debug_dump_dbr_entries,
+	.read_iter = ath11k_debug_dump_dbr_entries_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -1272,23 +1298,24 @@ out:
 	mutex_unlock(&ar->conf_mutex);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_debugfs_write_enable_dbr_dbg);
 
 static const struct file_operations fops_dbr_debug = {
-	.write = ath11k_debugfs_write_enable_dbr_dbg,
+	.write_iter = ath11k_debugfs_write_enable_dbr_dbg_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t ath11k_write_ps_timekeeper_enable(struct file *file,
-						 const char __user *user_buf,
-						 size_t count, loff_t *ppos)
+static ssize_t ath11k_write_ps_timekeeper_enable(struct kiocb *iocb,
+						  struct iov_iter *from)
 {
-	struct ath11k *ar = file->private_data;
+	struct ath11k *ar = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	ssize_t ret;
 	u8 ps_timekeeper_enable;
 
-	if (kstrtou8_from_user(user_buf, count, 0, &ps_timekeeper_enable))
+	if (kstrtou8_from_iter(from, count, 0, &ps_timekeeper_enable))
 		return -EINVAL;
 
 	mutex_lock(&ar->conf_mutex);
@@ -1325,10 +1352,11 @@ static ssize_t ath11k_read_ps_timekeeper_enable(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_read_ps_timekeeper_enable);
 
 static const struct file_operations fops_ps_timekeeper_enable = {
-	.read = ath11k_read_ps_timekeeper_enable,
-	.write = ath11k_write_ps_timekeeper_enable,
+	.read_iter = ath11k_read_ps_timekeeper_enable_iter,
+	.write_iter = ath11k_write_ps_timekeeper_enable,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -1345,15 +1373,15 @@ static void ath11k_reset_peer_ps_duration(void *data,
 	spin_unlock_bh(&ar->data_lock);
 }
 
-static ssize_t ath11k_write_reset_ps_duration(struct file *file,
-					      const  char __user *user_buf,
-					      size_t count, loff_t *ppos)
+static ssize_t ath11k_write_reset_ps_duration(struct kiocb *iocb,
+					      struct iov_iter *from)
 {
-	struct ath11k *ar = file->private_data;
+	struct ath11k *ar = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int ret;
 	u8 reset_ps_duration;
 
-	if (kstrtou8_from_user(user_buf, count, 0, &reset_ps_duration))
+	if (kstrtou8_from_iter(from, count, 0, &reset_ps_duration))
 		return -EINVAL;
 
 	mutex_lock(&ar->conf_mutex);
@@ -1379,7 +1407,7 @@ exit:
 }
 
 static const struct file_operations fops_reset_ps_duration = {
-	.write = ath11k_write_reset_ps_duration,
+	.write_iter = ath11k_write_reset_ps_duration,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -1398,17 +1426,17 @@ static void ath11k_peer_ps_state_disable(void *data,
 	spin_unlock_bh(&ar->data_lock);
 }
 
-static ssize_t ath11k_write_ps_state_enable(struct file *file,
-					    const char __user *user_buf,
-					    size_t count, loff_t *ppos)
+static ssize_t ath11k_write_ps_state_enable(struct kiocb *iocb,
+					    struct iov_iter *from)
 {
-	struct ath11k *ar = file->private_data;
+	struct ath11k *ar = iocb->ki_filp->private_data;
 	struct ath11k_pdev *pdev = ar->pdev;
+	size_t count = iov_iter_count(from);
 	int ret;
 	u32 param;
 	u8 ps_state_enable;
 
-	if (kstrtou8_from_user(user_buf, count, 0, &ps_state_enable))
+	if (kstrtou8_from_iter(from, count, 0, &ps_state_enable))
 		return -EINVAL;
 
 	mutex_lock(&ar->conf_mutex);
@@ -1458,10 +1486,11 @@ static ssize_t ath11k_read_ps_state_enable(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath11k_read_ps_state_enable);
 
 static const struct file_operations fops_ps_state_enable = {
-	.read = ath11k_read_ps_state_enable,
-	.write = ath11k_write_ps_state_enable,
+	.read_iter = ath11k_read_ps_state_enable_iter,
+	.write_iter = ath11k_write_ps_state_enable,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -1624,6 +1653,7 @@ err_twt_add_dialog:
 
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_write_twt_add_dialog);
 
 static ssize_t ath11k_write_twt_del_dialog(struct file *file,
 					   const char __user *ubuf,
@@ -1671,6 +1701,7 @@ static ssize_t ath11k_write_twt_del_dialog(struct file *file,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_write_twt_del_dialog);
 
 static ssize_t ath11k_write_twt_pause_dialog(struct file *file,
 					     const char __user *ubuf,
@@ -1710,6 +1741,7 @@ static ssize_t ath11k_write_twt_pause_dialog(struct file *file,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_write_twt_pause_dialog);
 
 static ssize_t ath11k_write_twt_resume_dialog(struct file *file,
 					      const char __user *ubuf,
@@ -1751,24 +1783,25 @@ static ssize_t ath11k_write_twt_resume_dialog(struct file *file,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(ath11k_write_twt_resume_dialog);
 
 static const struct file_operations ath11k_fops_twt_add_dialog = {
-	.write = ath11k_write_twt_add_dialog,
+	.write_iter = ath11k_write_twt_add_dialog_iter,
 	.open = simple_open
 };
 
 static const struct file_operations ath11k_fops_twt_del_dialog = {
-	.write = ath11k_write_twt_del_dialog,
+	.write_iter = ath11k_write_twt_del_dialog_iter,
 	.open = simple_open
 };
 
 static const struct file_operations ath11k_fops_twt_pause_dialog = {
-	.write = ath11k_write_twt_pause_dialog,
+	.write_iter = ath11k_write_twt_pause_dialog_iter,
 	.open = simple_open
 };
 
 static const struct file_operations ath11k_fops_twt_resume_dialog = {
-	.write = ath11k_write_twt_resume_dialog,
+	.write_iter = ath11k_write_twt_resume_dialog_iter,
 	.open = simple_open
 };
 
