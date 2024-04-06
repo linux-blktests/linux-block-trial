@@ -163,18 +163,17 @@ out:
 	return copy_to_user((void __user *)arg, &info, minsz) ? -EFAULT : 0;
 }
 
-static ssize_t qat_vf_save_read(struct file *filp, char __user *buf,
-				size_t len, loff_t *pos)
+static ssize_t qat_vf_save_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct qat_vf_migration_file *migf = filp->private_data;
+	struct qat_vf_migration_file *migf = iocb->ki_filp->private_data;
 	struct qat_mig_dev *mig_dev = migf->qat_vdev->mdev;
+	size_t len = iov_iter_count(to);
+	loff_t *offs = &iocb->ki_pos;
 	ssize_t done = 0;
-	loff_t *offs;
 	int ret;
 
-	if (pos)
+	if (iocb->ki_pos)
 		return -ESPIPE;
-	offs = &filp->f_pos;
 
 	mutex_lock(&migf->lock);
 	if (*offs > migf->filled_size || *offs < 0) {
@@ -189,7 +188,7 @@ static ssize_t qat_vf_save_read(struct file *filp, char __user *buf,
 
 	len = min_t(size_t, migf->filled_size - *offs, len);
 	if (len) {
-		ret = copy_to_user(buf, mig_dev->state + *offs, len);
+		ret = !copy_to_iter_full(mig_dev->state + *offs, len, to);
 		if (ret) {
 			done = -EFAULT;
 			goto out_unlock;
@@ -216,7 +215,7 @@ static int qat_vf_release_file(struct inode *inode, struct file *filp)
 
 static const struct file_operations qat_vf_save_fops = {
 	.owner = THIS_MODULE,
-	.read = qat_vf_save_read,
+	.read_iter = qat_vf_save_read,
 	.unlocked_ioctl = qat_vf_precopy_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
 	.release = qat_vf_release_file,
@@ -290,18 +289,14 @@ qat_vf_save_device_data(struct qat_vf_core_device *qat_vdev, bool pre_copy)
 	return migf;
 }
 
-static ssize_t qat_vf_resume_write(struct file *filp, const char __user *buf,
-				   size_t len, loff_t *pos)
+static ssize_t qat_vf_resume_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct qat_vf_migration_file *migf = filp->private_data;
+	struct qat_vf_migration_file *migf = iocb->ki_filp->private_data;
 	struct qat_mig_dev *mig_dev = migf->qat_vdev->mdev;
-	loff_t end, *offs;
+	loff_t end, *offs = &iocb->ki_pos;
+	size_t len = iov_iter_count(from);
 	ssize_t done = 0;
 	int ret;
-
-	if (pos)
-		return -ESPIPE;
-	offs = &filp->f_pos;
 
 	if (*offs < 0 ||
 	    check_add_overflow(len, *offs, &end))
@@ -316,7 +311,7 @@ static ssize_t qat_vf_resume_write(struct file *filp, const char __user *buf,
 		goto out_unlock;
 	}
 
-	ret = copy_from_user(mig_dev->state + *offs, buf, len);
+	ret = !copy_from_iter_full(mig_dev->state + *offs, len, from);
 	if (ret) {
 		done = -EFAULT;
 		goto out_unlock;
@@ -342,7 +337,7 @@ out_unlock:
 
 static const struct file_operations qat_vf_resume_fops = {
 	.owner = THIS_MODULE,
-	.write = qat_vf_resume_write,
+	.write_iter = qat_vf_resume_write,
 	.release = qat_vf_release_file,
 };
 

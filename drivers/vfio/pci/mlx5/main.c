@@ -232,6 +232,7 @@ out_unlock:
 	mutex_unlock(&migf->lock);
 	return done;
 }
+FOPS_READ_ITER_HELPER(mlx5vf_save_read);
 
 static __poll_t mlx5vf_save_poll(struct file *filp,
 				 struct poll_table_struct *wait)
@@ -558,7 +559,7 @@ err_state_unlock:
 
 static const struct file_operations mlx5vf_save_fops = {
 	.owner = THIS_MODULE,
-	.read = mlx5vf_save_read,
+	.read_iter = mlx5vf_save_read_iter,
 	.poll = mlx5vf_save_poll,
 	.unlocked_ioctl = mlx5vf_precopy_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
@@ -975,10 +976,11 @@ out_unlock:
 	mlx5vf_state_mutex_unlock(migf->mvdev);
 	return ret ? ret : done;
 }
+FOPS_WRITE_ITER_HELPER(mlx5vf_resume_write);
 
 static const struct file_operations mlx5vf_resume_fops = {
 	.owner = THIS_MODULE,
-	.write = mlx5vf_resume_write,
+	.write_iter = mlx5vf_resume_write_iter,
 	.release = mlx5vf_release_file,
 };
 

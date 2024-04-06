@@ -1373,6 +1373,7 @@ static ssize_t vfio_device_fops_read(struct file *filep, char __user *buf,
 
 	return device->ops->read(device, buf, count, ppos);
 }
+FOPS_READ_ITER_HELPER(vfio_device_fops_read);
 
 static ssize_t vfio_device_fops_write(struct file *filep,
 				      const char __user *buf,
@@ -1390,6 +1391,7 @@ static ssize_t vfio_device_fops_write(struct file *filep,
 
 	return device->ops->write(device, buf, count, ppos);
 }
+FOPS_WRITE_ITER_HELPER(vfio_device_fops_write);
 
 static int vfio_device_fops_mmap(struct file *filep, struct vm_area_struct *vma)
 {
@@ -1426,8 +1428,8 @@ const struct file_operations vfio_device_fops = {
 	.owner		= THIS_MODULE,
 	.open		= vfio_device_fops_cdev_open,
 	.release	= vfio_device_fops_release,
-	.read		= vfio_device_fops_read,
-	.write		= vfio_device_fops_write,
+	.read_iter	= vfio_device_fops_read_iter,
+	.write_iter	= vfio_device_fops_write_iter,
 	.unlocked_ioctl	= vfio_device_fops_unl_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.mmap		= vfio_device_fops_mmap,

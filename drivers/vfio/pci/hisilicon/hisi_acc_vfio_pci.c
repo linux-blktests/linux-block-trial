@@ -777,18 +777,20 @@ static int hisi_acc_vf_release_file(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t hisi_acc_vf_resume_write(struct file *filp, const char __user *buf,
-					size_t len, loff_t *pos)
+static ssize_t hisi_acc_vf_resume_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct hisi_acc_vf_migration_file *migf = filp->private_data;
+	struct hisi_acc_vf_migration_file *migf = iocb->ki_filp->private_data;
 	u8 *vf_data = (u8 *)&migf->vf_data;
+	size_t len = iov_iter_count(from);
 	loff_t requested_length;
 	ssize_t done = 0;
+	loff_t *pos;
 	int ret;
 
-	if (pos)
+	if (iocb->ki_pos)
 		return -ESPIPE;
-	pos = &filp->f_pos;
+	pos = &iocb->ki_filp->f_pos;
 
 	if (*pos < 0 ||
 	    check_add_overflow((loff_t)len, *pos, &requested_length))
@@ -803,7 +805,7 @@ static ssize_t hisi_acc_vf_resume_write(struct file *filp, const char __user *bu
 		goto out_unlock;
 	}
 
-	ret = copy_from_user(vf_data + *pos, buf, len);
+	ret = !copy_from_iter_full(vf_data + *pos, len, from);
 	if (ret) {
 		done = -EFAULT;
 		goto out_unlock;
@@ -822,7 +824,7 @@ out_unlock:
 
 static const struct file_operations hisi_acc_vf_resume_fops = {
 	.owner = THIS_MODULE,
-	.write = hisi_acc_vf_resume_write,
+	.write_iter = hisi_acc_vf_resume_write,
 	.release = hisi_acc_vf_release_file,
 };
 
@@ -900,16 +902,17 @@ out:
 	return ret;
 }
 
-static ssize_t hisi_acc_vf_save_read(struct file *filp, char __user *buf, size_t len,
-				     loff_t *pos)
+static ssize_t hisi_acc_vf_save_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hisi_acc_vf_migration_file *migf = filp->private_data;
+	struct hisi_acc_vf_migration_file *migf = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	ssize_t done = 0;
+	loff_t *pos;
 	int ret;
 
-	if (pos)
+	if (iocb->ki_pos)
 		return -ESPIPE;
-	pos = &filp->f_pos;
+	pos = &iocb->ki_filp->f_pos;
 
 	mutex_lock(&migf->lock);
 	if (*pos > migf->total_length) {
@@ -926,7 +929,7 @@ static ssize_t hisi_acc_vf_save_read(struct file *filp, char __user *buf, size_t
 	if (len) {
 		u8 *vf_data = (u8 *)&migf->vf_data;
 
-		ret = copy_to_user(buf, vf_data + *pos, len);
+		ret = !copy_to_iter_full(vf_data + *pos, len, to);
 		if (ret) {
 			done = -EFAULT;
 			goto out_unlock;
@@ -941,7 +944,7 @@ out_unlock:
 
 static const struct file_operations hisi_acc_vf_save_fops = {
 	.owner = THIS_MODULE,
-	.read = hisi_acc_vf_save_read,
+	.read_iter = hisi_acc_vf_save_read,
 	.unlocked_ioctl = hisi_acc_vf_precopy_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
 	.release = hisi_acc_vf_release_file,

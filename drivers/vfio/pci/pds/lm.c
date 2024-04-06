@@ -173,15 +173,16 @@ static int pds_vfio_release_file(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t pds_vfio_save_read(struct file *filp, char __user *buf,
-				  size_t len, loff_t *pos)
+static ssize_t pds_vfio_save_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct pds_vfio_lm_file *lm_file = filp->private_data;
+	struct pds_vfio_lm_file *lm_file = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	ssize_t done = 0;
+	loff_t *pos;
 
-	if (pos)
+	if (iocb->ki_pos)
 		return -ESPIPE;
-	pos = &filp->f_pos;
+	pos = &iocb->ki_filp->f_pos;
 
 	mutex_lock(&lm_file->lock);
 
@@ -213,7 +214,7 @@ static ssize_t pds_vfio_save_read(struct file *filp, char __user *buf,
 
 		page_len = min_t(size_t, len, PAGE_SIZE - page_offset);
 		from_buff = kmap_local_page(page);
-		err = copy_to_user(buf, from_buff + page_offset, page_len);
+		err = !copy_to_iter_full(from_buff + page_offset, page_len, to);
 		kunmap_local(from_buff);
 		if (err) {
 			done = -EFAULT;
@@ -222,7 +223,6 @@ static ssize_t pds_vfio_save_read(struct file *filp, char __user *buf,
 		*pos += page_len;
 		len -= page_len;
 		done += page_len;
-		buf += page_len;
 	}
 
 out_unlock:
@@ -232,7 +232,7 @@ out_unlock:
 
 static const struct file_operations pds_vfio_save_fops = {
 	.owner = THIS_MODULE,
-	.read = pds_vfio_save_read,
+	.read_iter = pds_vfio_save_read,
 	.release = pds_vfio_release_file,
 };
 
@@ -271,17 +271,18 @@ static int pds_vfio_get_save_file(struct pds_vfio_pci_device *pds_vfio)
 	return 0;
 }
 
-static ssize_t pds_vfio_restore_write(struct file *filp, const char __user *buf,
-				      size_t len, loff_t *pos)
+static ssize_t pds_vfio_restore_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct pds_vfio_lm_file *lm_file = filp->private_data;
+	struct pds_vfio_lm_file *lm_file = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	loff_t requested_length;
 	ssize_t done = 0;
+	loff_t *pos;
 
-	if (pos)
+	if (iocb->ki_pos)
 		return -ESPIPE;
 
-	pos = &filp->f_pos;
+	pos = &iocb->ki_filp->f_pos;
 
 	if (*pos < 0 ||
 	    check_add_overflow((loff_t)len, *pos, &requested_length))
@@ -311,7 +312,7 @@ static ssize_t pds_vfio_restore_write(struct file *filp, const char __user *buf,
 
 		page_len = min_t(size_t, len, PAGE_SIZE - page_offset);
 		to_buff = kmap_local_page(page);
-		err = copy_from_user(to_buff + page_offset, buf, page_len);
+		err = !copy_from_iter_full(to_buff + page_offset, page_len, from);
 		kunmap_local(to_buff);
 		if (err) {
 			done = -EFAULT;
@@ -320,7 +321,6 @@ static ssize_t pds_vfio_restore_write(struct file *filp, const char __user *buf,
 		*pos += page_len;
 		len -= page_len;
 		done += page_len;
-		buf += page_len;
 		lm_file->size += page_len;
 	}
 out_unlock:
@@ -330,7 +330,7 @@ out_unlock:
 
 static const struct file_operations pds_vfio_restore_fops = {
 	.owner = THIS_MODULE,
-	.write = pds_vfio_restore_write,
+	.write_iter = pds_vfio_restore_write,
 	.release = pds_vfio_release_file,
 };
 
