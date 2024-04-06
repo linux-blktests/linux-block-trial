@@ -238,17 +238,16 @@ static int rt2x00debug_release_queue_dump(struct inode *inode, struct file *file
 	return rt2x00debug_file_release(inode, file);
 }
 
-static ssize_t rt2x00debug_read_queue_dump(struct file *file,
-					   char __user *buf,
-					   size_t length,
-					   loff_t *offset)
+static ssize_t rt2x00debug_read_queue_dump(struct kiocb *iocb,
+					   struct iov_iter *to)
 {
-	struct rt2x00debug_intf *intf = file->private_data;
+	struct rt2x00debug_intf *intf = iocb->ki_filp->private_data;
+	size_t length = iov_iter_count(to);
 	struct sk_buff *skb;
 	size_t status;
 	int retval;
 
-	if (file->f_flags & O_NONBLOCK)
+	if (iocb->ki_filp->f_flags & O_NONBLOCK)
 		return -EAGAIN;
 
 	retval =
@@ -259,12 +258,12 @@ static ssize_t rt2x00debug_read_queue_dump(struct file *file,
 		return retval;
 
 	status = min_t(size_t, skb->len, length);
-	if (copy_to_user(buf, skb->data, status)) {
+	if (!copy_to_iter_full(skb->data, status, to)) {
 		status = -EFAULT;
 		goto exit;
 	}
 
-	*offset += status;
+	iocb->ki_pos += status;
 
 exit:
 	kfree_skb(skb);
@@ -287,27 +286,26 @@ static __poll_t rt2x00debug_poll_queue_dump(struct file *file,
 
 static const struct file_operations rt2x00debug_fop_queue_dump = {
 	.owner		= THIS_MODULE,
-	.read		= rt2x00debug_read_queue_dump,
+	.read_iter	= rt2x00debug_read_queue_dump,
 	.poll		= rt2x00debug_poll_queue_dump,
 	.open		= rt2x00debug_open_queue_dump,
 	.release	= rt2x00debug_release_queue_dump,
 	.llseek		= default_llseek,
 };
 
-static ssize_t rt2x00debug_read_queue_stats(struct file *file,
-					    char __user *buf,
-					    size_t length,
-					    loff_t *offset)
+static ssize_t rt2x00debug_read_queue_stats(struct kiocb *iocb,
+					    struct iov_iter *to)
 {
-	struct rt2x00debug_intf *intf = file->private_data;
+	struct rt2x00debug_intf *intf = iocb->ki_filp->private_data;
 	struct data_queue *queue;
 	unsigned long irqflags;
 	unsigned int lines = 1 + intf->rt2x00dev->data_queues;
+	size_t length = iov_iter_count(to);
 	size_t size;
 	char *data;
 	char *temp;
 
-	if (*offset)
+	if (iocb->ki_pos)
 		return 0;
 
 	data = kcalloc(lines, MAX_LINE_LENGTH, GFP_KERNEL);
@@ -333,39 +331,38 @@ static ssize_t rt2x00debug_read_queue_stats(struct file *file,
 	size = strlen(data);
 	size = min(size, length);
 
-	if (copy_to_user(buf, data, size)) {
+	if (!copy_to_iter_full(data, size, to)) {
 		kfree(data);
 		return -EFAULT;
 	}
 
 	kfree(data);
 
-	*offset += size;
+	iocb->ki_pos += size;
 	return size;
 }
 
 static const struct file_operations rt2x00debug_fop_queue_stats = {
 	.owner		= THIS_MODULE,
-	.read		= rt2x00debug_read_queue_stats,
+	.read_iter	= rt2x00debug_read_queue_stats,
 	.open		= rt2x00debug_file_open,
 	.release	= rt2x00debug_file_release,
 	.llseek		= default_llseek,
 };
 
 #ifdef CONFIG_RT2X00_LIB_CRYPTO
-static ssize_t rt2x00debug_read_crypto_stats(struct file *file,
-					     char __user *buf,
-					     size_t length,
-					     loff_t *offset)
+static ssize_t rt2x00debug_read_crypto_stats(struct kiocb *iocb,
+					     struct iov_iter *to)
 {
-	struct rt2x00debug_intf *intf = file->private_data;
+	struct rt2x00debug_intf *intf = iocb->ki_filp->private_data;
 	static const char * const name[] = { "WEP64", "WEP128", "TKIP", "AES" };
+	size_t length = iov_iter_count(to);
 	char *data;
 	char *temp;
 	size_t size;
 	unsigned int i;
 
-	if (*offset)
+	if (iocb->ki_pos)
 		return 0;
 
 	data = kcalloc(1 + CIPHER_MAX, MAX_LINE_LENGTH, GFP_KERNEL);
@@ -386,20 +383,20 @@ static ssize_t rt2x00debug_read_crypto_stats(struct file *file,
 	size = strlen(data);
 	size = min(size, length);
 
-	if (copy_to_user(buf, data, size)) {
+	if (!copy_to_iter_full(data, size, to)) {
 		kfree(data);
 		return -EFAULT;
 	}
 
 	kfree(data);
 
-	*offset += size;
+	iocb->ki_pos += size;
 	return size;
 }
 
 static const struct file_operations rt2x00debug_fop_crypto_stats = {
 	.owner		= THIS_MODULE,
-	.read		= rt2x00debug_read_crypto_stats,
+	.read_iter	= rt2x00debug_read_crypto_stats,
 	.open		= rt2x00debug_file_open,
 	.release	= rt2x00debug_file_release,
 	.llseek		= default_llseek,
@@ -407,19 +404,17 @@ static const struct file_operations rt2x00debug_fop_crypto_stats = {
 #endif
 
 #define RT2X00DEBUGFS_OPS_READ(__name, __format, __type)	\
-static ssize_t rt2x00debug_read_##__name(struct file *file,	\
-					 char __user *buf,	\
-					 size_t length,		\
-					 loff_t *offset)	\
+static ssize_t rt2x00debug_read_##__name(struct kiocb *iocb,	\
+					 struct iov_iter *to)	\
 {								\
-	struct rt2x00debug_intf *intf = file->private_data;	\
+	struct rt2x00debug_intf *intf = iocb->ki_filp->private_data;	\
 	const struct rt2x00debug *debug = intf->debug;		\
 	char line[16];						\
 	size_t size;						\
 	unsigned int index = intf->offset_##__name;		\
 	__type value;						\
 								\
-	if (*offset)						\
+	if (iocb->ki_pos)					\
 		return 0;					\
 								\
 	if (index >= debug->__name.word_count)			\
@@ -435,23 +430,22 @@ static ssize_t rt2x00debug_read_##__name(struct file *file,	\
 								\
 	size = sprintf(line, __format, value);			\
 								\
-	return simple_read_from_buffer(buf, length, offset, line, size); \
+	return simple_copy_to_iter(line, &iocb->ki_pos, size, to); \
 }
 
 #define RT2X00DEBUGFS_OPS_WRITE(__name, __type)			\
-static ssize_t rt2x00debug_write_##__name(struct file *file,	\
-					  const char __user *buf,\
-					  size_t length,	\
-					  loff_t *offset)	\
+static ssize_t rt2x00debug_write_##__name(struct kiocb *iocb,	\
+					  struct iov_iter *from)\
 {								\
-	struct rt2x00debug_intf *intf = file->private_data;	\
+	struct rt2x00debug_intf *intf = iocb->ki_filp->private_data;	\
 	const struct rt2x00debug *debug = intf->debug;		\
+	size_t length = iov_iter_count(from);			\
 	char line[17];						\
 	size_t size;						\
 	unsigned int index = intf->offset_##__name;		\
 	__type value;						\
 								\
-	if (*offset)						\
+	if (iocb->ki_pos)					\
 		return 0;					\
 								\
 	if (index >= debug->__name.word_count)			\
@@ -460,7 +454,7 @@ static ssize_t rt2x00debug_write_##__name(struct file *file,	\
 	if (length > sizeof(line))				\
 		return -EINVAL;					\
 								\
-	if (copy_from_user(line, buf, length))			\
+	if (!copy_from_iter_full(line, length, from))		\
 		return -EFAULT;					\
 	line[16] = 0;						\
 						\
@@ -475,7 +469,7 @@ static ssize_t rt2x00debug_write_##__name(struct file *file,	\
 								\
 	debug->__name.write(intf->rt2x00dev, index, value);	\
 								\
-	*offset += size;					\
+	iocb->ki_pos += size;					\
 	return size;						\
 }
 
@@ -485,8 +479,8 @@ RT2X00DEBUGFS_OPS_WRITE(__name, __type);			\
 								\
 static const struct file_operations rt2x00debug_fop_##__name = {\
 	.owner		= THIS_MODULE,				\
-	.read		= rt2x00debug_read_##__name,		\
-	.write		= rt2x00debug_write_##__name,		\
+	.read_iter	= rt2x00debug_read_##__name,		\
+	.write_iter	= rt2x00debug_write_##__name,		\
 	.open		= rt2x00debug_file_open,		\
 	.release	= rt2x00debug_file_release,		\
 	.llseek		= generic_file_llseek,			\
@@ -498,62 +492,56 @@ RT2X00DEBUGFS_OPS(bbp, "0x%.2x\n", u8);
 RT2X00DEBUGFS_OPS(rf, "0x%.8x\n", u32);
 RT2X00DEBUGFS_OPS(rfcsr, "0x%.2x\n", u8);
 
-static ssize_t rt2x00debug_read_dev_flags(struct file *file,
-					  char __user *buf,
-					  size_t length,
-					  loff_t *offset)
+static ssize_t rt2x00debug_read_dev_flags(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
-	struct rt2x00debug_intf *intf =	file->private_data;
+	struct rt2x00debug_intf *intf =	iocb->ki_filp->private_data;
 	char line[16];
 	size_t size;
 
-	if (*offset)
+	if (iocb->ki_pos)
 		return 0;
 
 	size = sprintf(line, "0x%.8x\n", (unsigned int)intf->rt2x00dev->flags);
 
-	return simple_read_from_buffer(buf, length, offset, line, size);
+	return simple_copy_to_iter(line, &iocb->ki_pos, size, to);
 }
 
 static const struct file_operations rt2x00debug_fop_dev_flags = {
 	.owner		= THIS_MODULE,
-	.read		= rt2x00debug_read_dev_flags,
+	.read_iter	= rt2x00debug_read_dev_flags,
 	.open		= rt2x00debug_file_open,
 	.release	= rt2x00debug_file_release,
 	.llseek		= default_llseek,
 };
 
-static ssize_t rt2x00debug_read_cap_flags(struct file *file,
-					  char __user *buf,
-					  size_t length,
-					  loff_t *offset)
+static ssize_t rt2x00debug_read_cap_flags(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
-	struct rt2x00debug_intf *intf =	file->private_data;
+	struct rt2x00debug_intf *intf =	iocb->ki_filp->private_data;
 	char line[16];
 	size_t size;
 
-	if (*offset)
+	if (iocb->ki_pos)
 		return 0;
 
 	size = sprintf(line, "0x%.8x\n", (unsigned int)intf->rt2x00dev->cap_flags);
 
-	return simple_read_from_buffer(buf, length, offset, line, size);
+	return simple_copy_to_iter(line, &iocb->ki_pos, size, to);
 }
 
 static const struct file_operations rt2x00debug_fop_cap_flags = {
 	.owner		= THIS_MODULE,
-	.read		= rt2x00debug_read_cap_flags,
+	.read_iter	= rt2x00debug_read_cap_flags,
 	.open		= rt2x00debug_file_open,
 	.release	= rt2x00debug_file_release,
 	.llseek		= default_llseek,
 };
 
-static ssize_t rt2x00debug_write_restart_hw(struct file *file,
-					    const char __user *buf,
-					    size_t length,
-					    loff_t *offset)
+static ssize_t rt2x00debug_write_restart_hw(struct kiocb *iocb,
+					    struct iov_iter *from)
 {
-	struct rt2x00debug_intf *intf =	file->private_data;
+	struct rt2x00debug_intf *intf =	iocb->ki_filp->private_data;
 	struct rt2x00_dev *rt2x00dev = intf->rt2x00dev;
 	static unsigned long last_reset = INITIAL_JIFFIES;
 
@@ -566,12 +554,12 @@ static ssize_t rt2x00debug_write_restart_hw(struct file *file,
 	last_reset = jiffies;
 
 	ieee80211_restart_hw(rt2x00dev->hw);
-	return length;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations rt2x00debug_restart_hw = {
 	.owner = THIS_MODULE,
-	.write = rt2x00debug_write_restart_hw,
+	.write_iter = rt2x00debug_write_restart_hw,
 	.open = simple_open,
 	.llseek = generic_file_llseek,
 };
