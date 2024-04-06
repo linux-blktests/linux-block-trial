@@ -281,6 +281,7 @@ out:
 	mutex_unlock(&dev->device_lock);
 	return rets;
 }
+FOPS_READ_ITER_HELPER(mei_read);
 
 /**
  * mei_cl_vtag_by_fp - obtain the vtag by file pointer
@@ -395,6 +396,7 @@ out:
 	mutex_unlock(&dev->device_lock);
 	return rets;
 }
+FOPS_WRITE_ITER_HELPER(mei_write);
 
 /**
  * mei_ioctl_connect_client - the connect to fw client IOCTL function
@@ -1197,12 +1199,12 @@ ATTRIBUTE_GROUPS(mei);
  */
 static const struct file_operations mei_fops = {
 	.owner = THIS_MODULE,
-	.read = mei_read,
+	.read_iter = mei_read_iter,
 	.unlocked_ioctl = mei_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
 	.open = mei_open,
 	.release = mei_release,
-	.write = mei_write,
+	.write_iter = mei_write_iter,
 	.poll = mei_poll,
 	.fsync = mei_fsync,
 	.fasync = mei_fasync,
