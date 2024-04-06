@@ -1175,13 +1175,13 @@ static void brcmf_core_bus_reset(struct work_struct *work)
 	brcmf_bus_reset(drvr->bus_if);
 }
 
-static ssize_t bus_reset_write(struct file *file, const char __user *user_buf,
-			       size_t count, loff_t *ppos)
+static ssize_t bus_reset_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct brcmf_pub *drvr = file->private_data;
+	struct brcmf_pub *drvr = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	u8 value;
 
-	if (kstrtou8_from_user(user_buf, count, 0, &value))
+	if (kstrtou8_from_iter(from, count, 0, &value))
 		return -EINVAL;
 
 	if (value != 1)
@@ -1194,7 +1194,7 @@ static ssize_t bus_reset_write(struct file *file, const char __user *user_buf,
 
 static const struct file_operations bus_reset_fops = {
 	.open	= simple_open,
-	.write	= bus_reset_write,
+	.write_iter	= bus_reset_write,
 };
 
 static int brcmf_bus_started(struct brcmf_pub *drvr, struct cfg80211_ops *ops)
