@@ -417,8 +417,7 @@ static struct pdc_globals pdcg;
 /* top level debug FS directory for PDC driver */
 static struct dentry *debugfs_dir;
 
-static ssize_t pdc_debugfs_read(struct file *filp, char __user *ubuf,
-				size_t count, loff_t *offp)
+static ssize_t pdc_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct pdc_state *pdcs;
 	char *buf;
@@ -430,7 +429,7 @@ static ssize_t pdc_debugfs_read(struct file *filp, char __user *ubuf,
 	if (!buf)
 		return -ENOMEM;
 
-	pdcs = filp->private_data;
+	pdcs = iocb->ki_filp->private_data;
 	out_offset = 0;
 	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
 			       "SPU %u stats:\n", pdcs->pdc_idx);
@@ -466,7 +465,7 @@ static ssize_t pdc_debugfs_read(struct file *filp, char __user *ubuf,
 	if (out_offset > out_count)
 		out_offset = out_count;
 
-	ret = simple_read_from_buffer(ubuf, count, offp, buf, out_offset);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, out_offset, to);
 	kfree(buf);
 	return ret;
 }
@@ -474,7 +473,7 @@ static ssize_t pdc_debugfs_read(struct file *filp, char __user *ubuf,
 static const struct file_operations pdc_debugfs_stats = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = pdc_debugfs_read,
+	.read_iter = pdc_debugfs_read,
 };
 
 /**

@@ -46,11 +46,10 @@ struct mbox_test_device {
 	struct dentry		*root_debugfs_dir;
 };
 
-static ssize_t mbox_test_signal_write(struct file *filp,
-				       const char __user *userbuf,
-				       size_t count, loff_t *ppos)
+static ssize_t mbox_test_signal_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mbox_test_device *tdev = filp->private_data;
+	struct mbox_test_device *tdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 
 	if (!tdev->tx_channel) {
 		dev_err(tdev->dev, "Channel cannot do Tx\n");
@@ -71,7 +70,7 @@ static ssize_t mbox_test_signal_write(struct file *filp,
 			return -ENOMEM;
 	}
 
-	if (copy_from_user(tdev->signal, userbuf, count)) {
+	if (!copy_from_iter_full(tdev->signal, count, from)) {
 		kfree(tdev->signal);
 		tdev->signal = NULL;
 		return -EFAULT;
@@ -81,7 +80,7 @@ static ssize_t mbox_test_signal_write(struct file *filp,
 }
 
 static const struct file_operations mbox_test_signal_ops = {
-	.write	= mbox_test_signal_write,
+	.write_iter	= mbox_test_signal_write,
 	.open	= simple_open,
 	.llseek	= generic_file_llseek,
 };
@@ -93,11 +92,11 @@ static int mbox_test_message_fasync(int fd, struct file *filp, int on)
 	return fasync_helper(fd, filp, on, &tdev->async_queue);
 }
 
-static ssize_t mbox_test_message_write(struct file *filp,
-				       const char __user *userbuf,
-				       size_t count, loff_t *ppos)
+static ssize_t mbox_test_message_write(struct kiocb *iocb,
+				       struct iov_iter *from)
 {
-	struct mbox_test_device *tdev = filp->private_data;
+	struct mbox_test_device *tdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char *message;
 	void *data;
 	int ret;
@@ -121,7 +120,7 @@ static ssize_t mbox_test_message_write(struct file *filp,
 	mutex_lock(&tdev->mutex);
 
 	tdev->message = message;
-	ret = copy_from_user(tdev->message, userbuf, count);
+	ret = !copy_from_iter_full(tdev->message, count, from);
 	if (ret) {
 		ret = -EFAULT;
 		goto out;
@@ -168,10 +167,9 @@ static bool mbox_test_message_data_ready(struct mbox_test_device *tdev)
 	return data_ready;
 }
 
-static ssize_t mbox_test_message_read(struct file *filp, char __user *userbuf,
-				      size_t count, loff_t *ppos)
+static ssize_t mbox_test_message_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mbox_test_device *tdev = filp->private_data;
+	struct mbox_test_device *tdev = iocb->ki_filp->private_data;
 	unsigned long flags;
 	char *touser, *ptr;
 	int l = 0;
@@ -185,8 +183,7 @@ static ssize_t mbox_test_message_read(struct file *filp, char __user *userbuf,
 
 	if (!tdev->rx_channel) {
 		ret = snprintf(touser, 20, "<NO RX CAPABILITY>\n");
-		ret = simple_read_from_buffer(userbuf, count, ppos,
-					      touser, ret);
+		ret = simple_copy_to_iter(touser, &iocb->ki_pos, ret, to);
 		goto kfree_err;
 	}
 
@@ -198,7 +195,7 @@ static ssize_t mbox_test_message_read(struct file *filp, char __user *userbuf,
 		if (mbox_test_message_data_ready(tdev))
 			break;
 
-		if (filp->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			ret = -EAGAIN;
 			goto waitq_err;
 		}
@@ -231,7 +228,7 @@ static ssize_t mbox_test_message_read(struct file *filp, char __user *userbuf,
 
 	spin_unlock_irqrestore(&tdev->lock, flags);
 
-	ret = simple_read_from_buffer(userbuf, count, ppos, touser, MBOX_HEXDUMP_MAX_LEN);
+	ret = simple_copy_to_iter(touser, &iocb->ki_pos, MBOX_HEXDUMP_MAX_LEN, to);
 waitq_err:
 	__set_current_state(TASK_RUNNING);
 	remove_wait_queue(&tdev->waitq, &wait);
@@ -253,8 +250,8 @@ mbox_test_message_poll(struct file *filp, struct poll_table_struct *wait)
 }
 
 static const struct file_operations mbox_test_message_ops = {
-	.write	= mbox_test_message_write,
-	.read	= mbox_test_message_read,
+	.write_iter	= mbox_test_message_write,
+	.read_iter	= mbox_test_message_read,
 	.fasync	= mbox_test_message_fasync,
 	.poll	= mbox_test_message_poll,
 	.open	= simple_open,
