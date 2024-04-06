@@ -2440,14 +2440,12 @@ static int ca8210_test_check_upstream(u8 *buf, void *device_ref)
  * Return: 0 or linux error code
  */
 static ssize_t ca8210_test_int_user_write(
-	struct file        *filp,
-	const char __user  *in_buf,
-	size_t              len,
-	loff_t             *off
-)
+	struct kiocb *iocb,
+	struct iov_iter *from)
 {
 	int ret;
-	struct ca8210_priv *priv = filp->private_data;
+	struct ca8210_priv *priv = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	u8 command[CA8210_SPI_BUF_SIZE];
 
 	memset(command, SPI_IDLE, 6);
@@ -2460,7 +2458,7 @@ static ssize_t ca8210_test_int_user_write(
 		return -EBADE;
 	}
 
-	ret = copy_from_user(command, in_buf, len);
+	ret = !copy_from_iter_full(command, len, from);
 	if (ret) {
 		dev_err(
 			&priv->spi->dev,
@@ -2515,18 +2513,15 @@ static ssize_t ca8210_test_int_user_write(
  * Return: number of bytes read
  */
 static ssize_t ca8210_test_int_user_read(
-	struct file  *filp,
-	char __user  *buf,
-	size_t        len,
-	loff_t       *offp
-)
+	struct kiocb *iocb,
+	struct iov_iter *to)
 {
 	int i, cmdlen;
-	struct ca8210_priv *priv = filp->private_data;
+	struct ca8210_priv *priv = iocb->ki_filp->private_data;
 	unsigned char *fifo_buffer;
 	unsigned long bytes_not_copied;
 
-	if (filp->f_flags & O_NONBLOCK) {
+	if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 		/* Non-blocking mode */
 		if (kfifo_is_empty(&priv->test.up_fifo))
 			return 0;
@@ -2548,7 +2543,7 @@ static ssize_t ca8210_test_int_user_read(
 	cmdlen = fifo_buffer[1];
 	bytes_not_copied = cmdlen + 2;
 
-	bytes_not_copied = copy_to_user(buf, fifo_buffer, bytes_not_copied);
+	bytes_not_copied = !copy_to_iter_full(fifo_buffer, bytes_not_copied, to);
 	if (bytes_not_copied > 0) {
 		dev_err(
 			&priv->spi->dev,
@@ -2623,8 +2618,8 @@ static __poll_t ca8210_test_int_poll(
 }
 
 static const struct file_operations test_int_fops = {
-	.read =           ca8210_test_int_user_read,
-	.write =          ca8210_test_int_user_write,
+	.read_iter =      ca8210_test_int_user_read,
+	.write_iter =     ca8210_test_int_user_write,
 	.open =           ca8210_test_int_open,
 	.release =        NULL,
 	.unlocked_ioctl = ca8210_test_int_ioctl,
