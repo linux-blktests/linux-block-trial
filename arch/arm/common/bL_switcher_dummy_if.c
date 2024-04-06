@@ -15,9 +15,9 @@
 #include <linux/uaccess.h>
 #include <asm/bL_switcher.h>
 
-static ssize_t bL_switcher_write(struct file *file, const char __user *buf,
-			size_t len, loff_t *pos)
+static ssize_t bL_switcher_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	unsigned char val[3];
 	unsigned int cpu, cluster;
 	int ret;
@@ -27,7 +27,7 @@ static ssize_t bL_switcher_write(struct file *file, const char __user *buf,
 	if (len < 3)
 		return -EINVAL;
 
-	if (copy_from_user(val, buf, 3))
+	if (!copy_from_iter_full(val, 3, from))
 		return -EFAULT;
 
 	/* format: <cpu#>,<cluster#> */
@@ -44,7 +44,7 @@ static ssize_t bL_switcher_write(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations bL_switcher_fops = {
-	.write		= bL_switcher_write,
+	.write_iter	= bL_switcher_write,
 	.owner	= THIS_MODULE,
 };
 
