@@ -101,7 +101,7 @@ static const struct sb_reg retimer_sb_regs[] = {
 	{ USB4_SB_DATA, 64 },
 };
 
-#define DEBUGFS_ATTR(__space, __write)					\
+#define DEBUGFS_ATTR_RO(__space)					\
 static int __space ## _open(struct inode *inode, struct file *file)	\
 {									\
 	return single_open(file, __space ## _show, inode->i_private);	\
@@ -111,16 +111,25 @@ static const struct file_operations __space ## _fops = {		\
 	.owner = THIS_MODULE,						\
 	.open = __space ## _open,					\
 	.release = single_release,					\
-	.read  = seq_read,						\
-	.write = __write,						\
+	.read_iter = seq_read_iter,					\
 	.llseek = seq_lseek,						\
 }
 
-#define DEBUGFS_ATTR_RO(__space)					\
-	DEBUGFS_ATTR(__space, NULL)
-
 #define DEBUGFS_ATTR_RW(__space)					\
-	DEBUGFS_ATTR(__space, __space ## _write)
+static int __space ## _open(struct inode *inode, struct file *file)	\
+{									\
+	return single_open(file, __space ## _show, inode->i_private);	\
+}									\
+FOPS_WRITE_ITER_HELPER(__space ## _write);				\
+									\
+static const struct file_operations __space ## _fops = {		\
+	.owner = THIS_MODULE,						\
+	.open = __space ## _open,					\
+	.release = single_release,					\
+	.read_iter = seq_read_iter,					\
+	.write_iter = __space ## _write ## _iter,			\
+	.llseek = seq_lseek,						\
+}
 
 static struct dentry *tb_debugfs_root;
 
@@ -881,18 +890,18 @@ static int margining_lanes_show(struct seq_file *s, void *not_used)
 DEBUGFS_ATTR_RW(margining_lanes);
 
 static ssize_t
-margining_voltage_time_offset_write(struct file *file,
-				    const char __user *user_buf,
-				    size_t count, loff_t *ppos)
+margining_voltage_time_offset_write_iter(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct tb_margining *margining = s->private;
 	struct tb *tb = margining->port->sw->tb;
+	size_t count = iov_iter_count(from);
 	unsigned int max_margin;
 	unsigned int val;
 	int ret;
 
-	ret = kstrtouint_from_user(user_buf, count, 10, &val);
+	ret = kstrtouint_from_iter(from, count, 10, &val);
 	if (ret)
 		return ret;
 
@@ -929,7 +938,21 @@ static int margining_voltage_time_offset_show(struct seq_file *s,
 
 	return 0;
 }
-DEBUGFS_ATTR_RW(margining_voltage_time_offset);
+static int margining_voltage_time_offset_open(struct inode *inode,
+					      struct file *file)
+{
+	return single_open(file, margining_voltage_time_offset_show,
+			   inode->i_private);
+}
+
+static const struct file_operations margining_voltage_time_offset_fops = {
+	.owner = THIS_MODULE,
+	.open = margining_voltage_time_offset_open,
+	.release = single_release,
+	.read_iter = seq_read_iter,
+	.write_iter = margining_voltage_time_offset_write_iter,
+	.llseek = seq_lseek,
+};
 
 static ssize_t
 margining_error_counter_write(struct file *file, const char __user *user_buf,
@@ -998,16 +1021,16 @@ static int margining_error_counter_show(struct seq_file *s, void *not_used)
 DEBUGFS_ATTR_RW(margining_error_counter);
 
 static ssize_t
-margining_dwell_time_write(struct file *file, const char __user *user_buf,
-			   size_t count, loff_t *ppos)
+margining_dwell_time_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct tb_margining *margining = s->private;
 	struct tb *tb = margining->port->sw->tb;
+	size_t count = iov_iter_count(from);
 	unsigned int val;
 	int ret;
 
-	ret = kstrtouint_from_user(user_buf, count, 10, &val);
+	ret = kstrtouint_from_iter(from, count, 10, &val);
 	if (ret)
 		return ret;
 
@@ -1035,7 +1058,19 @@ static int margining_dwell_time_show(struct seq_file *s, void *not_used)
 
 	return 0;
 }
-DEBUGFS_ATTR_RW(margining_dwell_time);
+static int margining_dwell_time_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, margining_dwell_time_show, inode->i_private);
+}
+
+static const struct file_operations margining_dwell_time_fops = {
+	.owner = THIS_MODULE,
+	.open = margining_dwell_time_open,
+	.release = single_release,
+	.read_iter = seq_read_iter,
+	.write_iter = margining_dwell_time_write_iter,
+	.llseek = seq_lseek,
+};
 
 static ssize_t
 margining_optional_voltage_offset_write(struct file *file, const char __user *user_buf,
