@@ -133,8 +133,7 @@ static int hinic_dbg_get_func_table(struct hinic_dev *nic_dev, int idx)
 	return ret;
 }
 
-static ssize_t hinic_dbg_cmd_read(struct file *filp, char __user *buffer, size_t count,
-				  loff_t *ppos)
+static ssize_t hinic_dbg_cmd_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct hinic_debug_priv *dbg;
 	char ret_buf[20];
@@ -142,7 +141,7 @@ static ssize_t hinic_dbg_cmd_read(struct file *filp, char __user *buffer, size_t
 	u64 out;
 	int ret;
 
-	desc = filp->private_data;
+	desc = iocb->ki_filp->private_data;
 	dbg = container_of(desc, struct hinic_debug_priv, field_id[*desc]);
 
 	switch (dbg->type) {
@@ -166,13 +165,13 @@ static ssize_t hinic_dbg_cmd_read(struct file *filp, char __user *buffer, size_t
 
 	ret = snprintf(ret_buf, sizeof(ret_buf), "0x%llx\n", out);
 
-	return simple_read_from_buffer(buffer, count, ppos, ret_buf, ret);
+	return simple_copy_to_iter(ret_buf, &iocb->ki_pos, ret, to);
 }
 
 static const struct file_operations hinic_dbg_cmd_fops = {
-	.owner = THIS_MODULE,
-	.open  = simple_open,
-	.read  = hinic_dbg_cmd_read,
+	.owner      = THIS_MODULE,
+	.open       = simple_open,
+	.read_iter  = hinic_dbg_cmd_read_iter,
 };
 
 static int create_dbg_files(struct hinic_dev *dev, enum hinic_dbg_type type, void *data,
