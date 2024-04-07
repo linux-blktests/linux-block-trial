@@ -17,15 +17,14 @@
 
 static struct dentry *bnxt_debug_mnt;
 
-static ssize_t debugfs_dim_read(struct file *filep,
-				char __user *buffer,
-				size_t count, loff_t *ppos)
+static ssize_t debugfs_dim_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dim *dim = filep->private_data;
+	struct dim *dim = iocb->ki_filp->private_data;
 	int len;
 	char *buf;
+	size_t count = iov_iter_count(to);
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return 0;
 	if (!dim)
 		return -ENODEV;
@@ -50,7 +49,7 @@ static ssize_t debugfs_dim_read(struct file *filep,
 		kfree(buf);
 		return -ENOSPC;
 	}
-	len = simple_read_from_buffer(buffer, count, ppos, buf, strlen(buf));
+	len = simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 	kfree(buf);
 	return len;
 }
@@ -58,7 +57,7 @@ static ssize_t debugfs_dim_read(struct file *filep,
 static const struct file_operations debugfs_dim_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = debugfs_dim_read,
+	.read_iter = debugfs_dim_read_iter,
 };
 
 static void debugfs_dim_ring_init(struct dim *dim, int ring_idx,
