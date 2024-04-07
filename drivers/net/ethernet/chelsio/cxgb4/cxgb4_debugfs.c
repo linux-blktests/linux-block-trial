@@ -227,11 +227,11 @@ static int cim_la_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations cim_la_fops = {
-	.owner   = THIS_MODULE,
-	.open    = cim_la_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release_private
+	.owner     = THIS_MODULE,
+	.open      = cim_la_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release_private
 };
 
 static int cim_pif_la_show(struct seq_file *seq, void *v, int idx)
@@ -270,11 +270,11 @@ static int cim_pif_la_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations cim_pif_la_fops = {
-	.owner   = THIS_MODULE,
-	.open    = cim_pif_la_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release_private
+	.owner     = THIS_MODULE,
+	.open      = cim_pif_la_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release_private
 };
 
 static int cim_ma_la_show(struct seq_file *seq, void *v, int idx)
@@ -316,11 +316,11 @@ static int cim_ma_la_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations cim_ma_la_fops = {
-	.owner   = THIS_MODULE,
-	.open    = cim_ma_la_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release_private
+	.owner     = THIS_MODULE,
+	.open      = cim_ma_la_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release_private
 };
 
 static int cim_qcfg_show(struct seq_file *seq, void *v)
@@ -409,11 +409,11 @@ static int cim_ibq_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations cim_ibq_fops = {
-	.owner   = THIS_MODULE,
-	.open    = cim_ibq_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release_private
+	.owner     = THIS_MODULE,
+	.open      = cim_ibq_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release_private
 };
 
 static int cim_obq_open(struct inode *inode, struct file *file)
@@ -438,11 +438,11 @@ static int cim_obq_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations cim_obq_fops = {
-	.owner   = THIS_MODULE,
-	.open    = cim_obq_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release_private
+	.owner     = THIS_MODULE,
+	.open      = cim_obq_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release_private
 };
 
 struct field_desc {
@@ -660,16 +660,16 @@ static int tp_la_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t tp_la_write(struct file *file, const char __user *buf,
-			   size_t count, loff_t *pos)
+static ssize_t tp_la_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	int err;
 	char s[32];
 	unsigned long val;
+	size_t count = iov_iter_count(from);
 	size_t size = min(sizeof(s) - 1, count);
-	struct adapter *adap = file_inode(file)->i_private;
+	struct adapter *adap = file_inode(iocb->ki_filp)->i_private;
 
-	if (copy_from_user(s, buf, size))
+	if (!copy_from_iter_full(s, size, from))
 		return -EFAULT;
 	s[size] = '\0';
 	err = kstrtoul(s, 0, &val);
@@ -684,12 +684,12 @@ static ssize_t tp_la_write(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations tp_la_fops = {
-	.owner   = THIS_MODULE,
-	.open    = tp_la_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release_private,
-	.write   = tp_la_write
+	.owner      = THIS_MODULE,
+	.open       = tp_la_open,
+	.read_iter  = seq_read_iter,
+	.llseek     = seq_lseek,
+	.release    = seq_release_private,
+	.write_iter = tp_la_write_iter
 };
 
 static int ulprx_la_show(struct seq_file *seq, void *v, int idx)
@@ -720,11 +720,11 @@ static int ulprx_la_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations ulprx_la_fops = {
-	.owner   = THIS_MODULE,
-	.open    = ulprx_la_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release_private
+	.owner     = THIS_MODULE,
+	.open      = ulprx_la_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release_private
 };
 
 /* Show the PM memory stats.  These stats include:
@@ -799,23 +799,22 @@ static int pm_stats_open(struct inode *inode, struct file *file)
 	return single_open(file, pm_stats_show, inode->i_private);
 }
 
-static ssize_t pm_stats_clear(struct file *file, const char __user *buf,
-			      size_t count, loff_t *pos)
+static ssize_t pm_stats_clear(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct adapter *adap = file_inode(file)->i_private;
+	struct adapter *adap = file_inode(iocb->ki_filp)->i_private;
 
 	t4_write_reg(adap, PM_RX_STAT_CONFIG_A, 0);
 	t4_write_reg(adap, PM_TX_STAT_CONFIG_A, 0);
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations pm_stats_debugfs_fops = {
-	.owner   = THIS_MODULE,
-	.open    = pm_stats_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release,
-	.write   = pm_stats_clear
+	.owner      = THIS_MODULE,
+	.open       = pm_stats_open,
+	.read_iter  = seq_read_iter,
+	.llseek     = seq_lseek,
+	.release    = single_release,
+	.write_iter = pm_stats_clear
 };
 
 static int tx_rate_show(struct seq_file *seq, void *v)
@@ -1134,11 +1133,11 @@ static int devlog_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations devlog_fops = {
-	.owner   = THIS_MODULE,
-	.open    = devlog_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release_private
+	.owner     = THIS_MODULE,
+	.open      = devlog_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release_private
 };
 
 /* Show Firmware Mailbox Command/Reply Log
@@ -1232,11 +1231,11 @@ static int mboxlog_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations mboxlog_fops = {
-	.owner   = THIS_MODULE,
-	.open    = mboxlog_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release,
+	.owner     = THIS_MODULE,
+	.open      = mboxlog_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release,
 };
 
 static int mbox_show(struct seq_file *seq, void *v)
@@ -1275,8 +1274,7 @@ static int mbox_open(struct inode *inode, struct file *file)
 	return single_open(file, mbox_show, inode->i_private);
 }
 
-static ssize_t mbox_write(struct file *file, const char __user *buf,
-			  size_t count, loff_t *pos)
+static ssize_t mbox_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	int i;
 	char c = '\n', s[256];
@@ -1286,10 +1284,11 @@ static ssize_t mbox_write(struct file *file, const char __user *buf,
 	struct adapter *adap;
 	void __iomem *addr;
 	void __iomem *ctrl;
+	size_t count = iov_iter_count(from);
 
 	if (count > sizeof(s) - 1 || !count)
 		return -EINVAL;
-	if (copy_from_user(s, buf, count))
+	if (!copy_from_iter_full(s, count, from))
 		return -EFAULT;
 	s[count] = '\0';
 
@@ -1298,7 +1297,7 @@ static ssize_t mbox_write(struct file *file, const char __user *buf,
 		   &data[7], &c) < 8 || c != '\n')
 		return -EINVAL;
 
-	ino = file_inode(file);
+	ino = file_inode(iocb->ki_filp);
 	mbox = (uintptr_t)ino->i_private & 7;
 	adap = ino->i_private - mbox;
 	addr = adap->regs + PF_REG(mbox, CIM_PF_MAILBOX_DATA_A);
@@ -1315,12 +1314,12 @@ static ssize_t mbox_write(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations mbox_debugfs_fops = {
-	.owner   = THIS_MODULE,
-	.open    = mbox_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release,
-	.write   = mbox_write
+	.owner      = THIS_MODULE,
+	.open       = mbox_open,
+	.read_iter  = seq_read_iter,
+	.llseek     = seq_lseek,
+	.release    = single_release,
+	.write_iter = mbox_write_iter
 };
 
 static int mps_trc_show(struct seq_file *seq, void *v)
@@ -1408,8 +1407,7 @@ static unsigned int xdigit2int(unsigned char c)
  * must be anchored at 0.  An omitted mask is taken as a mask of 1s, an omitted
  * anchor is taken as 0.
  */
-static ssize_t mps_trc_write(struct file *file, const char __user *buf,
-			     size_t count, loff_t *pos)
+static ssize_t mps_trc_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	int i, enable, ret;
 	u32 *data, *mask;
@@ -1419,8 +1417,9 @@ static ssize_t mps_trc_write(struct file *file, const char __user *buf,
 	char *s, *p, *word, *end;
 	struct adapter *adap;
 	u32 j;
+	size_t count = iov_iter_count(from);
 
-	ino = file_inode(file);
+	ino = file_inode(iocb->ki_filp);
 	trcidx = (uintptr_t)ino->i_private & 3;
 	adap = ino->i_private - trcidx;
 
@@ -1432,7 +1431,7 @@ static ssize_t mps_trc_write(struct file *file, const char __user *buf,
 	p = s = kzalloc(count + 1, GFP_USER);
 	if (!s)
 		return -ENOMEM;
-	if (copy_from_user(s, buf, count)) {
+	if (!copy_from_iter_full(s, count, from)) {
 		count = -EFAULT;
 		goto out;
 	}
@@ -1608,20 +1607,20 @@ out:
 }
 
 static const struct file_operations mps_trc_debugfs_fops = {
-	.owner   = THIS_MODULE,
-	.open    = mps_trc_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release,
-	.write   = mps_trc_write
+	.owner      = THIS_MODULE,
+	.open       = mps_trc_open,
+	.read_iter  = seq_read_iter,
+	.llseek     = seq_lseek,
+	.release    = single_release,
+	.write_iter = mps_trc_write_iter
 };
 
-static ssize_t flash_read(struct file *file, char __user *buf, size_t count,
-			  loff_t *ppos)
+static ssize_t flash_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	loff_t pos = *ppos;
-	loff_t avail = file_inode(file)->i_size;
-	struct adapter *adap = file->private_data;
+	loff_t pos = iocb->ki_pos;
+	loff_t avail = file_inode(iocb->ki_filp)->i_size;
+	struct adapter *adap = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 
 	if (pos < 0)
 		return -EINVAL;
@@ -1643,23 +1642,22 @@ static ssize_t flash_read(struct file *file, char __user *buf, size_t count,
 			return ret;
 
 		len -= ofst;
-		if (copy_to_user(buf, data + ofst, len))
+		if (!copy_to_iter_full(data + ofst, len, to))
 			return -EFAULT;
 
-		buf += len;
 		pos += len;
 		count -= len;
 	}
-	count = pos - *ppos;
-	*ppos = pos;
+	count = pos - iocb->ki_pos;
+	iocb->ki_pos = pos;
 	return count;
 }
 
 static const struct file_operations flash_debugfs_fops = {
-	.owner   = THIS_MODULE,
-	.open    = mem_open,
-	.read    = flash_read,
-	.llseek  = default_llseek,
+	.owner     = THIS_MODULE,
+	.open      = mem_open,
+	.read_iter = flash_read_iter,
+	.llseek    = default_llseek,
 };
 
 static inline void tcamxy2valmask(u64 x, u64 y, u8 *addr, u64 *mask)
@@ -1928,11 +1926,11 @@ static int mps_tcam_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations mps_tcam_debugfs_fops = {
-	.owner   = THIS_MODULE,
-	.open    = mps_tcam_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release,
+	.owner     = THIS_MODULE,
+	.open      = mps_tcam_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release,
 };
 
 /* Display various sensor information.
@@ -2005,11 +2003,11 @@ static int rss_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations rss_debugfs_fops = {
-	.owner   = THIS_MODULE,
-	.open    = rss_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release_private
+	.owner     = THIS_MODULE,
+	.open      = rss_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release_private
 };
 
 /* RSS Configuration.
@@ -2194,17 +2192,17 @@ static int rss_key_open(struct inode *inode, struct file *file)
 	return single_open(file, rss_key_show, inode->i_private);
 }
 
-static ssize_t rss_key_write(struct file *file, const char __user *buf,
-			     size_t count, loff_t *pos)
+static ssize_t rss_key_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	int i, j;
 	u32 key[10];
 	char s[100], *p;
-	struct adapter *adap = file_inode(file)->i_private;
+	struct adapter *adap = file_inode(iocb->ki_filp)->i_private;
+	size_t count = iov_iter_count(from);
 
 	if (count > sizeof(s) - 1)
 		return -EINVAL;
-	if (copy_from_user(s, buf, count))
+	if (!copy_from_iter_full(s, count, from))
 		return -EFAULT;
 	for (i = count; i > 0 && isspace(s[i - 1]); i--)
 		;
@@ -2224,12 +2222,12 @@ static ssize_t rss_key_write(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations rss_key_debugfs_fops = {
-	.owner   = THIS_MODULE,
-	.open    = rss_key_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release,
-	.write   = rss_key_write
+	.owner      = THIS_MODULE,
+	.open       = rss_key_open,
+	.read_iter  = seq_read_iter,
+	.llseek     = seq_lseek,
+	.release    = single_release,
+	.write_iter = rss_key_write_iter
 };
 
 /* PF RSS Configuration.
@@ -2308,11 +2306,11 @@ static int rss_pf_config_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations rss_pf_config_debugfs_fops = {
-	.owner   = THIS_MODULE,
-	.open    = rss_pf_config_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release_private
+	.owner     = THIS_MODULE,
+	.open      = rss_pf_config_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release_private
 };
 
 /* VF RSS Configuration.
@@ -2371,11 +2369,11 @@ static int rss_vf_config_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations rss_vf_config_debugfs_fops = {
-	.owner   = THIS_MODULE,
-	.open    = rss_vf_config_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release_private
+	.owner     = THIS_MODULE,
+	.open      = rss_vf_config_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release_private
 };
 
 #ifdef CONFIG_CHELSIO_T4_DCB
@@ -2559,11 +2557,11 @@ static int dcb_info_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations dcb_info_debugfs_fops = {
-	.owner   = THIS_MODULE,
-	.open    = dcb_info_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release,
+	.owner     = THIS_MODULE,
+	.open      = dcb_info_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release,
 };
 #endif /* CONFIG_CHELSIO_T4_DCB */
 
@@ -3243,11 +3241,11 @@ static int sge_qinfo_open(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations sge_qinfo_debugfs_fops = {
-	.owner   = THIS_MODULE,
-	.open    = sge_qinfo_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release,
+	.owner     = THIS_MODULE,
+	.open      = sge_qinfo_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release,
 };
 
 int mem_open(struct inode *inode, struct file *file)
@@ -3265,15 +3263,15 @@ int mem_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t mem_read(struct file *file, char __user *buf, size_t count,
-			loff_t *ppos)
+static ssize_t mem_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	loff_t pos = *ppos;
-	loff_t avail = file_inode(file)->i_size;
-	unsigned int mem = (uintptr_t)file->private_data & 0x7;
-	struct adapter *adap = file->private_data - mem;
+	loff_t pos = iocb->ki_pos;
+	loff_t avail = file_inode(iocb->ki_filp)->i_size;
+	unsigned int mem = (uintptr_t)iocb->ki_filp->private_data & 0x7;
+	struct adapter *adap = iocb->ki_filp->private_data - mem;
 	__be32 *data;
 	int ret;
+	size_t count = iov_iter_count(to);
 
 	if (pos < 0)
 		return -EINVAL;
@@ -3293,20 +3291,20 @@ static ssize_t mem_read(struct file *file, char __user *buf, size_t count,
 		kvfree(data);
 		return ret;
 	}
-	ret = copy_to_user(buf, data, count);
+	ret = !copy_to_iter_full(data, count, to);
 
 	kvfree(data);
 	if (ret)
 		return -EFAULT;
 
-	*ppos = pos + count;
+	iocb->ki_pos = pos + count;
 	return count;
 }
 static const struct file_operations mem_debugfs_fops = {
-	.owner   = THIS_MODULE,
-	.open    = simple_open,
-	.read    = mem_read,
-	.llseek  = default_llseek,
+	.owner     = THIS_MODULE,
+	.open      = simple_open,
+	.read_iter = mem_read_iter,
+	.llseek    = default_llseek,
 };
 
 static int tid_info_show(struct seq_file *seq, void *v)
@@ -3401,11 +3399,10 @@ static void add_debugfs_mem(struct adapter *adap, const char *name,
 				 size_mb << 20);
 }
 
-static ssize_t blocked_fl_read(struct file *filp, char __user *ubuf,
-			       size_t count, loff_t *ppos)
+static ssize_t blocked_fl_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	int len;
-	const struct adapter *adap = filp->private_data;
+	const struct adapter *adap = iocb->ki_filp->private_data;
 	char *buf;
 	ssize_t size = (adap->sge.egr_sz + 3) / 4 +
 			adap->sge.egr_sz / 32 + 2; /* includes ,/\n/\0 */
@@ -3417,23 +3414,31 @@ static ssize_t blocked_fl_read(struct file *filp, char __user *ubuf,
 	len = snprintf(buf, size - 1, "%*pb\n",
 		       adap->sge.egr_sz, adap->sge.blocked_fl);
 	len += sprintf(buf + len, "\n");
-	size = simple_read_from_buffer(ubuf, count, ppos, buf, len);
+	size = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 	return size;
 }
 
-static ssize_t blocked_fl_write(struct file *filp, const char __user *ubuf,
-				size_t count, loff_t *ppos)
+static ssize_t blocked_fl_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	int err;
 	unsigned long *t;
-	struct adapter *adap = filp->private_data;
+	struct adapter *adap = iocb->ki_filp->private_data;
+	void *kern_buf;
+	size_t count = iov_iter_count(from);
 
 	t = bitmap_zalloc(adap->sge.egr_sz, GFP_KERNEL);
 	if (!t)
 		return -ENOMEM;
 
-	err = bitmap_parse_user(ubuf, count, t, adap->sge.egr_sz);
+	kern_buf = kzalloc(count + 1, GFP_KERNEL);
+	if (!kern_buf)
+		return -ENOMEM;
+
+	if (!copy_from_iter_full(kern_buf, count, from))
+		return -EFAULT;
+
+	err = bitmap_parse(kern_buf, UINT_MAX, t, adap->sge.egr_sz);
 	if (err) {
 		bitmap_free(t);
 		return err;
@@ -3445,11 +3450,11 @@ static ssize_t blocked_fl_write(struct file *filp, const char __user *ubuf,
 }
 
 static const struct file_operations blocked_fl_fops = {
-	.owner   = THIS_MODULE,
-	.open    = simple_open,
-	.read    = blocked_fl_read,
-	.write   = blocked_fl_write,
-	.llseek  = generic_file_llseek,
+	.owner      = THIS_MODULE,
+	.open       = simple_open,
+	.read_iter  = blocked_fl_read_iter,
+	.write_iter = blocked_fl_write_iter,
+	.llseek     = generic_file_llseek,
 };
 
 static void mem_region_show(struct seq_file *seq, const char *name,
