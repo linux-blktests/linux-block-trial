@@ -55,15 +55,14 @@ static int debugfs_trace_open(struct inode *inode, struct file *file)
 	return single_open(file, debugfs_trace_show, inode->i_private);
 }
 
-static ssize_t debugfs_trace_write(struct file *file,
-	const char __user *buffer,
-	size_t count, loff_t *ppos)
+static ssize_t debugfs_trace_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *f = (struct seq_file *)file->private_data;
+	struct seq_file *f = iocb->ki_filp->private_data;
 	struct vchiq_instance *instance = f->private;
+	size_t count = iov_iter_count(from);
 	char firstchar;
 
-	if (copy_from_user(&firstchar, buffer, 1))
+	if (!copy_from_iter_full(&firstchar, 1, from))
 		return -EFAULT;
 
 	switch (firstchar) {
@@ -81,16 +80,15 @@ static ssize_t debugfs_trace_write(struct file *file,
 		break;
 	}
 
-	*ppos += count;
-
+	iocb->ki_pos += count;
 	return count;
 }
 
 static const struct file_operations debugfs_trace_fops = {
 	.owner		= THIS_MODULE,
 	.open		= debugfs_trace_open,
-	.write		= debugfs_trace_write,
-	.read		= seq_read,
+	.write_iter	= debugfs_trace_write,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
