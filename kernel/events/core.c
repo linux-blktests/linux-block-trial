@@ -6156,7 +6156,7 @@ unlock:
 }
 
 static int perf_read_group(struct perf_event *event,
-				   u64 read_format, char __user *buf)
+				   u64 read_format, struct iov_iter *to)
 {
 	struct perf_event *leader = event->group_leader, *child;
 	struct perf_event_context *ctx = leader->ctx;
@@ -6186,7 +6186,7 @@ static int perf_read_group(struct perf_event *event,
 	mutex_unlock(&leader->child_mutex);
 
 	ret = event->read_size;
-	if (copy_to_user(buf, values, event->read_size))
+	if (!copy_to_iter_full(values, event->read_size, to))
 		ret = -EFAULT;
 	goto out;
 
@@ -6198,7 +6198,7 @@ out:
 }
 
 static int perf_read_one(struct perf_event *event,
-				 u64 read_format, char __user *buf)
+				 u64 read_format, struct iov_iter *to)
 {
 	u64 enabled, running;
 	u64 values[5];
@@ -6214,7 +6214,7 @@ static int perf_read_one(struct perf_event *event,
 	if (read_format & PERF_FORMAT_LOST)
 		values[n++] = atomic64_read(&event->lost_samples);
 
-	if (copy_to_user(buf, values, n * sizeof(u64)))
+	if (!copy_to_iter_full(values, n * sizeof(u64), to))
 		return -EFAULT;
 
 	return n * sizeof(u64);
@@ -6237,7 +6237,7 @@ static bool is_event_hup(struct perf_event *event)
  * Read the performance event - simple non blocking version for now
  */
 static ssize_t
-__perf_read(struct perf_event *event, char __user *buf, size_t count)
+__perf_read(struct perf_event *event, struct iov_iter *to)
 {
 	u64 read_format = event->attr.read_format;
 	int ret;
@@ -6250,22 +6250,22 @@ __perf_read(struct perf_event *event, char __user *buf, size_t count)
 	if (event->state == PERF_EVENT_STATE_ERROR)
 		return 0;
 
-	if (count < event->read_size)
+	if (iov_iter_count(to) < event->read_size)
 		return -ENOSPC;
 
 	WARN_ON_ONCE(event->ctx->parent_ctx);
 	if (read_format & PERF_FORMAT_GROUP)
-		ret = perf_read_group(event, read_format, buf);
+		ret = perf_read_group(event, read_format, to);
 	else
-		ret = perf_read_one(event, read_format, buf);
+		ret = perf_read_one(event, read_format, to);
 
 	return ret;
 }
 
 static ssize_t
-perf_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+perf_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct perf_event *event = file->private_data;
+	struct perf_event *event = iocb->ki_filp->private_data;
 	struct perf_event_context *ctx;
 	int ret;
 
@@ -6274,7 +6274,7 @@ perf_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 		return ret;
 
 	ctx = perf_event_ctx_lock(event);
-	ret = __perf_read(event, buf, count);
+	ret = __perf_read(event, to);
 	perf_event_ctx_unlock(event, ctx);
 
 	return ret;
@@ -7512,7 +7512,7 @@ static int perf_fasync(int fd, struct file *filp, int on)
 
 static const struct file_operations perf_fops = {
 	.release		= perf_release,
-	.read			= perf_read,
+	.read_iter		= perf_read,
 	.poll			= perf_poll,
 	.unlocked_ioctl		= perf_ioctl,
 	.compat_ioctl		= perf_compat_ioctl,
