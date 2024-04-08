@@ -33,8 +33,7 @@ static DEFINE_PER_CPU(u64, pv_kick_time);
  * 3. pv_hash_hops
  *    Average hops/hash = pv_hash_hops/pv_kick_unlock
  */
-ssize_t lockevent_read(struct file *file, char __user *user_buf,
-		       size_t count, loff_t *ppos)
+ssize_t lockevent_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[64];
 	int cpu, id, len;
@@ -43,7 +42,7 @@ ssize_t lockevent_read(struct file *file, char __user *user_buf,
 	/*
 	 * Get the counter ID stored in file->f_inode->i_private
 	 */
-	id = (long)file_inode(file)->i_private;
+	id = (long)file_inode(iocb->ki_filp)->i_private;
 
 	if (id >= lockevent_num)
 		return -EBADF;
@@ -91,7 +90,7 @@ ssize_t lockevent_read(struct file *file, char __user *user_buf,
 		len = snprintf(buf, sizeof(buf) - 1, "%llu\n", sum);
 	}
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 /*
