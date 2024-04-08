@@ -327,18 +327,16 @@ static int pc87413_status(void)
 
 /**
  *	pc87413_write:
- *	@file: file handle to the watchdog
- *	@data: data buffer to write
- *	@len: length in bytes
- *	@ppos: pointer to the position to write. No seeks allowed
+ *	@iocb: metadata for IO
+ *	@from: data buffer to write
  *
  *	A write to a watchdog device is defined as a keepalive signal. Any
  *	write of data will do, as we we don't define content meaning.
  */
 
-static ssize_t pc87413_write(struct file *file, const char __user *data,
-			     size_t len, loff_t *ppos)
+static ssize_t pc87413_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	/* See if we got the magic character 'V' and reload the timer */
 	if (len) {
 		if (!nowayout) {
@@ -351,7 +349,7 @@ static ssize_t pc87413_write(struct file *file, const char __user *data,
 			   magic character */
 			for (i = 0; i != len; i++) {
 				char c;
-				if (get_user(c, data + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_close = 42;
@@ -470,7 +468,7 @@ static int pc87413_notify_sys(struct notifier_block *this,
 
 static const struct file_operations pc87413_fops = {
 	.owner		= THIS_MODULE,
-	.write		= pc87413_write,
+	.write_iter	= pc87413_write,
 	.unlocked_ioctl	= pc87413_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= pc87413_open,
