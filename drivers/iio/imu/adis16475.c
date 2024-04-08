@@ -164,11 +164,10 @@ module_param(low_rate_allow, bool, 0444);
 MODULE_PARM_DESC(low_rate_allow,
 		 "Allow IMU rates below the minimum advisable when external clk is used in SCALED mode (default: N)");
 
-static ssize_t adis16475_show_firmware_revision(struct file *file,
-						char __user *userbuf,
-						size_t count, loff_t *ppos)
+static ssize_t adis16475_show_firmware_revision(struct kiocb *iocb,
+						struct iov_iter *to)
 {
-	struct adis16475 *st = file->private_data;
+	struct adis16475 *st = iocb->ki_filp->private_data;
 	char buf[7];
 	size_t len;
 	u16 rev;
@@ -180,21 +179,20 @@ static ssize_t adis16475_show_firmware_revision(struct file *file,
 
 	len = scnprintf(buf, sizeof(buf), "%x.%x\n", rev >> 8, rev & 0xff);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations adis16475_firmware_revision_fops = {
 	.open = simple_open,
-	.read = adis16475_show_firmware_revision,
+	.read_iter = adis16475_show_firmware_revision,
 	.llseek = default_llseek,
 	.owner = THIS_MODULE,
 };
 
-static ssize_t adis16475_show_firmware_date(struct file *file,
-					    char __user *userbuf,
-					    size_t count, loff_t *ppos)
+static ssize_t adis16475_show_firmware_date(struct kiocb *iocb,
+					    struct iov_iter *to)
 {
-	struct adis16475 *st = file->private_data;
+	struct adis16475 *st = iocb->ki_filp->private_data;
 	u16 md, year;
 	char buf[12];
 	size_t len;
@@ -211,12 +209,12 @@ static ssize_t adis16475_show_firmware_date(struct file *file,
 	len = snprintf(buf, sizeof(buf), "%.2x-%.2x-%.4x\n", md >> 8, md & 0xff,
 		       year);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations adis16475_firmware_date_fops = {
 	.open = simple_open,
-	.read = adis16475_show_firmware_date,
+	.read_iter = adis16475_show_firmware_date,
 	.llseek = default_llseek,
 	.owner = THIS_MODULE,
 };
