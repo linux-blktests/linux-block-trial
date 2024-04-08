@@ -96,9 +96,9 @@ static int udelay_test_open(struct inode *inode, struct file *file)
 	return single_open(file, udelay_test_show, inode->i_private);
 }
 
-static ssize_t udelay_test_write(struct file *file, const char __user *buf,
-		size_t count, loff_t *pos)
+static ssize_t udelay_test_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char lbuf[32];
 	int ret;
 	int usecs;
@@ -107,7 +107,7 @@ static ssize_t udelay_test_write(struct file *file, const char __user *buf,
 	if (count >= sizeof(lbuf))
 		return -EINVAL;
 
-	if (copy_from_user(lbuf, buf, count))
+	if (!copy_from_iter_full(lbuf, count, from))
 		return -EFAULT;
 	lbuf[count] = '\0';
 
@@ -128,8 +128,8 @@ static ssize_t udelay_test_write(struct file *file, const char __user *buf,
 static const struct file_operations udelay_test_debugfs_ops = {
 	.owner = THIS_MODULE,
 	.open = udelay_test_open,
-	.read = seq_read,
-	.write = udelay_test_write,
+	.read_iter = seq_read_iter,
+	.write_iter = udelay_test_write,
 	.llseek = seq_lseek,
 	.release = single_release,
 };

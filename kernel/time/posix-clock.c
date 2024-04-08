@@ -54,6 +54,7 @@ static ssize_t posix_clock_read(struct file *fp, char __user *buf,
 
 	return err;
 }
+FOPS_READ_ITER_HELPER(posix_clock_read);
 
 static __poll_t posix_clock_poll(struct file *fp, poll_table *wait)
 {
@@ -149,7 +150,7 @@ static int posix_clock_release(struct inode *inode, struct file *fp)
 
 static const struct file_operations posix_clock_file_operations = {
 	.owner		= THIS_MODULE,
-	.read		= posix_clock_read,
+	.read_iter	= posix_clock_read_iter,
 	.poll		= posix_clock_poll,
 	.unlocked_ioctl	= posix_clock_ioctl,
 	.compat_ioctl	= posix_clock_ioctl,
