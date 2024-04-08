@@ -202,10 +202,10 @@ enum {
 	ADIS16400_SCAN_TIMESTAMP,
 };
 
-static ssize_t adis16400_show_serial_number(struct file *file,
-		char __user *userbuf, size_t count, loff_t *ppos)
+static ssize_t adis16400_show_serial_number(struct kiocb *iocb,
+					    struct iov_iter *to)
 {
-	struct adis16400_state *st = file->private_data;
+	struct adis16400_state *st = iocb->ki_filp->private_data;
 	u16 lot1, lot2, serial_number;
 	char buf[16];
 	size_t len;
@@ -227,12 +227,12 @@ static ssize_t adis16400_show_serial_number(struct file *file,
 	len = snprintf(buf, sizeof(buf), "%.4x-%.4x-%.4x\n", lot1, lot2,
 			serial_number);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations adis16400_serial_number_fops = {
 	.open = simple_open,
-	.read = adis16400_show_serial_number,
+	.read_iter = adis16400_show_serial_number,
 	.llseek = default_llseek,
 	.owner = THIS_MODULE,
 };
