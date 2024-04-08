@@ -45,15 +45,14 @@
 struct dentry *megasas_debugfs_root;
 
 static ssize_t
-megasas_debugfs_read(struct file *filp, char __user *ubuf, size_t cnt,
-		      loff_t *ppos)
+megasas_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct megasas_debugfs_buffer *debug = filp->private_data;
+	struct megasas_debugfs_buffer *debug = iocb->ki_filp->private_data;
 
 	if (!debug || !debug->buf)
 		return 0;
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, debug->buf, debug->len);
+	return simple_copy_to_iter(debug->buf, &iocb->ki_pos, debug->len, to);
 }
 
 static int
@@ -92,7 +91,7 @@ megasas_debugfs_release(struct inode *inode, struct file *file)
 static const struct file_operations megasas_debugfs_raidmap_fops = {
 	.owner		= THIS_MODULE,
 	.open           = megasas_debugfs_raidmap_open,
-	.read           = megasas_debugfs_read,
+	.read_iter      = megasas_debugfs_read,
 	.release        = megasas_debugfs_release,
 };
 
