@@ -3018,8 +3018,7 @@ static int disarm_all_kprobes(void)
  * when the bool state is switched. We can reuse that facility when
  * available
  */
-static ssize_t read_enabled_file_bool(struct file *file,
-	       char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t read_enabled_file_bool(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[3];
 
@@ -3029,16 +3028,16 @@ static ssize_t read_enabled_file_bool(struct file *file,
 		buf[0] = '0';
 	buf[1] = '\n';
 	buf[2] = 0x00;
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
-static ssize_t write_enabled_file_bool(struct file *file,
-	       const char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t write_enabled_file_bool(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	bool enable;
 	int ret;
 
-	ret = kstrtobool_from_user(user_buf, count, &enable);
+	ret = kstrtobool_from_iter(from, count, &enable);
 	if (ret)
 		return ret;
 
@@ -3050,8 +3049,8 @@ static ssize_t write_enabled_file_bool(struct file *file,
 }
 
 static const struct file_operations fops_kp = {
-	.read =         read_enabled_file_bool,
-	.write =        write_enabled_file_bool,
+	.read_iter =    read_enabled_file_bool,
+	.write_iter =   write_enabled_file_bool,
 	.llseek =	default_llseek,
 };
 
