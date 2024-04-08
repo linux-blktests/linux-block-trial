@@ -491,10 +491,9 @@ static void mei_wdt_notif(struct mei_cl_device *cldev)
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 
-static ssize_t mei_dbgfs_read_activation(struct file *file, char __user *ubuf,
-					size_t cnt, loff_t *ppos)
+static ssize_t mei_dbgfs_read_activation(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mei_wdt *wdt = file->private_data;
+	struct mei_wdt *wdt = iocb->ki_filp->private_data;
 	const size_t bufsz = 32;
 	char buf[32];
 	ssize_t pos;
@@ -504,31 +503,30 @@ static ssize_t mei_dbgfs_read_activation(struct file *file, char __user *ubuf,
 		__mei_wdt_is_registered(wdt) ? "activated" : "deactivated");
 	mutex_unlock(&wdt->reg_lock);
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 static const struct file_operations dbgfs_fops_activation = {
 	.open    = simple_open,
-	.read    = mei_dbgfs_read_activation,
+	.read_iter = mei_dbgfs_read_activation,
 	.llseek  = generic_file_llseek,
 };
 
-static ssize_t mei_dbgfs_read_state(struct file *file, char __user *ubuf,
-				    size_t cnt, loff_t *ppos)
+static ssize_t mei_dbgfs_read_state(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mei_wdt *wdt = file->private_data;
+	struct mei_wdt *wdt = iocb->ki_filp->private_data;
 	char buf[32];
 	ssize_t pos;
 
 	pos = scnprintf(buf, sizeof(buf), "state: %s\n",
 			mei_wdt_state_str(wdt->state));
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 static const struct file_operations dbgfs_fops_state = {
 	.open = simple_open,
-	.read = mei_dbgfs_read_state,
+	.read_iter = mei_dbgfs_read_state,
 	.llseek = generic_file_llseek,
 };
 
