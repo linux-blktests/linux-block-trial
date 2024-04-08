@@ -98,15 +98,13 @@ void fnic_debugfs_terminate(void)
  * Returns:
  * This function returns the amount of data that was read.
  */
-static ssize_t fnic_trace_ctrl_read(struct file *filp,
-				  char __user *ubuf,
-				  size_t cnt, loff_t *ppos)
+static ssize_t fnic_trace_ctrl_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[64];
 	int len;
 	u8 *trace_type;
 	len = 0;
-	trace_type = (u8 *)filp->private_data;
+	trace_type = (u8 *)iocb->ki_filp->private_data;
 	if (*trace_type == fc_trc_flag->fnic_trace)
 		len = sprintf(buf, "%d\n", fnic_tracing_enabled);
 	else if (*trace_type == fc_trc_flag->fc_trace)
@@ -116,7 +114,7 @@ static ssize_t fnic_trace_ctrl_read(struct file *filp,
 	else
 		pr_err("fnic: Cannot read to any debugfs file\n");
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 /*
@@ -136,20 +134,19 @@ static ssize_t fnic_trace_ctrl_read(struct file *filp,
  * Returns:
  * This function returns the amount of data that was written.
  */
-static ssize_t fnic_trace_ctrl_write(struct file *filp,
-				  const char __user *ubuf,
-				  size_t cnt, loff_t *ppos)
+static ssize_t fnic_trace_ctrl_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char buf[64];
 	unsigned long val;
 	int ret;
 	u8 *trace_type;
-	trace_type = (u8 *)filp->private_data;
+	size_t cnt = iov_iter_count(from);
+	trace_type = (u8 *)iocb->ki_filp->private_data;
 
 	if (cnt >= sizeof(buf))
 		return -EINVAL;
 
-	if (copy_from_user(&buf, ubuf, cnt))
+	if (!copy_from_iter_full(&buf, cnt, from))
 		return -EFAULT;
 
 	buf[cnt] = 0;
@@ -167,16 +164,15 @@ static ssize_t fnic_trace_ctrl_write(struct file *filp,
 	else
 		pr_err("fnic: cannot write to any debugfs file\n");
 
-	(*ppos)++;
-
+	iocb->ki_pos++;
 	return cnt;
 }
 
 static const struct file_operations fnic_trace_ctrl_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = fnic_trace_ctrl_read,
-	.write = fnic_trace_ctrl_write,
+	.read_iter = fnic_trace_ctrl_read,
+	.write_iter = fnic_trace_ctrl_write,
 };
 
 /*
@@ -270,17 +266,12 @@ static loff_t fnic_trace_debugfs_lseek(struct file *file,
  * This function returns the amount of data that was read (this could be
  * less than @nbytes if the end of the file was reached).
  */
-static ssize_t fnic_trace_debugfs_read(struct file *file,
-					char __user *ubuf,
-					size_t nbytes,
-					loff_t *pos)
+static ssize_t fnic_trace_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	fnic_dbgfs_t *fnic_dbg_prt = file->private_data;
-	int rc = 0;
-	rc = simple_read_from_buffer(ubuf, nbytes, pos,
-				  fnic_dbg_prt->buffer,
-				  fnic_dbg_prt->buffer_len);
-	return rc;
+	fnic_dbgfs_t *fnic_dbg_prt = iocb->ki_filp->private_data;
+
+	return simple_copy_to_iter(fnic_dbg_prt->buffer, &iocb->ki_pos,
+					fnic_dbg_prt->buffer_len, to);
 }
 
 /*
@@ -310,7 +301,7 @@ static const struct file_operations fnic_trace_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = fnic_trace_debugfs_open,
 	.llseek = fnic_trace_debugfs_lseek,
-	.read = fnic_trace_debugfs_read,
+	.read_iter = fnic_trace_debugfs_read,
 	.release = fnic_trace_debugfs_release,
 };
 
@@ -462,18 +453,16 @@ static int fnic_reset_stats_open(struct inode *inode, struct file *file)
  * Returns:
  * This function returns the amount of data that was read.
  */
-static ssize_t fnic_reset_stats_read(struct file *file,
-					char __user *ubuf,
-					size_t cnt, loff_t *ppos)
+static ssize_t fnic_reset_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct stats_debug_info *debug = file->private_data;
+	struct stats_debug_info *debug = iocb->ki_filp->private_data;
 	struct fnic *fnic = (struct fnic *)debug->i_private;
 	char buf[64];
 	int len;
 
 	len = sprintf(buf, "%u\n", fnic->reset_stats);
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 /*
@@ -490,15 +479,15 @@ static ssize_t fnic_reset_stats_read(struct file *file,
  * Returns:
  * This function returns the amount of data that was written.
  */
-static ssize_t fnic_reset_stats_write(struct file *file,
-					const char __user *ubuf,
-					size_t cnt, loff_t *ppos)
+static ssize_t fnic_reset_stats_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct stats_debug_info *debug = file->private_data;
+	struct stats_debug_info *debug = iocb->ki_filp->private_data;
 	struct fnic *fnic = (struct fnic *)debug->i_private;
 	struct fnic_stats *stats = &fnic->fnic_stats;
 	u64 *io_stats_p = (u64 *)&stats->io_stats;
 	u64 *fw_stats_p = (u64 *)&stats->fw_stats;
+	size_t cnt = iov_iter_count(from);
 	char buf[64];
 	unsigned long val;
 	int ret;
@@ -506,7 +495,7 @@ static ssize_t fnic_reset_stats_write(struct file *file,
 	if (cnt >= sizeof(buf))
 		return -EINVAL;
 
-	if (copy_from_user(&buf, ubuf, cnt))
+	if (!copy_from_iter_full(&buf, cnt, from))
 		return -EFAULT;
 
 	buf[cnt] = 0;
@@ -537,7 +526,7 @@ static ssize_t fnic_reset_stats_write(struct file *file,
 		ktime_get_real_ts64(&stats->stats_timestamps.last_reset_time);
 	}
 
-	(*ppos)++;
+	iocb->ki_pos++;
 	return cnt;
 }
 
@@ -619,17 +608,12 @@ static int fnic_stats_debugfs_open(struct inode *inode,
  * This function returns the amount of data that was read (this could be
  * less than @nbytes if the end of the file was reached).
  */
-static ssize_t fnic_stats_debugfs_read(struct file *file,
-					char __user *ubuf,
-					size_t nbytes,
-					loff_t *pos)
+static ssize_t fnic_stats_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct stats_debug_info *debug = file->private_data;
-	int rc = 0;
-	rc = simple_read_from_buffer(ubuf, nbytes, pos,
-					debug->debug_buffer,
-					debug->buffer_len);
-	return rc;
+	struct stats_debug_info *debug = iocb->ki_filp->private_data;
+
+	return simple_copy_to_iter(debug->debug_buffer, &iocb->ki_pos,
+					debug->buffer_len, to);
 }
 
 /*
@@ -657,15 +641,15 @@ static int fnic_stats_debugfs_release(struct inode *inode,
 static const struct file_operations fnic_stats_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = fnic_stats_debugfs_open,
-	.read = fnic_stats_debugfs_read,
+	.read_iter = fnic_stats_debugfs_read,
 	.release = fnic_stats_debugfs_release,
 };
 
 static const struct file_operations fnic_reset_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = fnic_reset_stats_open,
-	.read = fnic_reset_stats_read,
-	.write = fnic_reset_stats_write,
+	.read_iter = fnic_reset_stats_read,
+	.write_iter = fnic_reset_stats_write,
 	.release = fnic_reset_stats_release,
 };
 
