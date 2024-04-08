@@ -350,9 +350,9 @@ static irqreturn_t wdtpci_interrupt(int irq, void *dev_id)
  *	write of data will do, as we we don't define content meaning.
  */
 
-static ssize_t wdtpci_write(struct file *file, const char __user *buf,
-						size_t count, loff_t *ppos)
+static ssize_t wdtpci_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	if (count) {
 		if (!nowayout) {
 			size_t i;
@@ -362,7 +362,7 @@ static ssize_t wdtpci_write(struct file *file, const char __user *buf,
 
 			for (i = 0; i != count; i++) {
 				char c;
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_close = 42;
@@ -487,24 +487,21 @@ static int wdtpci_release(struct inode *inode, struct file *file)
 
 /**
  *	wdtpci_temp_read:
- *	@file: file handle to the watchdog board
- *	@buf: buffer to write 1 byte into
- *	@count: length of buffer
- *	@ptr: offset (no seek allowed)
+ *	@iocb: metadata for IO
+ *	@to: buffer to write 1 byte into
  *
  *	Read reports the temperature in degrees Fahrenheit. The API is in
  *	fahrenheit. It was designed by an imperial measurement luddite.
  */
 
-static ssize_t wdtpci_temp_read(struct file *file, char __user *buf,
-						size_t count, loff_t *ptr)
+static ssize_t wdtpci_temp_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int temperature;
 
 	if (wdtpci_get_temperature(&temperature))
 		return -EFAULT;
 
-	if (copy_to_user(buf, &temperature, 1))
+	if (!copy_to_iter_full(&temperature, 1, to))
 		return -EFAULT;
 
 	return 1;
@@ -563,7 +560,7 @@ static int wdtpci_notify_sys(struct notifier_block *this, unsigned long code,
 
 static const struct file_operations wdtpci_fops = {
 	.owner		= THIS_MODULE,
-	.write		= wdtpci_write,
+	.write_iter	= wdtpci_write,
 	.unlocked_ioctl	= wdtpci_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= wdtpci_open,
@@ -578,7 +575,7 @@ static struct miscdevice wdtpci_miscdev = {
 
 static const struct file_operations wdtpci_temp_fops = {
 	.owner		= THIS_MODULE,
-	.read		= wdtpci_temp_read,
+	.read_iter	= wdtpci_temp_read,
 	.open		= wdtpci_temp_open,
 	.release	= wdtpci_temp_release,
 };
