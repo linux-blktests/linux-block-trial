@@ -358,9 +358,9 @@ static int usb_pcwd_get_timeleft(struct usb_pcwd_private *usb_pcwd,
  *	/dev/watchdog handling
  */
 
-static ssize_t usb_pcwd_write(struct file *file, const char __user *data,
-						size_t len, loff_t *ppos)
+static ssize_t usb_pcwd_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	/* See if we got the magic character 'V' and reload the timer */
 	if (len) {
 		if (!nowayout) {
@@ -374,7 +374,7 @@ static ssize_t usb_pcwd_write(struct file *file, const char __user *data,
 			 * magic character */
 			for (i = 0; i != len; i++) {
 				char c;
-				if (get_user(c, data + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_release = 42;
@@ -506,15 +506,15 @@ static int usb_pcwd_release(struct inode *inode, struct file *file)
  *	/dev/temperature handling
  */
 
-static ssize_t usb_pcwd_temperature_read(struct file *file, char __user *data,
-				size_t len, loff_t *ppos)
+static ssize_t usb_pcwd_temperature_read(struct kiocb *iocb,
+					 struct iov_iter *to)
 {
 	int temperature;
 
 	if (usb_pcwd_get_temperature(usb_pcwd_device, &temperature))
 		return -EFAULT;
 
-	if (copy_to_user(data, &temperature, 1))
+	if (!copy_to_iter_full(&temperature, 1, to))
 		return -EFAULT;
 
 	return 1;
@@ -549,7 +549,7 @@ static int usb_pcwd_notify_sys(struct notifier_block *this, unsigned long code,
 
 static const struct file_operations usb_pcwd_fops = {
 	.owner =	THIS_MODULE,
-	.write =	usb_pcwd_write,
+	.write_iter =	usb_pcwd_write,
 	.unlocked_ioctl = usb_pcwd_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
 	.open =		usb_pcwd_open,
@@ -564,7 +564,7 @@ static struct miscdevice usb_pcwd_miscdev = {
 
 static const struct file_operations usb_pcwd_temperature_fops = {
 	.owner =	THIS_MODULE,
-	.read =		usb_pcwd_temperature_read,
+	.read_iter =	usb_pcwd_temperature_read,
 	.open =		usb_pcwd_temperature_open,
 	.release =	usb_pcwd_temperature_release,
 };
