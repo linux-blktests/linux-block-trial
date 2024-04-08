@@ -184,9 +184,9 @@ static long rdc321x_wdt_ioctl(struct file *file, unsigned int cmd,
 	return 0;
 }
 
-static ssize_t rdc321x_wdt_write(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t rdc321x_wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	if (!count)
 		return -EIO;
 
@@ -200,7 +200,7 @@ static const struct file_operations rdc321x_wdt_fops = {
 	.unlocked_ioctl	= rdc321x_wdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= rdc321x_wdt_open,
-	.write		= rdc321x_wdt_write,
+	.write_iter	= rdc321x_wdt_write,
 	.release	= rdc321x_wdt_release,
 };
 
