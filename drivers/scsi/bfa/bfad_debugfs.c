@@ -167,17 +167,15 @@ bfad_debugfs_lseek(struct file *file, loff_t offset, int orig)
 				debug->buffer_len);
 }
 
-static ssize_t
-bfad_debugfs_read(struct file *file, char __user *buf,
-			size_t nbytes, loff_t *pos)
+static ssize_t bfad_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct bfad_debug_info *debug = file->private_data;
+	struct bfad_debug_info *debug = iocb->ki_filp->private_data;
 
 	if (!debug || !debug->debug_buffer)
 		return 0;
 
-	return simple_read_from_buffer(buf, nbytes, pos,
-				debug->debug_buffer, debug->buffer_len);
+	return simple_copy_to_iter(debug->debug_buffer, &iocb->ki_pos,
+					debug->buffer_len, to);
 }
 
 #define BFA_REG_CT_ADDRSZ	(0x40000)
@@ -210,22 +208,21 @@ bfad_reg_offset_check(struct bfa_s *bfa, u32 offset, u32 len)
 	return BFA_STATUS_OK;
 }
 
-static ssize_t
-bfad_debugfs_read_regrd(struct file *file, char __user *buf,
-		size_t nbytes, loff_t *pos)
+static ssize_t bfad_debugfs_read_regrd(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct bfad_debug_info *regrd_debug = file->private_data;
+	struct bfad_debug_info *regrd_debug = iocb->ki_filp->private_data;
 	struct bfad_port_s *port = (struct bfad_port_s *)regrd_debug->i_private;
+	size_t nbytes = iov_iter_count(to);
 	struct bfad_s *bfad = port->bfad;
 	ssize_t rc;
 
 	if (!bfad->regdata)
 		return 0;
 
-	rc = simple_read_from_buffer(buf, nbytes, pos,
-			bfad->regdata, bfad->reglen);
+	rc = simple_copy_to_iter(bfad->regdata, &iocb->ki_pos, bfad->reglen,
+					to);
 
-	if ((*pos + nbytes) >= bfad->reglen) {
+	if ((iocb->ki_pos + nbytes) >= bfad->reglen) {
 		kfree(bfad->regdata);
 		bfad->regdata = NULL;
 		bfad->reglen = 0;
@@ -235,11 +232,11 @@ bfad_debugfs_read_regrd(struct file *file, char __user *buf,
 }
 
 static ssize_t
-bfad_debugfs_write_regrd(struct file *file, const char __user *buf,
-		size_t nbytes, loff_t *ppos)
+bfad_debugfs_write_regrd(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct bfad_debug_info *regrd_debug = file->private_data;
+	struct bfad_debug_info *regrd_debug = iocb->ki_filp->private_data;
 	struct bfad_port_s *port = (struct bfad_port_s *)regrd_debug->i_private;
+	size_t nbytes  = iov_iter_count(from);
 	struct bfad_s *bfad = port->bfad;
 	struct bfa_s *bfa = &bfad->bfa;
 	struct bfa_ioc_s *ioc = &bfa->ioc;
@@ -250,7 +247,7 @@ bfad_debugfs_write_regrd(struct file *file, const char __user *buf,
 	unsigned long flags;
 	void *kern_buf;
 
-	kern_buf = memdup_user_nul(buf, nbytes);
+	kern_buf = iterdup_nul(from, nbytes);
 	if (IS_ERR(kern_buf))
 		return PTR_ERR(kern_buf);
 
@@ -304,11 +301,11 @@ bfad_debugfs_write_regrd(struct file *file, const char __user *buf,
 }
 
 static ssize_t
-bfad_debugfs_write_regwr(struct file *file, const char __user *buf,
-		size_t nbytes, loff_t *ppos)
+bfad_debugfs_write_regwr(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct bfad_debug_info *debug = file->private_data;
+	struct bfad_debug_info *debug = iocb->ki_filp->private_data;
 	struct bfad_port_s *port = (struct bfad_port_s *)debug->i_private;
+	size_t nbytes = iov_iter_count(from);
 	struct bfad_s *bfad = port->bfad;
 	struct bfa_s *bfa = &bfad->bfa;
 	struct bfa_ioc_s *ioc = &bfa->ioc;
@@ -317,7 +314,7 @@ bfad_debugfs_write_regwr(struct file *file, const char __user *buf,
 	unsigned long flags;
 	void *kern_buf;
 
-	kern_buf = memdup_user_nul(buf, nbytes);
+	kern_buf = iterdup_nul(from, nbytes);
 	if (IS_ERR(kern_buf))
 		return PTR_ERR(kern_buf);
 
@@ -382,7 +379,7 @@ static const struct file_operations bfad_debugfs_op_drvtrc = {
 	.owner		=	THIS_MODULE,
 	.open		=	bfad_debugfs_open_drvtrc,
 	.llseek		=	bfad_debugfs_lseek,
-	.read		=	bfad_debugfs_read,
+	.read_iter	=	bfad_debugfs_read,
 	.release	=	bfad_debugfs_release,
 };
 
@@ -390,7 +387,7 @@ static const struct file_operations bfad_debugfs_op_fwtrc = {
 	.owner		=	THIS_MODULE,
 	.open		=	bfad_debugfs_open_fwtrc,
 	.llseek		=	bfad_debugfs_lseek,
-	.read		=	bfad_debugfs_read,
+	.read_iter	=	bfad_debugfs_read,
 	.release	=	bfad_debugfs_release_fwtrc,
 };
 
@@ -398,7 +395,7 @@ static const struct file_operations bfad_debugfs_op_fwsave = {
 	.owner		=	THIS_MODULE,
 	.open		=	bfad_debugfs_open_fwsave,
 	.llseek		=	bfad_debugfs_lseek,
-	.read		=	bfad_debugfs_read,
+	.read_iter	=	bfad_debugfs_read,
 	.release	=	bfad_debugfs_release_fwtrc,
 };
 
@@ -406,8 +403,8 @@ static const struct file_operations bfad_debugfs_op_regrd = {
 	.owner		=	THIS_MODULE,
 	.open		=	bfad_debugfs_open_reg,
 	.llseek		=	bfad_debugfs_lseek,
-	.read		=	bfad_debugfs_read_regrd,
-	.write		=	bfad_debugfs_write_regrd,
+	.read_iter	=	bfad_debugfs_read_regrd,
+	.write_iter	=	bfad_debugfs_write_regrd,
 	.release	=	bfad_debugfs_release,
 };
 
@@ -415,7 +412,7 @@ static const struct file_operations bfad_debugfs_op_regwr = {
 	.owner		=	THIS_MODULE,
 	.open		=	bfad_debugfs_open_reg,
 	.llseek		=	bfad_debugfs_lseek,
-	.write		=	bfad_debugfs_write_regwr,
+	.write_iter	=	bfad_debugfs_write_regwr,
 	.release	=	bfad_debugfs_release,
 };
 
