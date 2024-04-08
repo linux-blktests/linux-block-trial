@@ -11,6 +11,7 @@
 #define _IIO_CORE_H_
 #include <linux/kernel.h>
 #include <linux/device.h>
+#include <linux/fs.h>
 
 struct iio_buffer;
 struct iio_chan_spec;
@@ -67,10 +68,8 @@ struct poll_table_struct;
 
 __poll_t iio_buffer_poll_wrapper(struct file *filp,
 				 struct poll_table_struct *wait);
-ssize_t iio_buffer_read_wrapper(struct file *filp, char __user *buf,
-				size_t n, loff_t *f_ps);
-ssize_t iio_buffer_write_wrapper(struct file *filp, const char __user *buf,
-				 size_t n, loff_t *f_ps);
+ssize_t iio_buffer_read_wrapper( struct kiocb *iocb, struct iov_iter *to);
+ssize_t iio_buffer_write_wrapper( struct kiocb *iocb, struct iov_iter *from);
 
 int iio_buffers_alloc_sysfs_and_mask(struct iio_dev *indio_dev);
 void iio_buffers_free_sysfs_and_mask(struct iio_dev *indio_dev);

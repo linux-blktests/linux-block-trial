@@ -197,6 +197,7 @@ static ssize_t iio_buffer_read(struct file *filp, char __user *buf,
 
 	return ret;
 }
+FOPS_READ_ITER_HELPER(iio_buffer_read);
 
 static size_t iio_buffer_space_available(struct iio_buffer *buf)
 {
@@ -261,6 +262,7 @@ static ssize_t iio_buffer_write(struct file *filp, const char __user *buf,
 
 	return ret < 0 ? ret : written;
 }
+FOPS_WRITE_ITER_HELPER(iio_buffer_write);
 
 /**
  * iio_buffer_poll() - poll the buffer to find out if it has data
@@ -297,30 +299,28 @@ static __poll_t iio_buffer_poll(struct file *filp,
 	return 0;
 }
 
-ssize_t iio_buffer_read_wrapper(struct file *filp, char __user *buf,
-				size_t n, loff_t *f_ps)
+ssize_t iio_buffer_read_wrapper(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct iio_dev_buffer_pair *ib = filp->private_data;
+	struct iio_dev_buffer_pair *ib = iocb->ki_filp->private_data;
 	struct iio_buffer *rb = ib->buffer;
 
 	/* check if buffer was opened through new API */
 	if (test_bit(IIO_BUSY_BIT_POS, &rb->flags))
 		return -EBUSY;
 
-	return iio_buffer_read(filp, buf, n, f_ps);
+	return vfs_read_iter(iocb, to, iio_buffer_read);
 }
 
-ssize_t iio_buffer_write_wrapper(struct file *filp, const char __user *buf,
-				 size_t n, loff_t *f_ps)
+ssize_t iio_buffer_write_wrapper(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct iio_dev_buffer_pair *ib = filp->private_data;
+	struct iio_dev_buffer_pair *ib = iocb->ki_filp->private_data;
 	struct iio_buffer *rb = ib->buffer;
 
 	/* check if buffer was opened through new API */
 	if (test_bit(IIO_BUSY_BIT_POS, &rb->flags))
 		return -EBUSY;
 
-	return iio_buffer_write(filp, buf, n, f_ps);
+	return vfs_write_iter(iocb, from, iio_buffer_write);
 }
 
 __poll_t iio_buffer_poll_wrapper(struct file *filp,
@@ -2006,8 +2006,8 @@ static long iio_buffer_chrdev_ioctl(struct file *filp,
 static const struct file_operations iio_buffer_chrdev_fileops = {
 	.owner = THIS_MODULE,
 	.llseek = noop_llseek,
-	.read = iio_buffer_read,
-	.write = iio_buffer_write,
+	.read_iter = iio_buffer_read_iter,
+	.write_iter = iio_buffer_write_iter,
 	.unlocked_ioctl = iio_buffer_chrdev_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
 	.poll = iio_buffer_poll,

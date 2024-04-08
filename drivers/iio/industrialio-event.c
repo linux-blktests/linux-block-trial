@@ -115,14 +115,13 @@ static __poll_t iio_event_poll(struct file *filep,
 	return events;
 }
 
-static ssize_t iio_event_chrdev_read(struct file *filep,
-				     char __user *buf,
-				     size_t count,
-				     loff_t *f_ps)
+static ssize_t iio_event_chrdev_read(struct kiocb *iocb,
+				     struct iov_iter *to)
 {
-	struct iio_dev *indio_dev = filep->private_data;
+	struct iio_dev *indio_dev = iocb->ki_filp->private_data;
 	struct iio_dev_opaque *iio_dev_opaque = to_iio_dev_opaque(indio_dev);
 	struct iio_event_interface *ev_int = iio_dev_opaque->event_interface;
+	size_t count = iov_iter_count(to);
 	unsigned int copied;
 	int ret;
 
@@ -134,7 +133,7 @@ static ssize_t iio_event_chrdev_read(struct file *filep,
 
 	do {
 		if (kfifo_is_empty(&ev_int->det_events)) {
-			if (filep->f_flags & O_NONBLOCK)
+			if (iocb->ki_filp->f_flags & O_NONBLOCK)
 				return -EAGAIN;
 
 			ret = wait_event_interruptible(ev_int->wait,
@@ -148,7 +147,7 @@ static ssize_t iio_event_chrdev_read(struct file *filep,
 
 		if (mutex_lock_interruptible(&ev_int->read_lock))
 			return -ERESTARTSYS;
-		ret = kfifo_to_user(&ev_int->det_events, buf, count, &copied);
+		ret = kfifo_to_iter(&ev_int->det_events, to, count, &copied);
 		mutex_unlock(&ev_int->read_lock);
 
 		if (ret)
@@ -160,7 +159,7 @@ static ssize_t iio_event_chrdev_read(struct file *filep,
 		 * the file descriptor is non-blocking, otherwise we go back to
 		 * sleep and wait for more data to arrive.
 		 */
-		if (copied == 0 && (filep->f_flags & O_NONBLOCK))
+		if (copied == 0 && (iocb->ki_filp->f_flags & O_NONBLOCK))
 			return -EAGAIN;
 
 	} while (copied == 0);
@@ -182,7 +181,7 @@ static int iio_event_chrdev_release(struct inode *inode, struct file *filep)
 }
 
 static const struct file_operations iio_event_chrdev_fileops = {
-	.read =  iio_event_chrdev_read,
+	.read_iter =  iio_event_chrdev_read,
 	.poll =  iio_event_poll,
 	.release = iio_event_chrdev_release,
 	.owner = THIS_MODULE,

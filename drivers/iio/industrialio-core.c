@@ -408,6 +408,7 @@ static ssize_t iio_debugfs_read_reg(struct file *file, char __user *userbuf,
 				       iio_dev_opaque->read_buf,
 				       iio_dev_opaque->read_buf_len);
 }
+FOPS_READ_ITER_HELPER(iio_debugfs_read_reg);
 
 static ssize_t iio_debugfs_write_reg(struct file *file,
 		     const char __user *userbuf, size_t count, loff_t *ppos)
@@ -450,11 +451,12 @@ static ssize_t iio_debugfs_write_reg(struct file *file,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(iio_debugfs_write_reg);
 
 static const struct file_operations iio_debugfs_reg_fops = {
 	.open = simple_open,
-	.read = iio_debugfs_read_reg,
-	.write = iio_debugfs_write_reg,
+	.read_iter = iio_debugfs_read_reg_iter,
+	.write_iter = iio_debugfs_write_reg_iter,
 };
 
 static void iio_device_unregister_debugfs(struct iio_dev *indio_dev)
@@ -1874,8 +1876,8 @@ static long iio_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 static const struct file_operations iio_buffer_fileops = {
 	.owner = THIS_MODULE,
 	.llseek = noop_llseek,
-	.read = iio_buffer_read_outer_addr,
-	.write = iio_buffer_write_outer_addr,
+	.read_iter = iio_buffer_read_outer_addr,
+	.write_iter = iio_buffer_write_outer_addr,
 	.poll = iio_buffer_poll_addr,
 	.unlocked_ioctl = iio_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,

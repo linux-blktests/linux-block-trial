@@ -144,6 +144,7 @@ static ssize_t iio_backend_debugfs_read_reg(struct file *file,
 
 	return simple_read_from_buffer(userbuf, count, ppos, read_buf, len);
 }
+FOPS_READ_ITER_HELPER(iio_backend_debugfs_read_reg);
 
 static ssize_t iio_backend_debugfs_write_reg(struct file *file,
 					     const char __user *userbuf,
@@ -179,11 +180,12 @@ static ssize_t iio_backend_debugfs_write_reg(struct file *file,
 		return -EINVAL;
 	}
 }
+FOPS_WRITE_ITER_HELPER(iio_backend_debugfs_write_reg);
 
 static const struct file_operations iio_backend_debugfs_reg_fops = {
 	.open = simple_open,
-	.read = iio_backend_debugfs_read_reg,
-	.write = iio_backend_debugfs_write_reg,
+	.read_iter = iio_backend_debugfs_read_reg_iter,
+	.write_iter = iio_backend_debugfs_write_reg_iter,
 };
 
 static ssize_t iio_backend_debugfs_read_name(struct file *file,
@@ -198,10 +200,11 @@ static ssize_t iio_backend_debugfs_read_name(struct file *file,
 
 	return simple_read_from_buffer(userbuf, count, ppos, name, len);
 }
+FOPS_READ_ITER_HELPER(iio_backend_debugfs_read_name);
 
 static const struct file_operations iio_backend_debugfs_name_fops = {
 	.open = simple_open,
-	.read = iio_backend_debugfs_read_name,
+	.read_iter = iio_backend_debugfs_read_name_iter,
 };
 
 /**
