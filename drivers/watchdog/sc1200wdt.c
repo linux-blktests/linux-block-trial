@@ -261,9 +261,9 @@ static int sc1200wdt_release(struct inode *inode, struct file *file)
 }
 
 
-static ssize_t sc1200wdt_write(struct file *file, const char __user *data,
-						size_t len, loff_t *ppos)
+static ssize_t sc1200wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	if (len) {
 		if (!nowayout) {
 			size_t i;
@@ -273,7 +273,7 @@ static ssize_t sc1200wdt_write(struct file *file, const char __user *data,
 			for (i = 0; i != len; i++) {
 				char c;
 
-				if (get_user(c, data + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_close = 42;
@@ -286,7 +286,6 @@ static ssize_t sc1200wdt_write(struct file *file, const char __user *data,
 
 	return 0;
 }
-
 
 static int sc1200wdt_notify_sys(struct notifier_block *this,
 					unsigned long code, void *unused)
@@ -304,7 +303,7 @@ static struct notifier_block sc1200wdt_notifier = {
 
 static const struct file_operations sc1200wdt_fops = {
 	.owner		= THIS_MODULE,
-	.write		= sc1200wdt_write,
+	.write_iter	= sc1200wdt_write,
 	.unlocked_ioctl = sc1200wdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= sc1200wdt_open,
