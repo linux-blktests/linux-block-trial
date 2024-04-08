@@ -243,9 +243,9 @@ static int __init asr_get_base_address(void)
 }
 
 
-static ssize_t asr_write(struct file *file, const char __user *buf,
-			 size_t count, loff_t *ppos)
+static ssize_t asr_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	if (count) {
 		if (!nowayout) {
 			size_t i;
@@ -255,7 +255,7 @@ static ssize_t asr_write(struct file *file, const char __user *buf,
 
 			for (i = 0; i != count; i++) {
 				char c;
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					asr_expect_close = 42;
@@ -340,7 +340,7 @@ static int asr_release(struct inode *inode, struct file *file)
 
 static const struct file_operations asr_fops = {
 	.owner =		THIS_MODULE,
-	.write =		asr_write,
+	.write_iter =		asr_write,
 	.unlocked_ioctl =	asr_ioctl,
 	.compat_ioctl =		compat_ptr_ioctl,
 	.open =			asr_open,
