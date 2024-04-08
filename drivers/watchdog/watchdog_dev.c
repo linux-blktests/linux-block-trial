@@ -691,10 +691,10 @@ static int watchdog_ioctl_op(struct watchdog_device *wdd, unsigned int cmd,
  *
  * Return: @len if successful, error otherwise.
  */
-static ssize_t watchdog_write(struct file *file, const char __user *data,
-						size_t len, loff_t *ppos)
+static ssize_t watchdog_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct watchdog_core_data *wd_data = file->private_data;
+	struct watchdog_core_data *wd_data = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	struct watchdog_device *wdd;
 	int err;
 	size_t i;
@@ -711,7 +711,7 @@ static ssize_t watchdog_write(struct file *file, const char __user *data,
 
 	/* scan to see whether or not we got the magic character */
 	for (i = 0; i != len; i++) {
-		if (get_user(c, data + i))
+		if (get_iter(c, from))
 			return -EFAULT;
 		if (c == 'V')
 			set_bit(_WDOG_ALLOW_RELEASE, &wd_data->status);
@@ -986,7 +986,7 @@ done:
 
 static const struct file_operations watchdog_fops = {
 	.owner		= THIS_MODULE,
-	.write		= watchdog_write,
+	.write_iter	= watchdog_write,
 	.unlocked_ioctl	= watchdog_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= watchdog_open,
