@@ -270,8 +270,7 @@ out:
 #define MAX_PREAMBLE 1024
 #define MAX_FAILED_MOD_PRINT 112
 #define MAX_BYTES_PER_MOD 64
-static ssize_t read_file_mod_stats(struct file *file, char __user *user_buf,
-				   size_t count, loff_t *ppos)
+static ssize_t read_file_mod_stats(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct mod_fail_load *mod_fail;
 	unsigned int len, size, count_failed = 0;
@@ -391,16 +390,17 @@ static ssize_t read_file_mod_stats(struct file *file, char __user *user_buf,
 out_unlock:
 	mutex_unlock(&module_mutex);
 out:
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 	return ret;
 }
+
 #undef MAX_PREAMBLE
 #undef MAX_FAILED_MOD_PRINT
 #undef MAX_BYTES_PER_MOD
 
 static const struct file_operations fops_mod_stats = {
-	.read = read_file_mod_stats,
+	.read_iter = read_file_mod_stats,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,

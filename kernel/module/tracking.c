@@ -112,7 +112,7 @@ static int unloaded_tainted_modules_open(struct inode *inode, struct file *file)
 
 static const struct file_operations unloaded_tainted_modules_fops = {
 	.open = unloaded_tainted_modules_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = seq_release,
 };
