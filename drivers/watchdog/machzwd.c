@@ -262,9 +262,9 @@ static void zf_ping(struct timer_list *unused)
 		pr_crit("I will reset your machine\n");
 }
 
-static ssize_t zf_write(struct file *file, const char __user *buf, size_t count,
-								loff_t *ppos)
+static ssize_t zf_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	/* See if we got the magic character */
 	if (count) {
 		/*
@@ -282,7 +282,7 @@ static ssize_t zf_write(struct file *file, const char __user *buf, size_t count,
 			/* now scan */
 			for (ofs = 0; ofs != count; ofs++) {
 				char c;
-				if (get_user(c, buf + ofs))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V') {
 					zf_expect_close = 42;
@@ -359,7 +359,7 @@ static int zf_notify_sys(struct notifier_block *this, unsigned long code,
 
 static const struct file_operations zf_fops = {
 	.owner		= THIS_MODULE,
-	.write		= zf_write,
+	.write_iter	= zf_write,
 	.unlocked_ioctl = zf_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= zf_open,
