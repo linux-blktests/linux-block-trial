@@ -108,9 +108,9 @@ static int geodewdt_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t geodewdt_write(struct file *file, const char __user *data,
-				size_t len, loff_t *ppos)
+static ssize_t geodewdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	if (len) {
 		if (!nowayout) {
 			size_t i;
@@ -119,7 +119,7 @@ static ssize_t geodewdt_write(struct file *file, const char __user *data,
 			for (i = 0; i != len; i++) {
 				char c;
 
-				if (get_user(c, data + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 
 				if (c == 'V')
@@ -196,7 +196,7 @@ static long geodewdt_ioctl(struct file *file, unsigned int cmd,
 
 static const struct file_operations geodewdt_fops = {
 	.owner          = THIS_MODULE,
-	.write          = geodewdt_write,
+	.write_iter     = geodewdt_write,
 	.unlocked_ioctl = geodewdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open           = geodewdt_open,
