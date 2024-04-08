@@ -114,9 +114,9 @@ static void acq_stop(void)
  *	/dev/watchdog handling
  */
 
-static ssize_t acq_write(struct file *file, const char __user *buf,
-						size_t count, loff_t *ppos)
+static ssize_t acq_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	/* See if we got the magic character 'V' and reload the timer */
 	if (count) {
 		if (!nowayout) {
@@ -128,7 +128,7 @@ static ssize_t acq_write(struct file *file, const char __user *buf,
 			   magic character */
 			for (i = 0; i != count; i++) {
 				char c;
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_close = 42;
@@ -218,7 +218,7 @@ static int acq_close(struct inode *inode, struct file *file)
 
 static const struct file_operations acq_fops = {
 	.owner		= THIS_MODULE,
-	.write		= acq_write,
+	.write_iter	= acq_write,
 	.unlocked_ioctl	= acq_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= acq_open,
