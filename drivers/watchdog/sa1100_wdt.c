@@ -98,9 +98,9 @@ static int sa1100dog_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t sa1100dog_write(struct file *file, const char __user *data,
-						size_t len, loff_t *ppos)
+static ssize_t sa1100dog_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	if (len)
 		/* Refresh OSMR3 timer. */
 		sa1100_wr(sa1100_rd(REG_OSCR) + pre_margin, REG_OSMR3);
@@ -164,7 +164,7 @@ static long sa1100dog_ioctl(struct file *file, unsigned int cmd,
 
 static const struct file_operations sa1100dog_fops = {
 	.owner		= THIS_MODULE,
-	.write		= sa1100dog_write,
+	.write_iter	= sa1100dog_write,
 	.unlocked_ioctl	= sa1100dog_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= sa1100dog_open,
