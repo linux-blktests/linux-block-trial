@@ -90,10 +90,10 @@ static bool bpf_iter_support_resched(struct seq_file *seq)
  *  . assuming NULL ->llseek()
  *  . stop() may call bpf program, handling potential overflow there
  */
-static ssize_t bpf_seq_read(struct file *file, char __user *buf, size_t size,
-			    loff_t *ppos)
+static ssize_t bpf_seq_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct seq_file *seq = file->private_data;
+	struct seq_file *seq = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(to);
 	size_t n, offs, copied = 0;
 	int err = 0, num_objs = 0;
 	bool can_resched;
@@ -112,7 +112,7 @@ static ssize_t bpf_seq_read(struct file *file, char __user *buf, size_t size,
 
 	if (seq->count) {
 		n = min(seq->count, size);
-		err = copy_to_user(buf, seq->buf + seq->from, n);
+		err = !copy_to_iter_full(seq->buf + seq->from, n, to);
 		if (err) {
 			err = -EFAULT;
 			goto done;
@@ -221,7 +221,7 @@ stop:
 	}
 
 	n = min(seq->count, size);
-	err = copy_to_user(buf, seq->buf, n);
+	err = !copy_to_iter_full(seq->buf, n, to);
 	if (err) {
 		err = -EFAULT;
 		goto done;
@@ -233,7 +233,7 @@ done:
 	if (!copied)
 		copied = err;
 	else
-		*ppos += copied;
+		iocb->ki_pos += copied;
 	mutex_unlock(&seq->lock);
 	return copied;
 }
@@ -282,7 +282,7 @@ static int iter_release(struct inode *inode, struct file *file)
 
 const struct file_operations bpf_iter_fops = {
 	.open		= iter_open,
-	.read		= bpf_seq_read,
+	.read_iter	= bpf_seq_read_iter,
 	.release	= iter_release,
 };
 
