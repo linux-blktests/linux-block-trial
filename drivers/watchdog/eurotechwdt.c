@@ -186,18 +186,16 @@ static void eurwdt_ping(void)
 
 /**
  * eurwdt_write:
- * @file: file handle to the watchdog
- * @buf: buffer to write (unused as data does not matter here
- * @count: count of bytes
- * @ppos: pointer to the position to write. No seeks allowed
+ * @iocb: metadata for IO
+ * @from: buffer to write (unused as data does not matter here
  *
  * A write to a watchdog device is defined as a keepalive signal. Any
  * write of data will do, as we don't define content meaning.
  */
 
-static ssize_t eurwdt_write(struct file *file, const char __user *buf,
-size_t count, loff_t *ppos)
+static ssize_t eurwdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	if (count) {
 		if (!nowayout) {
 			size_t i;
@@ -206,7 +204,7 @@ size_t count, loff_t *ppos)
 
 			for (i = 0; i != count; i++) {
 				char c;
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					eur_expect_close = 42;
@@ -368,7 +366,7 @@ static int eurwdt_notify_sys(struct notifier_block *this, unsigned long code,
 
 static const struct file_operations eurwdt_fops = {
 	.owner		= THIS_MODULE,
-	.write		= eurwdt_write,
+	.write_iter	= eurwdt_write,
 	.unlocked_ioctl	= eurwdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= eurwdt_open,
