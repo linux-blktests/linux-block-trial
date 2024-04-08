@@ -59,13 +59,14 @@ static struct scsi_transport_template *csio_fcoe_transport_vport;
 /*
  * debugfs support
  */
-static ssize_t
-csio_mem_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+static ssize_t csio_mem_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	loff_t pos = *ppos;
+	loff_t pos = iocb->ki_pos;
+	struct file *file = iocb->ki_filp;
 	loff_t avail = file_inode(file)->i_size;
 	unsigned int mem = (uintptr_t)file->private_data & 3;
 	struct csio_hw *hw = file->private_data - mem;
+	size_t count = iov_iter_count(to);
 
 	if (pos < 0)
 		return -EINVAL;
@@ -90,22 +91,21 @@ csio_mem_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 
 		ofst = pos % sizeof(data);
 		len = min(count, sizeof(data) - ofst);
-		if (copy_to_user(buf, (u8 *)data + ofst, len))
+		if (!copy_to_iter_full((u8 *)data + ofst, len, to))
 			return -EFAULT;
 
-		buf += len;
 		pos += len;
 		count -= len;
 	}
-	count = pos - *ppos;
-	*ppos = pos;
+	count = pos - iocb->ki_pos;
+	iocb->ki_pos = pos;
 	return count;
 }
 
 static const struct file_operations csio_mem_debugfs_fops = {
 	.owner   = THIS_MODULE,
 	.open    = simple_open,
-	.read    = csio_mem_read,
+	.read_iter = csio_mem_read,
 	.llseek  = default_llseek,
 };
 
