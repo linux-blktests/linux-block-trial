@@ -217,14 +217,14 @@ static int debugfs_open(struct inode *inode, struct file *file)
 	return single_open(file, show_info, NULL);
 }
 
-static ssize_t
-debugfs_write(struct file *file, const char __user *buf, size_t count, loff_t *off)
+static ssize_t debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char kbuf[KSYM_NAME_LEN];
 	char *arg;
+	size_t count = iov_iter_count(from);
 	const size_t read_len = min(count, sizeof(kbuf) - 1);
 
-	if (copy_from_user(kbuf, buf, read_len))
+	if (!copy_from_iter_full(kbuf, read_len, from))
 		return -EFAULT;
 	kbuf[read_len] = '\0';
 	arg = strstrip(kbuf);
@@ -257,9 +257,9 @@ debugfs_write(struct file *file, const char __user *buf, size_t count, loff_t *o
 
 static const struct file_operations debugfs_ops =
 {
-	.read	 = seq_read,
+	.read_iter	 = seq_read_iter,
 	.open	 = debugfs_open,
-	.write	 = debugfs_write,
+	.write_iter	 = debugfs_write,
 	.release = single_release
 };
 
