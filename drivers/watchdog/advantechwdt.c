@@ -106,9 +106,9 @@ static int advwdt_set_heartbeat(int t)
  *	/dev/watchdog handling
  */
 
-static ssize_t advwdt_write(struct file *file, const char __user *buf,
-						size_t count, loff_t *ppos)
+static ssize_t advwdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	if (count) {
 		if (!nowayout) {
 			size_t i;
@@ -117,7 +117,7 @@ static ssize_t advwdt_write(struct file *file, const char __user *buf,
 
 			for (i = 0; i != count; i++) {
 				char c;
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					adv_expect_close = 42;
@@ -217,7 +217,7 @@ static int advwdt_close(struct inode *inode, struct file *file)
 
 static const struct file_operations advwdt_fops = {
 	.owner		= THIS_MODULE,
-	.write		= advwdt_write,
+	.write_iter	= advwdt_write,
 	.unlocked_ioctl	= advwdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= advwdt_open,
