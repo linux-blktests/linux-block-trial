@@ -20,10 +20,9 @@
 /* node_aggr */
 /*************/
 
-static ssize_t read_file_node_aggr(struct file *file, char __user *user_buf,
-				   size_t count, loff_t *ppos)
+static ssize_t read_file_node_aggr(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_node *an = file->private_data;
+	struct ath_node *an = iocb->ki_filp->private_data;
 	struct ath_softc *sc = an->sc;
 	struct ath_atx_tid *tid;
 	struct ath_txq *txq;
@@ -71,14 +70,14 @@ static ssize_t read_file_node_aggr(struct file *file, char __user *user_buf,
 		ath_txq_unlock(sc, txq);
 	}
 exit:
-	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	retval = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 
 	return retval;
 }
 
 static const struct file_operations fops_node_aggr = {
-	.read = read_file_node_aggr,
+	.read_iter = read_file_node_aggr,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -165,10 +164,9 @@ exit:
 			 rstats->ofdm_stats[i].ofdm_cnt);	\
 	} while (0)
 
-static ssize_t read_file_node_recv(struct file *file, char __user *user_buf,
-				   size_t count, loff_t *ppos)
+static ssize_t read_file_node_recv(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_node *an = file->private_data;
+	struct ath_node *an = iocb->ki_filp->private_data;
 	struct ath_softc *sc = an->sc;
 	struct ath_hw *ah = sc->sc_ah;
 	struct ath_rx_rate_stats *rstats;
@@ -226,7 +224,7 @@ legacy:
 	PRINT_OFDM_RATE("OFDM-48M", 6);
 	PRINT_OFDM_RATE("OFDM-54M", 7);
 
-	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	retval = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 
 	return retval;
@@ -236,7 +234,7 @@ legacy:
 #undef PRINT_CCK_RATE
 
 static const struct file_operations fops_node_recv = {
-	.read = read_file_node_recv,
+	.read_iter = read_file_node_recv,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,

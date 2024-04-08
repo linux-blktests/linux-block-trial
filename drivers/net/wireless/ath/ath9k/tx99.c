@@ -156,21 +156,20 @@ static int ath9k_tx99_init(struct ath_softc *sc)
 	return 0;
 }
 
-static ssize_t read_file_tx99(struct file *file, char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t read_file_tx99(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	char buf[3];
 	unsigned int len;
 
 	len = sprintf(buf, "%d\n", sc->tx99_state);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t write_file_tx99(struct file *file, const char __user *user_buf,
-			       size_t count, loff_t *ppos)
+static ssize_t write_file_tx99(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct ath_common *common = ath9k_hw_common(sc->sc_ah);
 	bool start;
 	ssize_t ret;
@@ -182,7 +181,7 @@ static ssize_t write_file_tx99(struct file *file, const char __user *user_buf,
 	if (sc->cur_chan->nvifs > 1)
 		return -EOPNOTSUPP;
 
-	ret = kstrtobool_from_user(user_buf, count, &start);
+	ret = kstrtobool_from_iter(from, count, &start);
 	if (ret)
 		return ret;
 
@@ -211,18 +210,16 @@ out:
 }
 
 static const struct file_operations fops_tx99 = {
-	.read = read_file_tx99,
-	.write = write_file_tx99,
+	.read_iter = read_file_tx99,
+	.write_iter = write_file_tx99,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t read_file_tx99_power(struct file *file,
-				    char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t read_file_tx99_power(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	char buf[32];
 	unsigned int len;
 
@@ -230,18 +227,17 @@ static ssize_t read_file_tx99_power(struct file *file,
 		      sc->tx99_power,
 		      sc->tx99_power / 2);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t write_file_tx99_power(struct file *file,
-				     const char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t write_file_tx99_power(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int r;
 	u8 tx_power;
 
-	r = kstrtou8_from_user(user_buf, count, 0, &tx_power);
+	r = kstrtou8_from_iter(from, count, 0, &tx_power);
 	if (r)
 		return r;
 
@@ -258,8 +254,8 @@ static ssize_t write_file_tx99_power(struct file *file,
 }
 
 static const struct file_operations fops_tx99_power = {
-	.read = read_file_tx99_power,
-	.write = write_file_tx99_power,
+	.read_iter = read_file_tx99_power,
+	.write_iter = write_file_tx99_power,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,

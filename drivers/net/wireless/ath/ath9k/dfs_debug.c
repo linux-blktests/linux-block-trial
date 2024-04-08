@@ -31,10 +31,9 @@ static struct ath_dfs_pool_stats dfs_pool_stats = { 0 };
 	len += scnprintf(buf + len, size - len, "%28s : %10u\n", s, \
 			 dfs_pool_stats.p);
 
-static ssize_t read_file_dfs(struct file *file, char __user *user_buf,
-			     size_t count, loff_t *ppos)
+static ssize_t read_file_dfs(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	struct ath9k_hw_version *hw_ver = &sc->sc_ah->hw_version;
 	char *buf;
 	unsigned int len = 0, size = 8000;
@@ -86,7 +85,7 @@ exit:
 	if (len > size)
 		len = size;
 
-	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	retval = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 
 	return retval;
@@ -94,14 +93,14 @@ exit:
 
 /* magic number to prevent accidental reset of DFS statistics */
 #define DFS_STATS_RESET_MAGIC	0x80000000
-static ssize_t write_file_dfs(struct file *file, const char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t write_file_dfs(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long val;
 	ssize_t ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &val);
+	ret = kstrtoul_from_iter(from, count, 0, &val);
 	if (ret)
 		return ret;
 	if (val == DFS_STATS_RESET_MAGIC)
@@ -110,27 +109,26 @@ static ssize_t write_file_dfs(struct file *file, const char __user *user_buf,
 	return count;
 }
 
-static ssize_t write_file_simulate_radar(struct file *file,
-					 const char __user *user_buf,
-					 size_t count, loff_t *ppos)
+static ssize_t write_file_simulate_radar(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 
 	ieee80211_radar_detected(sc->hw, NULL);
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations fops_simulate_radar = {
-	.write = write_file_simulate_radar,
+	.write_iter = write_file_simulate_radar,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
 static const struct file_operations fops_dfs_stats = {
-	.read = read_file_dfs,
-	.write = write_file_dfs,
+	.read_iter = read_file_dfs,
+	.write_iter = write_file_dfs,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,

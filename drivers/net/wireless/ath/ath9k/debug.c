@@ -68,11 +68,10 @@ void ath9k_debug_sync_cause(struct ath_softc *sc, u32 sync_cause)
 		sc->debug.stats.istats.mac_sleep_access++;
 }
 
-static ssize_t ath9k_debugfs_read_buf(struct file *file, char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t ath9k_debugfs_read_buf(struct kiocb *iocb, struct iov_iter *to)
 {
-	u8 *buf = file->private_data;
-	return simple_read_from_buffer(user_buf, count, ppos, buf, strlen(buf));
+	u8 *buf = iocb->ki_filp->private_data;
+	return simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 }
 
 static int ath9k_debugfs_release_buf(struct inode *inode, struct file *file)
@@ -83,27 +82,26 @@ static int ath9k_debugfs_release_buf(struct inode *inode, struct file *file)
 
 #ifdef CONFIG_ATH_DEBUG
 
-static ssize_t read_file_debug(struct file *file, char __user *user_buf,
-			     size_t count, loff_t *ppos)
+static ssize_t read_file_debug(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	struct ath_common *common = ath9k_hw_common(sc->sc_ah);
 	char buf[32];
 	unsigned int len;
 
 	len = sprintf(buf, "0x%08x\n", common->debug_mask);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t write_file_debug(struct file *file, const char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t write_file_debug(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct ath_common *common = ath9k_hw_common(sc->sc_ah);
 	unsigned long mask;
 	ssize_t ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &mask);
+	ret = kstrtoul_from_iter(from, count, 0, &mask);
 	if (ret)
 		return ret;
 
@@ -112,8 +110,8 @@ static ssize_t write_file_debug(struct file *file, const char __user *user_buf,
 }
 
 static const struct file_operations fops_debug = {
-	.read = read_file_debug,
-	.write = write_file_debug,
+	.read_iter = read_file_debug,
+	.write_iter = write_file_debug,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -124,10 +122,9 @@ static const struct file_operations fops_debug = {
 #define DMA_BUF_LEN 1024
 
 
-static ssize_t read_file_ani(struct file *file, char __user *user_buf,
-			     size_t count, loff_t *ppos)
+static ssize_t read_file_ani(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	struct ath_common *common = ath9k_hw_common(sc->sc_ah);
 	struct ath_hw *ah = sc->sc_ah;
 	unsigned int len = 0;
@@ -173,22 +170,21 @@ exit:
 	if (len > size)
 		len = size;
 
-	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	retval = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 
 	return retval;
 }
 
-static ssize_t write_file_ani(struct file *file,
-			      const char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t write_file_ani(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct ath_common *common = ath9k_hw_common(sc->sc_ah);
 	unsigned long ani;
 	ssize_t ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &ani);
+	ret = kstrtoul_from_iter(from, count, 0, &ani);
 	if (ret)
 		return ret;
 
@@ -208,8 +204,8 @@ static ssize_t write_file_ani(struct file *file,
 }
 
 static const struct file_operations fops_ani = {
-	.read = read_file_ani,
-	.write = write_file_ani,
+	.read_iter = read_file_ani,
+	.write_iter = write_file_ani,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -217,30 +213,29 @@ static const struct file_operations fops_ani = {
 
 #ifdef CONFIG_ATH9K_BTCOEX_SUPPORT
 
-static ssize_t read_file_bt_ant_diversity(struct file *file,
-					  char __user *user_buf,
-					  size_t count, loff_t *ppos)
+static ssize_t read_file_bt_ant_diversity(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	struct ath_common *common = ath9k_hw_common(sc->sc_ah);
 	char buf[32];
 	unsigned int len;
 
 	len = sprintf(buf, "%d\n", common->bt_ant_diversity);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t write_file_bt_ant_diversity(struct file *file,
-					   const char __user *user_buf,
-					   size_t count, loff_t *ppos)
+static ssize_t write_file_bt_ant_diversity(struct kiocb *iocb,
+					   struct iov_iter *from)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct ath_common *common = ath9k_hw_common(sc->sc_ah);
 	struct ath9k_hw_capabilities *pCap = &sc->sc_ah->caps;
 	unsigned long bt_ant_diversity;
 	ssize_t ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &bt_ant_diversity);
+	ret = kstrtoul_from_iter(from, count, 0, &bt_ant_diversity);
 	if (ret)
 		return ret;
 
@@ -258,8 +253,8 @@ exit:
 }
 
 static const struct file_operations fops_bt_ant_diversity = {
-	.read = read_file_bt_ant_diversity,
-	.write = write_file_bt_ant_diversity,
+	.read_iter = read_file_bt_ant_diversity,
+	.write_iter = write_file_bt_ant_diversity,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -281,11 +276,10 @@ void ath9k_debug_stat_ant(struct ath_softc *sc,
 	as_alt->rssi_avg = alt_rssi_avg;
 }
 
-static ssize_t read_file_antenna_diversity(struct file *file,
-					   char __user *user_buf,
-					   size_t count, loff_t *ppos)
+static ssize_t read_file_antenna_diversity(struct kiocb *iocb,
+					   struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	struct ath_hw *ah = sc->sc_ah;
 	struct ath9k_hw_capabilities *pCap = &ah->caps;
 	struct ath_antenna_stats *as_main = &sc->debug.stats.ant_stats[ANT_MAIN];
@@ -373,14 +367,14 @@ exit:
 	if (len > size)
 		len = size;
 
-	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	retval = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 
 	return retval;
 }
 
 static const struct file_operations fops_antenna_diversity = {
-	.read = read_file_antenna_diversity,
+	.read_iter = read_file_antenna_diversity,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -770,17 +764,16 @@ static int open_file_reset(struct inode *inode, struct file *f)
 	return single_open(f, read_file_reset, inode->i_private);
 }
 
-static ssize_t write_file_reset(struct file *file,
-				const char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t write_file_reset(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath_softc *sc = file_inode(file)->i_private;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct ath_hw *ah = sc->sc_ah;
 	struct ath_common *common = ath9k_hw_common(ah);
 	unsigned long val;
 	ssize_t ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &val);
+	ret = kstrtoul_from_iter(from, count, 0, &val);
 	if (ret)
 		return ret;
 
@@ -801,8 +794,8 @@ static ssize_t write_file_reset(struct file *file,
 }
 
 static const struct file_operations fops_reset = {
-	.read = seq_read,
-	.write = write_file_reset,
+	.read_iter = seq_read_iter,
+	.write_iter = write_file_reset,
 	.open = open_file_reset,
 	.owner = THIS_MODULE,
 	.llseek = seq_lseek,
@@ -851,25 +844,24 @@ void ath_debug_stat_rx(struct ath_softc *sc, struct ath_rx_status *rs)
 	ath9k_cmn_debug_stat_rx(&sc->debug.stats.rxstats, rs);
 }
 
-static ssize_t read_file_regidx(struct file *file, char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t read_file_regidx(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	char buf[32];
 	unsigned int len;
 
 	len = sprintf(buf, "0x%08x\n", sc->debug.regidx);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t write_file_regidx(struct file *file, const char __user *user_buf,
-				 size_t count, loff_t *ppos)
+static ssize_t write_file_regidx(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long regidx;
 	ssize_t ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &regidx);
+	ret = kstrtoul_from_iter(from, count, 0, &regidx);
 	if (ret)
 		return ret;
 
@@ -878,17 +870,16 @@ static ssize_t write_file_regidx(struct file *file, const char __user *user_buf,
 }
 
 static const struct file_operations fops_regidx = {
-	.read = read_file_regidx,
-	.write = write_file_regidx,
+	.read_iter = read_file_regidx,
+	.write_iter = write_file_regidx,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t read_file_regval(struct file *file, char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t read_file_regval(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	struct ath_hw *ah = sc->sc_ah;
 	char buf[32];
 	unsigned int len;
@@ -898,18 +889,18 @@ static ssize_t read_file_regval(struct file *file, char __user *user_buf,
 	regval = REG_READ_D(ah, sc->debug.regidx);
 	ath9k_ps_restore(sc);
 	len = sprintf(buf, "0x%08x\n", regval);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t write_file_regval(struct file *file, const char __user *user_buf,
-				 size_t count, loff_t *ppos)
+static ssize_t write_file_regval(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct ath_hw *ah = sc->sc_ah;
 	unsigned long regval;
 	ssize_t ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &regval);
+	ret = kstrtoul_from_iter(from, count, 0, &regval);
 	if (ret)
 		return ret;
 
@@ -920,8 +911,8 @@ static ssize_t write_file_regval(struct file *file, const char __user *user_buf,
 }
 
 static const struct file_operations fops_regval = {
-	.read = read_file_regval,
-	.write = write_file_regval,
+	.read_iter = read_file_regval,
+	.write_iter = write_file_regval,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -975,7 +966,7 @@ static int open_file_regdump(struct inode *inode, struct file *file)
 
 static const struct file_operations fops_regdump = {
 	.open = open_file_regdump,
-	.read = ath9k_debugfs_read_buf,
+	.read_iter = ath9k_debugfs_read_buf,
 	.release = ath9k_debugfs_release_buf,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,/* read accesses f_pos */
@@ -1011,10 +1002,9 @@ static int read_file_dump_nfcal(struct seq_file *file, void *data)
 }
 
 #ifdef CONFIG_ATH9K_BTCOEX_SUPPORT
-static ssize_t read_file_btcoex(struct file *file, char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t read_file_btcoex(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	u32 len = 0, size = 1500;
 	char *buf;
 	size_t retval;
@@ -1031,14 +1021,14 @@ static ssize_t read_file_btcoex(struct file *file, char __user *user_buf,
 
 	len = ath9k_dump_btcoex(sc, buf, size);
 exit:
-	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	retval = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 
 	return retval;
 }
 
 static const struct file_operations fops_btcoex = {
-	.read = read_file_btcoex,
+	.read_iter = read_file_btcoex,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -1046,10 +1036,9 @@ static const struct file_operations fops_btcoex = {
 #endif
 
 #ifdef CONFIG_ATH9K_DYNACK
-static ssize_t read_file_ackto(struct file *file, char __user *user_buf,
-			       size_t count, loff_t *ppos)
+static ssize_t read_file_ackto(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	struct ath_hw *ah = sc->sc_ah;
 	char buf[32];
 	unsigned int len;
@@ -1057,11 +1046,11 @@ static ssize_t read_file_ackto(struct file *file, char __user *user_buf,
 	len = sprintf(buf, "%u %c\n", ah->dynack.ackto,
 		      (ah->dynack.enabled) ? 'A' : 'S');
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations fops_ackto = {
-	.read = read_file_ackto,
+	.read_iter = read_file_ackto,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -1070,10 +1059,9 @@ static const struct file_operations fops_ackto = {
 
 #ifdef CONFIG_ATH9K_WOW
 
-static ssize_t read_file_wow(struct file *file, char __user *user_buf,
-			     size_t count, loff_t *ppos)
+static ssize_t read_file_wow(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	unsigned int len = 0, size = 32;
 	ssize_t retval;
 	char *buf;
@@ -1088,20 +1076,20 @@ static ssize_t read_file_wow(struct file *file, char __user *user_buf,
 	if (len > size)
 		len = size;
 
-	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	retval = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 
 	return retval;
 }
 
-static ssize_t write_file_wow(struct file *file, const char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t write_file_wow(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long val;
 	ssize_t ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &val);
+	ret = kstrtoul_from_iter(from, count, 0, &val);
 	if (ret)
 		return ret;
 
@@ -1117,8 +1105,8 @@ static ssize_t write_file_wow(struct file *file, const char __user *user_buf,
 }
 
 static const struct file_operations fops_wow = {
-	.read = read_file_wow,
-	.write = write_file_wow,
+	.read_iter = read_file_wow,
+	.write_iter = write_file_wow,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -1126,10 +1114,9 @@ static const struct file_operations fops_wow = {
 
 #endif
 
-static ssize_t read_file_tpc(struct file *file, char __user *user_buf,
-			     size_t count, loff_t *ppos)
+static ssize_t read_file_tpc(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	struct ath_hw *ah = sc->sc_ah;
 	unsigned int len = 0, size = 32;
 	ssize_t retval;
@@ -1145,22 +1132,22 @@ static ssize_t read_file_tpc(struct file *file, char __user *user_buf,
 	if (len > size)
 		len = size;
 
-	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	retval = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 
 	return retval;
 }
 
-static ssize_t write_file_tpc(struct file *file, const char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t write_file_tpc(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct ath_hw *ah = sc->sc_ah;
 	unsigned long val;
 	ssize_t ret;
 	bool tpc_enabled;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &val);
+	ret = kstrtoul_from_iter(from, count, 0, &val);
 	if (ret)
 		return ret;
 
@@ -1181,18 +1168,16 @@ static ssize_t write_file_tpc(struct file *file, const char __user *user_buf,
 }
 
 static const struct file_operations fops_tpc = {
-	.read = read_file_tpc,
-	.write = write_file_tpc,
+	.read_iter = read_file_tpc,
+	.write_iter = write_file_tpc,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t read_file_nf_override(struct file *file,
-				     char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t read_file_nf_override(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
 	struct ath_hw *ah = sc->sc_ah;
 	char buf[32];
 	unsigned int len;
@@ -1202,21 +1187,20 @@ static ssize_t read_file_nf_override(struct file *file,
 	else
 		len = sprintf(buf, "%d\n", ah->nf_override);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t write_file_nf_override(struct file *file,
-				      const char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t write_file_nf_override(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath_softc *sc = file->private_data;
+	struct ath_softc *sc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct ath_hw *ah = sc->sc_ah;
 	long val;
 	char buf[32];
 	ssize_t len;
 
 	len = min(count, sizeof(buf) - 1);
-	if (copy_from_user(buf, user_buf, len))
+	if (!copy_from_iter_full(buf, len, from))
 		return -EFAULT;
 
 	buf[len] = '\0';
@@ -1243,8 +1227,8 @@ static ssize_t write_file_nf_override(struct file *file,
 }
 
 static const struct file_operations fops_nf_override = {
-	.read = read_file_nf_override,
-	.write = write_file_nf_override,
+	.read_iter = read_file_nf_override,
+	.write_iter = write_file_nf_override,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,

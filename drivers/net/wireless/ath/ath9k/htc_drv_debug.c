@@ -16,10 +16,9 @@
 
 #include "htc.h"
 
-static ssize_t read_file_tgt_int_stats(struct file *file, char __user *user_buf,
-				       size_t count, loff_t *ppos)
+static ssize_t read_file_tgt_int_stats(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath9k_htc_priv *priv = file->private_data;
+	struct ath9k_htc_priv *priv = iocb->ki_filp->private_data;
 	struct ath9k_htc_target_int_stats cmd_rsp;
 	char buf[512];
 	unsigned int len = 0;
@@ -64,20 +63,19 @@ static ssize_t read_file_tgt_int_stats(struct file *file, char __user *user_buf,
 	if (len > sizeof(buf))
 		len = sizeof(buf);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations fops_tgt_int_stats = {
-	.read = read_file_tgt_int_stats,
+	.read_iter = read_file_tgt_int_stats,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t read_file_tgt_tx_stats(struct file *file, char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t read_file_tgt_tx_stats(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath9k_htc_priv *priv = file->private_data;
+	struct ath9k_htc_priv *priv = iocb->ki_filp->private_data;
 	struct ath9k_htc_target_tx_stats cmd_rsp;
 	char buf[512];
 	unsigned int len = 0;
@@ -134,20 +132,19 @@ static ssize_t read_file_tgt_tx_stats(struct file *file, char __user *user_buf,
 	if (len > sizeof(buf))
 		len = sizeof(buf);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations fops_tgt_tx_stats = {
-	.read = read_file_tgt_tx_stats,
+	.read_iter = read_file_tgt_tx_stats,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t read_file_tgt_rx_stats(struct file *file, char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t read_file_tgt_rx_stats(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath9k_htc_priv *priv = file->private_data;
+	struct ath9k_htc_priv *priv = iocb->ki_filp->private_data;
 	struct ath9k_htc_target_rx_stats cmd_rsp;
 	char buf[512];
 	unsigned int len = 0;
@@ -180,20 +177,19 @@ static ssize_t read_file_tgt_rx_stats(struct file *file, char __user *user_buf,
 	if (len > sizeof(buf))
 		len = sizeof(buf);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations fops_tgt_rx_stats = {
-	.read = read_file_tgt_rx_stats,
+	.read_iter = read_file_tgt_rx_stats,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t read_file_xmit(struct file *file, char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t read_file_xmit(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath9k_htc_priv *priv = file->private_data;
+	struct ath9k_htc_priv *priv = iocb->ki_filp->private_data;
 	char buf[512];
 	unsigned int len = 0;
 
@@ -232,11 +228,11 @@ static ssize_t read_file_xmit(struct file *file, char __user *user_buf,
 	if (len > sizeof(buf))
 		len = sizeof(buf);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations fops_xmit = {
-	.read = read_file_xmit,
+	.read_iter = read_file_xmit,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -248,10 +244,9 @@ void ath9k_htc_err_stat_rx(struct ath9k_htc_priv *priv,
 	ath9k_cmn_debug_stat_rx(&priv->debug.rx_stats, rs);
 }
 
-static ssize_t read_file_skb_rx(struct file *file, char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t read_file_skb_rx(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath9k_htc_priv *priv = file->private_data;
+	struct ath9k_htc_priv *priv = iocb->ki_filp->private_data;
 	char *buf;
 	unsigned int len = 0, size = 1500;
 	ssize_t retval = 0;
@@ -273,23 +268,22 @@ static ssize_t read_file_skb_rx(struct file *file, char __user *user_buf,
 	if (len > size)
 		len = size;
 
-	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	retval = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 
 	return retval;
 }
 
 static const struct file_operations fops_skb_rx = {
-	.read = read_file_skb_rx,
+	.read_iter = read_file_skb_rx,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t read_file_slot(struct file *file, char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t read_file_slot(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath9k_htc_priv *priv = file->private_data;
+	struct ath9k_htc_priv *priv = iocb->ki_filp->private_data;
 	char buf[512];
 	unsigned int len;
 
@@ -300,20 +294,19 @@ static ssize_t read_file_slot(struct file *file, char __user *user_buf,
 			MAX_TX_BUF_NUM, priv->tx.tx_slot,
 			bitmap_weight(priv->tx.tx_slot, MAX_TX_BUF_NUM));
 	spin_unlock_bh(&priv->tx.tx_lock);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations fops_slot = {
-	.read = read_file_slot,
+	.read_iter = read_file_slot,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t read_file_queue(struct file *file, char __user *user_buf,
-			       size_t count, loff_t *ppos)
+static ssize_t read_file_queue(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath9k_htc_priv *priv = file->private_data;
+	struct ath9k_htc_priv *priv = iocb->ki_filp->private_data;
 	char buf[512];
 	unsigned int len = 0;
 
@@ -346,38 +339,37 @@ static ssize_t read_file_queue(struct file *file, char __user *user_buf,
 	if (len > sizeof(buf))
 		len = sizeof(buf);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 
 }
 
 static const struct file_operations fops_queue = {
-	.read = read_file_queue,
+	.read_iter = read_file_queue,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t read_file_debug(struct file *file, char __user *user_buf,
-			       size_t count, loff_t *ppos)
+static ssize_t read_file_debug(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath9k_htc_priv *priv = file->private_data;
+	struct ath9k_htc_priv *priv = iocb->ki_filp->private_data;
 	struct ath_common *common = ath9k_hw_common(priv->ah);
 	char buf[32];
 	unsigned int len;
 
 	len = sprintf(buf, "0x%08x\n", common->debug_mask);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t write_file_debug(struct file *file, const char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t write_file_debug(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath9k_htc_priv *priv = file->private_data;
+	struct ath9k_htc_priv *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct ath_common *common = ath9k_hw_common(priv->ah);
 	unsigned long mask;
 	ssize_t ret;
 
-	ret = kstrtoul_from_user(user_buf, count, 0, &mask);
+	ret = kstrtoul_from_iter(from, count, 0, &mask);
 	if (ret)
 		return ret;
 
@@ -386,8 +378,8 @@ static ssize_t write_file_debug(struct file *file, const char __user *user_buf,
 }
 
 static const struct file_operations fops_debug = {
-	.read = read_file_debug,
-	.write = write_file_debug,
+	.read_iter = read_file_debug,
+	.write_iter = write_file_debug,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
