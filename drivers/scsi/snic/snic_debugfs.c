@@ -69,18 +69,15 @@ snic_reset_stats_open(struct inode *inode, struct file *filp)
  * This function returns the amount of data that was read.
  */
 static ssize_t
-snic_reset_stats_read(struct file *filp,
-		      char __user *ubuf,
-		      size_t cnt,
-		      loff_t *ppos)
+snic_reset_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snic *snic = (struct snic *) filp->private_data;
+	struct snic *snic = iocb->ki_filp->private_data;
 	char buf[64];
 	int len;
 
 	len = sprintf(buf, "%u\n", snic->reset_stats);
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 /*
@@ -98,15 +95,13 @@ snic_reset_stats_read(struct file *filp,
  * This function returns the amount of data that was written.
  */
 static ssize_t
-snic_reset_stats_write(struct file *filp,
-		       const char __user *ubuf,
-		       size_t cnt,
-		       loff_t *ppos)
+snic_reset_stats_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct snic *snic = (struct snic *) filp->private_data;
+	struct snic *snic = iocb->ki_filp->private_data;
 	struct snic_stats *stats = &snic->s_stats;
 	u64 *io_stats_p = (u64 *) &stats->io;
 	u64 *fw_stats_p = (u64 *) &stats->fw;
+	size_t cnt = iov_iter_count(from);
 	char buf[64];
 	unsigned long val;
 	int ret;
@@ -114,7 +109,7 @@ snic_reset_stats_write(struct file *filp,
 	if (cnt >= sizeof(buf))
 		return -EINVAL;
 
-	if (copy_from_user(&buf, ubuf, cnt))
+	if (!copy_from_iter_full(&buf, cnt, from))
 		return -EFAULT;
 
 	buf[cnt] = '\0';
@@ -143,7 +138,7 @@ snic_reset_stats_write(struct file *filp,
 			sizeof(struct snic_fw_stats) - sizeof(u64));
 	}
 
-	(*ppos)++;
+	iocb->ki_pos++;
 
 	SNIC_HOST_INFO(snic->shost, "Reset Op: Driver statistics.\n");
 
@@ -323,8 +318,8 @@ DEFINE_SHOW_ATTRIBUTE(snic_stats);
 static const struct file_operations snic_reset_stats_fops = {
 	.owner = THIS_MODULE,
 	.open = snic_reset_stats_open,
-	.read = snic_reset_stats_read,
-	.write = snic_reset_stats_write,
+	.read_iter = snic_reset_stats_read,
+	.write_iter = snic_reset_stats_write,
 	.release = snic_reset_stats_release,
 };
 
