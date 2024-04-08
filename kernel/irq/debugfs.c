@@ -186,15 +186,15 @@ static int irq_debug_open(struct inode *inode, struct file *file)
 	return single_open(file, irq_debug_show, inode->i_private);
 }
 
-static ssize_t irq_debug_write(struct file *file, const char __user *user_buf,
-			       size_t count, loff_t *ppos)
+static ssize_t irq_debug_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct irq_desc *desc = file_inode(file)->i_private;
+	struct irq_desc *desc = file_inode(iocb->ki_filp)->i_private;
+	size_t count = iov_iter_count(from);
 	char buf[8] = { 0, };
 	size_t size;
 
 	size = min(sizeof(buf) - 1, count);
-	if (copy_from_user(buf, user_buf, size))
+	if (!copy_from_iter_full(buf, size, from))
 		return -EFAULT;
 
 	if (!strncmp(buf, "trigger", size)) {
@@ -208,8 +208,8 @@ static ssize_t irq_debug_write(struct file *file, const char __user *user_buf,
 
 static const struct file_operations dfs_irq_ops = {
 	.open		= irq_debug_open,
-	.write		= irq_debug_write,
-	.read		= seq_read,
+	.write_iter	= irq_debug_write,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
