@@ -379,14 +379,13 @@ static void remove_node(struct gcov_node *node);
  * corresponding file. If all associated object files have been unloaded,
  * remove the debug fs node as well.
  */
-static ssize_t gcov_seq_write(struct file *file, const char __user *addr,
-			      size_t len, loff_t *pos)
+static ssize_t gcov_seq_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct seq_file *seq;
 	struct gcov_info *info;
 	struct gcov_node *node;
 
-	seq = file->private_data;
+	seq = iocb->ki_filp->private_data;
 	info = gcov_iter_get_info(seq->private);
 	mutex_lock(&node_lock);
 	node = get_node_by_name(gcov_info_filename(info));
@@ -401,7 +400,7 @@ static ssize_t gcov_seq_write(struct file *file, const char __user *addr,
 	gcov_info_reset(info);
 	mutex_unlock(&node_lock);
 
-	return len;
+	return iov_iter_count(from);
 }
 
 /*
@@ -511,9 +510,9 @@ out_err:
 static const struct file_operations gcov_data_fops = {
 	.open		= gcov_seq_open,
 	.release	= gcov_seq_release,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
-	.write		= gcov_seq_write,
+	.write_iter	= gcov_seq_write,
 };
 
 /* Basic initialization of a new node. */
@@ -631,8 +630,7 @@ static struct gcov_node *get_child_by_name(struct gcov_node *parent,
  * write() implementation for reset file. Reset all profiling data to zero
  * and remove nodes for which all associated object files are unloaded.
  */
-static ssize_t reset_write(struct file *file, const char __user *addr,
-			   size_t len, loff_t *pos)
+static ssize_t reset_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct gcov_node *node;
 
@@ -649,20 +647,19 @@ restart:
 	}
 	mutex_unlock(&node_lock);
 
-	return len;
+	return iov_iter_count(from);
 }
 
 /* read() implementation for reset file. Unused. */
-static ssize_t reset_read(struct file *file, char __user *addr, size_t len,
-			  loff_t *pos)
+static ssize_t reset_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	/* Allow read operation so that a recursive copy won't fail. */
 	return 0;
 }
 
 static const struct file_operations gcov_reset_fops = {
-	.write	= reset_write,
-	.read	= reset_read,
+	.write_iter	= reset_write,
+	.read_iter	= reset_read,
 	.llseek = noop_llseek,
 };
 
