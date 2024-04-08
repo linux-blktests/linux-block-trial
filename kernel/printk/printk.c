@@ -798,11 +798,11 @@ static ssize_t devkmsg_write(struct kiocb *iocb, struct iov_iter *from)
 	return ret;
 }
 
-static ssize_t devkmsg_read(struct file *file, char __user *buf,
-			    size_t count, loff_t *ppos)
+static ssize_t devkmsg_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct devkmsg_user *user = file->private_data;
+	struct devkmsg_user *user = iocb->ki_filp->private_data;
 	char *outbuf = &user->pbufs.outbuf[0];
+	size_t count = iov_iter_count(to);
 	struct printk_message pmsg = {
 		.pbufs = &user->pbufs,
 	};
@@ -813,7 +813,7 @@ static ssize_t devkmsg_read(struct file *file, char __user *buf,
 		return ret;
 
 	if (!printk_get_next_message(&pmsg, atomic64_read(&user->seq), true, false)) {
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			ret = -EAGAIN;
 			goto out;
 		}
@@ -849,7 +849,7 @@ static ssize_t devkmsg_read(struct file *file, char __user *buf,
 		goto out;
 	}
 
-	if (copy_to_user(buf, outbuf, pmsg.outbuf_len)) {
+	if (!copy_to_iter_full(outbuf, pmsg.outbuf_len, to)) {
 		ret = -EFAULT;
 		goto out;
 	}
@@ -961,7 +961,7 @@ static int devkmsg_release(struct inode *inode, struct file *file)
 
 const struct file_operations kmsg_fops = {
 	.open = devkmsg_open,
-	.read = devkmsg_read,
+	.read_iter = devkmsg_read,
 	.write_iter = devkmsg_write,
 	.llseek = devkmsg_llseek,
 	.poll = devkmsg_poll,
