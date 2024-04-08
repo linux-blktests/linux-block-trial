@@ -106,6 +106,9 @@ void trace_seq_bprintf(struct trace_seq *s, const char *fmt, const u32 *binary);
 extern int trace_print_seq(struct seq_file *m, struct trace_seq *s);
 extern int trace_seq_to_user(struct trace_seq *s, char __user *ubuf,
 			     int cnt);
+struct iov_iter;
+extern int trace_seq_to_iter(struct trace_seq *s, struct iov_iter *iter,
+			     int cnt);
 extern void trace_seq_puts(struct trace_seq *s, const char *str);
 extern void trace_seq_putc(struct trace_seq *s, unsigned char c);
 extern void trace_seq_putmem(struct trace_seq *s, const void *mem, unsigned int len);
@@ -152,6 +155,11 @@ static inline int trace_print_seq(struct seq_file *m, struct trace_seq *s)
 	return 0;
 }
 static inline int trace_seq_to_user(struct trace_seq *s, char __user *ubuf,
+				    int cnt)
+{
+	return 0;
+}
+static inline int trace_seq_to_iter(struct trace_seq *s, struct iov_iter *iter,
 				    int cnt)
 {
 	return 0;

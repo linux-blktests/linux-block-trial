@@ -10,6 +10,7 @@
 #include <linux/pci.h>
 #include <linux/slab.h>
 #include <linux/time.h>
+#include <linux/uio.h>
 
 #include <linux/atomic.h>
 
@@ -128,12 +129,13 @@ static unsigned long count_overruns(struct trace_iterator *iter)
 	return cnt;
 }
 
-static ssize_t mmio_read(struct trace_iterator *iter, struct file *filp,
-				char __user *ubuf, size_t cnt, loff_t *ppos)
+static ssize_t mmio_read(struct trace_iterator *iter, struct kiocb *iocb,
+				struct iov_iter *to)
 {
 	ssize_t ret;
 	struct header_iter *hiter = iter->private;
 	struct trace_seq *s = &iter->seq;
+	size_t cnt = iov_iter_count(to);
 	unsigned long n;
 
 	n = count_overruns(iter);
@@ -158,7 +160,7 @@ static ssize_t mmio_read(struct trace_iterator *iter, struct file *filp,
 	}
 
 print_out:
-	ret = trace_seq_to_user(s, ubuf, cnt);
+	ret = trace_seq_to_iter(s, to, cnt);
 	return (ret == -EBUSY) ? 0 : ret;
 }
 

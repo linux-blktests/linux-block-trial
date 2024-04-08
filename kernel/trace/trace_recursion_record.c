@@ -200,11 +200,9 @@ static int recursed_function_open(struct inode *inode, struct file *file)
 	return ret;
 }
 
-static ssize_t recursed_function_write(struct file *file,
-				       const char __user *buffer,
-				       size_t count, loff_t *ppos)
+static ssize_t recursed_function_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return count;
+	return iov_iter_count(from);
 }
 
 static int recursed_function_release(struct inode *inode, struct file *file)
@@ -216,8 +214,8 @@ static int recursed_function_release(struct inode *inode, struct file *file)
 
 static const struct file_operations recursed_functions_fops = {
 	.open           = recursed_function_open,
-	.write		= recursed_function_write,
-	.read           = seq_read,
+	.write_iter	= recursed_function_write,
+	.read_iter      = seq_read_iter,
 	.llseek         = seq_lseek,
 	.release        = recursed_function_release,
 };

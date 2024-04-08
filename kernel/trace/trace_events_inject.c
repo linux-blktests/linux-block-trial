@@ -280,10 +280,9 @@ static int parse_entry(char *str, struct trace_event_call *call, void **pentry)
 	return entry_size;
 }
 
-static ssize_t
-event_inject_write(struct file *filp, const char __user *ubuf, size_t cnt,
-		   loff_t *ppos)
+static ssize_t event_inject_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t cnt = iov_iter_count(from);
 	struct trace_event_call *call;
 	struct trace_event_file *file;
 	int err = -ENODEV, size;
@@ -293,13 +292,13 @@ event_inject_write(struct file *filp, const char __user *ubuf, size_t cnt,
 	if (cnt >= PAGE_SIZE)
 		return -EINVAL;
 
-	buf = memdup_user_nul(ubuf, cnt);
+	buf = iterdup_nul(from, cnt);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 	strim(buf);
 
 	mutex_lock(&event_mutex);
-	file = event_file_file(filp);
+	file = event_file_file(iocb->ki_filp);
 	if (file) {
 		call = file->event_call;
 		size = parse_entry(buf, call, &entry);
@@ -316,20 +315,18 @@ event_inject_write(struct file *filp, const char __user *ubuf, size_t cnt,
 	if (err < 0)
 		return err;
 
-	*ppos += err;
+	iocb->ki_pos += err;
 	return cnt;
 }
 
-static ssize_t
-event_inject_read(struct file *file, char __user *buf, size_t size,
-		  loff_t *ppos)
+static ssize_t event_inject_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return -EPERM;
 }
 
 const struct file_operations event_inject_fops = {
 	.open = tracing_open_file_tr,
-	.read = event_inject_read,
-	.write = event_inject_write,
+	.read_iter = event_inject_read,
+	.write_iter = event_inject_write,
 	.release = tracing_release_file_tr,
 };

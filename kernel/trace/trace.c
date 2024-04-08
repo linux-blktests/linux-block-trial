@@ -27,6 +27,8 @@
 #include <linux/hardirq.h>
 #include <linux/linkage.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
+#include <linux/kstrtox.h>
 #include <linux/cleanup.h>
 #include <linux/vmalloc.h>
 #include <linux/ftrace.h>
@@ -1391,17 +1393,18 @@ void trace_parser_put(struct trace_parser *parser)
  *
  * See kernel/trace/trace.h for 'struct trace_parser' details.
  */
-int trace_get_user(struct trace_parser *parser, const char __user *ubuf,
-	size_t cnt, loff_t *ppos)
+int trace_get_user(struct trace_parser *parser, struct iov_iter *from,
+	loff_t *ppos)
 {
 	char ch;
+	size_t cnt = iov_iter_count(from);
 	size_t read = 0;
 	ssize_t ret;
 
 	if (!*ppos)
 		trace_parser_clear(parser);
 
-	ret = get_user(ch, ubuf++);
+	ret = get_iter(ch, from);
 	if (ret)
 		goto fail;
 
@@ -1415,7 +1418,7 @@ int trace_get_user(struct trace_parser *parser, const char __user *ubuf,
 	if (!parser->cont) {
 		/* skip white space */
 		while (cnt && isspace(ch)) {
-			ret = get_user(ch, ubuf++);
+			ret = get_iter(ch, from);
 			if (ret)
 				goto fail;
 			read++;
@@ -1440,7 +1443,7 @@ int trace_get_user(struct trace_parser *parser, const char __user *ubuf,
 			goto fail;
 		}
 
-		ret = get_user(ch, ubuf++);
+		ret = get_iter(ch, from);
 		if (ret)
 			goto fail;
 		read++;
@@ -4282,10 +4285,9 @@ static int tracing_seq_release(struct inode *inode, struct file *file)
 }
 
 static ssize_t
-tracing_write_stub(struct file *filp, const char __user *ubuf,
-		   size_t count, loff_t *ppos)
+tracing_write_stub(struct kiocb *iocb, struct iov_iter *from)
 {
-	return count;
+	return iov_iter_count(from);
 }
 
 loff_t tracing_lseek(struct file *file, loff_t offset, int whence)
@@ -4302,26 +4304,25 @@ loff_t tracing_lseek(struct file *file, loff_t offset, int whence)
 
 static const struct file_operations tracing_fops = {
 	.open		= tracing_open,
-	.read		= seq_read,
 	.read_iter	= seq_read_iter,
 	.splice_read	= copy_splice_read,
-	.write		= tracing_write_stub,
+	.write_iter	= tracing_write_stub,
 	.llseek		= tracing_lseek,
 	.release	= tracing_release,
 };
 
 static const struct file_operations show_traces_fops = {
 	.open		= show_traces_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= tracing_seq_release,
 };
 
 static ssize_t
-tracing_cpumask_read(struct file *filp, char __user *ubuf,
-		     size_t count, loff_t *ppos)
+tracing_cpumask_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct trace_array *tr = file_inode(filp)->i_private;
+	struct trace_array *tr = file_inode(iocb->ki_filp)->i_private;
+	size_t count = iov_iter_count(to);
 	char *mask_str __free(kfree) = NULL;
 	int len;
 
@@ -4336,7 +4337,7 @@ tracing_cpumask_read(struct file *filp, char __user *ubuf,
 	if (len >= count)
 		return -EINVAL;
 
-	return simple_read_from_buffer(ubuf, count, ppos, mask_str, len);
+	return simple_copy_to_iter(mask_str, &iocb->ki_pos, len, to);
 }
 
 int tracing_set_cpumask(struct trace_array *tr,
@@ -4378,11 +4379,12 @@ int tracing_set_cpumask(struct trace_array *tr,
 }
 
 static ssize_t
-tracing_cpumask_write(struct file *filp, const char __user *ubuf,
-		      size_t count, loff_t *ppos)
+tracing_cpumask_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct trace_array *tr = file_inode(filp)->i_private;
+	struct trace_array *tr = file_inode(iocb->ki_filp)->i_private;
+	size_t count = iov_iter_count(from);
 	cpumask_var_t tracing_cpumask_new;
+	char *buf;
 	int err;
 
 	if (count == 0 || count > KMALLOC_MAX_SIZE)
@@ -4391,7 +4393,14 @@ tracing_cpumask_write(struct file *filp, const char __user *ubuf,
 	if (!zalloc_cpumask_var(&tracing_cpumask_new, GFP_KERNEL))
 		return -ENOMEM;
 
-	err = cpumask_parse_user(ubuf, count, tracing_cpumask_new);
+	buf = iterdup_nul(from, count);
+	if (!buf) {
+		err = -ENOMEM;
+		goto err_free;
+	}
+
+	err = cpumask_parse(buf, tracing_cpumask_new);
+	kfree(buf);
 	if (err)
 		goto err_free;
 
@@ -4411,8 +4420,8 @@ err_free:
 
 static const struct file_operations tracing_cpumask_fops = {
 	.open		= tracing_open_generic_tr,
-	.read		= tracing_cpumask_read,
-	.write		= tracing_cpumask_write,
+	.read_iter	= tracing_cpumask_read,
+	.write_iter	= tracing_cpumask_write,
 	.release	= tracing_release_generic_tr,
 	.llseek		= generic_file_llseek,
 };
@@ -4654,18 +4663,18 @@ static void __init apply_trace_boot_options(void)
 }
 
 static ssize_t
-tracing_trace_options_write(struct file *filp, const char __user *ubuf,
-			size_t cnt, loff_t *ppos)
+tracing_trace_options_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = filp->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct trace_array *tr = m->private;
+	size_t cnt = iov_iter_count(from);
 	char buf[64];
 	int ret;
 
 	if (cnt >= sizeof(buf))
 		return -EINVAL;
 
-	if (copy_from_user(buf, ubuf, cnt))
+	if (!copy_from_iter_full(buf, cnt, from))
 		return -EFAULT;
 
 	buf[cnt] = 0;
@@ -4674,7 +4683,7 @@ tracing_trace_options_write(struct file *filp, const char __user *ubuf,
 	if (ret < 0)
 		return ret;
 
-	*ppos += cnt;
+	iocb->ki_pos += cnt;
 
 	return cnt;
 }
@@ -4697,10 +4706,10 @@ static int tracing_trace_options_open(struct inode *inode, struct file *file)
 
 static const struct file_operations tracing_iter_fops = {
 	.open		= tracing_trace_options_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= tracing_single_release_tr,
-	.write		= tracing_trace_options_write,
+	.write_iter	= tracing_trace_options_write,
 };
 
 static const char readme_msg[] =
@@ -5002,16 +5011,15 @@ static const char readme_msg[] =
 ;
 
 static ssize_t
-tracing_readme_read(struct file *filp, char __user *ubuf,
-		       size_t cnt, loff_t *ppos)
+tracing_readme_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return simple_read_from_buffer(ubuf, cnt, ppos,
-					readme_msg, strlen(readme_msg));
+	return simple_copy_to_iter(readme_msg, &iocb->ki_pos,
+					strlen(readme_msg), to);
 }
 
 static const struct file_operations tracing_readme_fops = {
 	.open		= tracing_open_generic,
-	.read		= tracing_readme_read,
+	.read_iter	= tracing_readme_read,
 	.llseek		= generic_file_llseek,
 };
 
@@ -5103,7 +5111,7 @@ static int tracing_eval_map_open(struct inode *inode, struct file *filp)
 
 static const struct file_operations tracing_eval_map_fops = {
 	.open		= tracing_eval_map_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
@@ -5201,10 +5209,9 @@ trace_event_update_with_eval_map(struct module *mod,
 }
 
 static ssize_t
-tracing_set_trace_read(struct file *filp, char __user *ubuf,
-		       size_t cnt, loff_t *ppos)
+tracing_set_trace_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
 	char buf[MAX_TRACER_SIZE+2];
 	int r;
 
@@ -5212,7 +5219,7 @@ tracing_set_trace_read(struct file *filp, char __user *ubuf,
 		r = sprintf(buf, "%s\n", tr->current_trace->name);
 	}
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, r, to);
 }
 
 int tracer_init(struct tracer *t, struct trace_array *tr)
@@ -5655,10 +5662,10 @@ int tracing_set_tracer(struct trace_array *tr, const char *buf)
 }
 
 static ssize_t
-tracing_set_trace_write(struct file *filp, const char __user *ubuf,
-			size_t cnt, loff_t *ppos)
+tracing_set_trace_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
+	size_t cnt = iov_iter_count(from);
 	char buf[MAX_TRACER_SIZE+1];
 	char *name;
 	size_t ret;
@@ -5669,7 +5676,7 @@ tracing_set_trace_write(struct file *filp, const char __user *ubuf,
 	if (cnt > MAX_TRACER_SIZE)
 		cnt = MAX_TRACER_SIZE;
 
-	if (copy_from_user(buf, ubuf, cnt))
+	if (!copy_from_iter_full(buf, cnt, from))
 		return -EFAULT;
 
 	buf[cnt] = 0;
@@ -5680,14 +5687,14 @@ tracing_set_trace_write(struct file *filp, const char __user *ubuf,
 	if (err)
 		return err;
 
-	*ppos += ret;
+	iocb->ki_pos += ret;
 
 	return ret;
 }
 
 static ssize_t
-tracing_nsecs_read(unsigned long *ptr, char __user *ubuf,
-		   size_t cnt, loff_t *ppos)
+tracing_nsecs_read(unsigned long *ptr, struct kiocb *iocb,
+		   struct iov_iter *to)
 {
 	char buf[64];
 	int r;
@@ -5696,17 +5703,18 @@ tracing_nsecs_read(unsigned long *ptr, char __user *ubuf,
 		     *ptr == (unsigned long)-1 ? -1 : nsecs_to_usecs(*ptr));
 	if (r > sizeof(buf))
 		r = sizeof(buf);
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, r, to);
 }
 
 static ssize_t
-tracing_nsecs_write(unsigned long *ptr, const char __user *ubuf,
-		    size_t cnt, loff_t *ppos)
+tracing_nsecs_write(unsigned long *ptr, struct kiocb *iocb,
+		    struct iov_iter *from)
 {
+	size_t cnt = iov_iter_count(from);
 	unsigned long val;
 	int ret;
 
-	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+	ret = kstrtoul_from_iter(from, cnt, 10, &val);
 	if (ret)
 		return ret;
 
@@ -5716,21 +5724,20 @@ tracing_nsecs_write(unsigned long *ptr, const char __user *ubuf,
 }
 
 static ssize_t
-tracing_thresh_read(struct file *filp, char __user *ubuf,
-		    size_t cnt, loff_t *ppos)
+tracing_thresh_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return tracing_nsecs_read(&tracing_thresh, ubuf, cnt, ppos);
+	return tracing_nsecs_read(&tracing_thresh, iocb, to);
 }
 
 static ssize_t
-tracing_thresh_write(struct file *filp, const char __user *ubuf,
-		     size_t cnt, loff_t *ppos)
+tracing_thresh_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
+	size_t cnt = iov_iter_count(from);
 	int ret;
 
 	guard(mutex)(&trace_types_lock);
-	ret = tracing_nsecs_write(&tracing_thresh, ubuf, cnt, ppos);
+	ret = tracing_nsecs_write(&tracing_thresh, iocb, from);
 	if (ret < 0)
 		return ret;
 
@@ -5746,21 +5753,19 @@ tracing_thresh_write(struct file *filp, const char __user *ubuf,
 #ifdef CONFIG_TRACER_MAX_TRACE
 
 static ssize_t
-tracing_max_lat_read(struct file *filp, char __user *ubuf,
-		     size_t cnt, loff_t *ppos)
+tracing_max_lat_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
 
-	return tracing_nsecs_read(&tr->max_latency, ubuf, cnt, ppos);
+	return tracing_nsecs_read(&tr->max_latency, iocb, to);
 }
 
 static ssize_t
-tracing_max_lat_write(struct file *filp, const char __user *ubuf,
-		      size_t cnt, loff_t *ppos)
+tracing_max_lat_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
 
-	return tracing_nsecs_write(&tr->max_latency, ubuf, cnt, ppos);
+	return tracing_nsecs_write(&tr->max_latency, iocb, from);
 }
 
 #endif
@@ -5961,10 +5966,10 @@ static bool update_last_data_if_empty(struct trace_array *tr)
  * Consumer reader.
  */
 static ssize_t
-tracing_read_pipe(struct file *filp, char __user *ubuf,
-		  size_t cnt, loff_t *ppos)
+tracing_read_pipe(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct trace_iterator *iter = filp->private_data;
+	struct trace_iterator *iter = iocb->ki_filp->private_data;
+	size_t cnt = iov_iter_count(to);
 	ssize_t sret;
 
 	/*
@@ -5975,14 +5980,14 @@ tracing_read_pipe(struct file *filp, char __user *ubuf,
 	guard(mutex)(&iter->mutex);
 
 	/* return any leftover data */
-	sret = trace_seq_to_user(&iter->seq, ubuf, cnt);
+	sret = trace_seq_to_iter(&iter->seq, to, cnt);
 	if (sret != -EBUSY)
 		return sret;
 
 	trace_seq_init(&iter->seq);
 
 	if (iter->trace->read) {
-		sret = iter->trace->read(iter, filp, ubuf, cnt, ppos);
+		sret = iter->trace->read(iter, iocb, to);
 		if (sret)
 			return sret;
 	}
@@ -5991,7 +5996,7 @@ waitagain:
 	if (update_last_data_if_empty(iter->tr))
 		return 0;
 
-	sret = tracing_wait_pipe(filp);
+	sret = tracing_wait_pipe(iocb->ki_filp);
 	if (sret <= 0)
 		return sret;
 
@@ -6017,7 +6022,7 @@ waitagain:
 		if (ret == TRACE_TYPE_PARTIAL_LINE) {
 			/*
 			 * If one print_trace_line() fills entire trace_seq in one shot,
-			 * trace_seq_to_user() will returns -EBUSY because save_len == 0,
+			 * trace_seq_to_iter() will returns -EBUSY because save_len == 0,
 			 * In this case, we need to consume it, otherwise, loop will peek
 			 * this event next time, resulting in an infinite loop.
 			 */
@@ -6049,8 +6054,8 @@ waitagain:
 	trace_access_unlock(iter->cpu_file);
 	trace_event_read_unlock();
 
-	/* Now copy what we have to the user */
-	sret = trace_seq_to_user(&iter->seq, ubuf, cnt);
+	/* Now copy what we have to the iter */
+	sret = trace_seq_to_iter(&iter->seq, to, cnt);
 	if (iter->seq.readpos >= trace_seq_used(&iter->seq))
 		trace_seq_init(&iter->seq);
 
@@ -6205,29 +6210,28 @@ out_err:
 }
 
 static ssize_t
-tracing_syscall_buf_read(struct file *filp, char __user *ubuf,
-			 size_t cnt, loff_t *ppos)
+tracing_syscall_buf_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct inode *inode = file_inode(filp);
+	struct inode *inode = file_inode(iocb->ki_filp);
 	struct trace_array *tr = inode->i_private;
 	char buf[64];
 	int r;
 
 	r = snprintf(buf, 64, "%d\n", tr->syscall_buf_sz);
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, r, to);
 }
 
 static ssize_t
-tracing_syscall_buf_write(struct file *filp, const char __user *ubuf,
-			  size_t cnt, loff_t *ppos)
+tracing_syscall_buf_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct inode *inode = file_inode(filp);
+	struct inode *inode = file_inode(iocb->ki_filp);
 	struct trace_array *tr = inode->i_private;
+	size_t cnt = iov_iter_count(from);
 	unsigned long val;
 	int ret;
 
-	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+	ret = kstrtoul_from_iter(from, cnt, 10, &val);
 	if (ret)
 		return ret;
 
@@ -6236,16 +6240,15 @@ tracing_syscall_buf_write(struct file *filp, const char __user *ubuf,
 
 	tr->syscall_buf_sz = val;
 
-	*ppos += cnt;
+	iocb->ki_pos += cnt;
 
 	return cnt;
 }
 
 static ssize_t
-tracing_entries_read(struct file *filp, char __user *ubuf,
-		     size_t cnt, loff_t *ppos)
+tracing_entries_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct inode *inode = file_inode(filp);
+	struct inode *inode = file_inode(iocb->ki_filp);
 	struct trace_array *tr = inode->i_private;
 	int cpu = tracing_get_cpu(inode);
 	char buf[64];
@@ -6285,20 +6288,20 @@ tracing_entries_read(struct file *filp, char __user *ubuf,
 
 	mutex_unlock(&trace_types_lock);
 
-	ret = simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, r, to);
 	return ret;
 }
 
 static ssize_t
-tracing_entries_write(struct file *filp, const char __user *ubuf,
-		      size_t cnt, loff_t *ppos)
+tracing_entries_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct inode *inode = file_inode(filp);
+	struct inode *inode = file_inode(iocb->ki_filp);
 	struct trace_array *tr = inode->i_private;
+	size_t cnt = iov_iter_count(from);
 	unsigned long val;
 	int ret;
 
-	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+	ret = kstrtoul_from_iter(from, cnt, 10, &val);
 	if (ret)
 		return ret;
 
@@ -6312,16 +6315,15 @@ tracing_entries_write(struct file *filp, const char __user *ubuf,
 	if (ret < 0)
 		return ret;
 
-	*ppos += cnt;
+	iocb->ki_pos += cnt;
 
 	return cnt;
 }
 
 static ssize_t
-tracing_total_entries_read(struct file *filp, char __user *ubuf,
-				size_t cnt, loff_t *ppos)
+tracing_total_entries_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
 	char buf[64];
 	int r, cpu;
 	unsigned long size = 0, expanded_size = 0;
@@ -6338,7 +6340,7 @@ tracing_total_entries_read(struct file *filp, char __user *ubuf,
 		r = sprintf(buf, "%lu (expanded: %lu)\n", size, expanded_size);
 	mutex_unlock(&trace_types_lock);
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, r, to);
 }
 
 #define LAST_BOOT_HEADER ((void *)1)
@@ -6456,15 +6458,16 @@ static int tracing_buffer_meta_open(struct inode *inode, struct file *filp)
 }
 
 static ssize_t
-tracing_free_buffer_write(struct file *filp, const char __user *ubuf,
-			  size_t cnt, loff_t *ppos)
+tracing_free_buffer_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t cnt = iov_iter_count(from);
+
 	/*
 	 * There is no need to read what the user has written, this function
 	 * is just to make sure that there is no error when "echo" is used
 	 */
 
-	*ppos += cnt;
+	iocb->ki_pos += cnt;
 
 	return cnt;
 }
@@ -6838,10 +6841,10 @@ char *trace_user_fault_read(struct trace_user_buf_info *tinfo,
 }
 
 static ssize_t
-tracing_mark_write(struct file *filp, const char __user *ubuf,
-					size_t cnt, loff_t *fpos)
+tracing_mark_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
+	size_t cnt = iov_iter_count(from);
 	ssize_t written = -ENODEV;
 	unsigned long ip;
 	char *buf;
@@ -6858,12 +6861,14 @@ tracing_mark_write(struct file *filp, const char __user *ubuf,
 	if (cnt > TRACE_MARKER_MAX_SIZE)
 		cnt = TRACE_MARKER_MAX_SIZE;
 
-	/* Must have preemption disabled while having access to the buffer */
-	guard(preempt_notrace)();
-
-	buf = trace_user_fault_read(trace_user_buffer, ubuf, cnt, NULL, NULL);
+	buf = kmalloc(cnt, GFP_KERNEL);
 	if (!buf)
+		return -ENOMEM;
+
+	if (!copy_from_iter_full(buf, cnt, from)) {
+		kfree(buf);
 		return -EFAULT;
+	}
 
 	/* The selftests expect this function to be the IP address */
 	ip = _THIS_IP_;
@@ -6880,6 +6885,7 @@ tracing_mark_write(struct file *filp, const char __user *ubuf,
 		written = write_marker_to_buffer(tr, buf, cnt, ip);
 	}
 
+	kfree(buf);
 	return written;
 }
 
@@ -6919,10 +6925,10 @@ static ssize_t write_raw_marker_to_buffer(struct trace_array *tr,
 }
 
 static ssize_t
-tracing_mark_raw_write(struct file *filp, const char __user *ubuf,
-					size_t cnt, loff_t *fpos)
+tracing_mark_raw_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
+	size_t cnt = iov_iter_count(from);
 	ssize_t written = -ENODEV;
 	char *buf;
 
@@ -6940,12 +6946,14 @@ tracing_mark_raw_write(struct file *filp, const char __user *ubuf,
 	if (cnt > TRACE_MARKER_MAX_SIZE)
 		return -EINVAL;
 
-	/* Must have preemption disabled while having access to the buffer */
-	guard(preempt_notrace)();
-
-	buf = trace_user_fault_read(trace_user_buffer, ubuf, cnt, NULL, NULL);
+	buf = kmalloc(cnt, GFP_KERNEL);
 	if (!buf)
+		return -ENOMEM;
+
+	if (!copy_from_iter_full(buf, cnt, from)) {
+		kfree(buf);
 		return -EFAULT;
+	}
 
 	/* The global trace_marker_raw can go to multiple instances */
 	if (tr == &global_trace) {
@@ -6959,6 +6967,7 @@ tracing_mark_raw_write(struct file *filp, const char __user *ubuf,
 		written = write_raw_marker_to_buffer(tr, buf, cnt);
 	}
 
+	kfree(buf);
 	return written;
 }
 
@@ -7043,11 +7052,11 @@ int tracing_set_clock(struct trace_array *tr, const char *clockstr)
 	return 0;
 }
 
-static ssize_t tracing_clock_write(struct file *filp, const char __user *ubuf,
-				   size_t cnt, loff_t *fpos)
+static ssize_t tracing_clock_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = filp->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct trace_array *tr = m->private;
+	size_t cnt = iov_iter_count(from);
 	char buf[64];
 	const char *clockstr;
 	int ret;
@@ -7055,7 +7064,7 @@ static ssize_t tracing_clock_write(struct file *filp, const char __user *ubuf,
 	if (cnt >= sizeof(buf))
 		return -EINVAL;
 
-	if (copy_from_user(buf, ubuf, cnt))
+	if (!copy_from_iter_full(buf, cnt, from))
 		return -EFAULT;
 
 	buf[cnt] = 0;
@@ -7066,7 +7075,7 @@ static ssize_t tracing_clock_write(struct file *filp, const char __user *ubuf,
 	if (ret)
 		return ret;
 
-	*fpos += cnt;
+	iocb->ki_pos += cnt;
 
 	return cnt;
 }
@@ -7181,12 +7190,12 @@ static void tracing_swap_cpu_buffer(void *tr)
 }
 
 static ssize_t
-tracing_snapshot_write(struct file *filp, const char __user *ubuf, size_t cnt,
-		       loff_t *ppos)
+tracing_snapshot_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = filp->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct trace_iterator *iter = m->private;
 	struct trace_array *tr = iter->tr;
+	size_t cnt = iov_iter_count(from);
 	unsigned long val;
 	int ret;
 
@@ -7194,7 +7203,7 @@ tracing_snapshot_write(struct file *filp, const char __user *ubuf, size_t cnt,
 	if (ret < 0)
 		return ret;
 
-	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+	ret = kstrtoul_from_iter(from, cnt, 10, &val);
 	if (ret)
 		return ret;
 
@@ -7255,7 +7264,7 @@ tracing_snapshot_write(struct file *filp, const char __user *ubuf, size_t cnt,
 	}
 
 	if (ret >= 0) {
-		*ppos += cnt;
+		iocb->ki_pos += cnt;
 		ret = cnt;
 	}
 
@@ -7281,8 +7290,7 @@ static int tracing_snapshot_release(struct inode *inode, struct file *file)
 }
 
 static int tracing_buffers_open(struct inode *inode, struct file *filp);
-static ssize_t tracing_buffers_read(struct file *filp, char __user *ubuf,
-				    size_t count, loff_t *ppos);
+static ssize_t tracing_buffers_read(struct kiocb *iocb, struct iov_iter *to);
 static int tracing_buffers_release(struct inode *inode, struct file *file);
 static ssize_t tracing_buffers_splice_read(struct file *file, loff_t *ppos,
 		   struct pipe_inode_info *pipe, size_t len, unsigned int flags);
@@ -7315,16 +7323,16 @@ static int snapshot_raw_open(struct inode *inode, struct file *filp)
 
 static const struct file_operations tracing_thresh_fops = {
 	.open		= tracing_open_generic,
-	.read		= tracing_thresh_read,
-	.write		= tracing_thresh_write,
+	.read_iter	= tracing_thresh_read,
+	.write_iter	= tracing_thresh_write,
 	.llseek		= generic_file_llseek,
 };
 
 #ifdef CONFIG_TRACER_MAX_TRACE
 static const struct file_operations tracing_max_lat_fops = {
 	.open		= tracing_open_generic_tr,
-	.read		= tracing_max_lat_read,
-	.write		= tracing_max_lat_write,
+	.read_iter	= tracing_max_lat_read,
+	.write_iter	= tracing_max_lat_write,
 	.llseek		= generic_file_llseek,
 	.release	= tracing_release_generic_tr,
 };
@@ -7332,8 +7340,8 @@ static const struct file_operations tracing_max_lat_fops = {
 
 static const struct file_operations set_tracer_fops = {
 	.open		= tracing_open_generic_tr,
-	.read		= tracing_set_trace_read,
-	.write		= tracing_set_trace_write,
+	.read_iter	= tracing_set_trace_read,
+	.write_iter	= tracing_set_trace_write,
 	.llseek		= generic_file_llseek,
 	.release	= tracing_release_generic_tr,
 };
@@ -7341,77 +7349,77 @@ static const struct file_operations set_tracer_fops = {
 static const struct file_operations tracing_pipe_fops = {
 	.open		= tracing_open_pipe,
 	.poll		= tracing_poll_pipe,
-	.read		= tracing_read_pipe,
+	.read_iter	= tracing_read_pipe,
 	.splice_read	= tracing_splice_read_pipe,
 	.release	= tracing_release_pipe,
 };
 
 static const struct file_operations tracing_entries_fops = {
 	.open		= tracing_open_generic_tr,
-	.read		= tracing_entries_read,
-	.write		= tracing_entries_write,
+	.read_iter	= tracing_entries_read,
+	.write_iter	= tracing_entries_write,
 	.llseek		= generic_file_llseek,
 	.release	= tracing_release_generic_tr,
 };
 
 static const struct file_operations tracing_syscall_buf_fops = {
 	.open		= tracing_open_generic_tr,
-	.read		= tracing_syscall_buf_read,
-	.write		= tracing_syscall_buf_write,
+	.read_iter	= tracing_syscall_buf_read,
+	.write_iter	= tracing_syscall_buf_write,
 	.llseek		= generic_file_llseek,
 	.release	= tracing_release_generic_tr,
 };
 
 static const struct file_operations tracing_buffer_meta_fops = {
 	.open		= tracing_buffer_meta_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= tracing_seq_release,
 };
 
 static const struct file_operations tracing_total_entries_fops = {
 	.open		= tracing_open_generic_tr,
-	.read		= tracing_total_entries_read,
+	.read_iter	= tracing_total_entries_read,
 	.llseek		= generic_file_llseek,
 	.release	= tracing_release_generic_tr,
 };
 
 static const struct file_operations tracing_free_buffer_fops = {
 	.open		= tracing_open_generic_tr,
-	.write		= tracing_free_buffer_write,
+	.write_iter	= tracing_free_buffer_write,
 	.release	= tracing_free_buffer_release,
 };
 
 static const struct file_operations tracing_mark_fops = {
 	.open		= tracing_mark_open,
-	.write		= tracing_mark_write,
+	.write_iter	= tracing_mark_write,
 	.release	= tracing_mark_release,
 };
 
 static const struct file_operations tracing_mark_raw_fops = {
 	.open		= tracing_mark_open,
-	.write		= tracing_mark_raw_write,
+	.write_iter	= tracing_mark_raw_write,
 	.release	= tracing_mark_release,
 };
 
 static const struct file_operations trace_clock_fops = {
 	.open		= tracing_clock_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= tracing_single_release_tr,
-	.write		= tracing_clock_write,
+	.write_iter	= tracing_clock_write,
 };
 
 static const struct file_operations trace_time_stamp_mode_fops = {
 	.open		= tracing_time_stamp_mode_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= tracing_single_release_tr,
 };
 
 static const struct file_operations last_boot_fops = {
 	.open		= tracing_last_boot_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= tracing_seq_release,
 };
@@ -7419,15 +7427,15 @@ static const struct file_operations last_boot_fops = {
 #ifdef CONFIG_TRACER_SNAPSHOT
 static const struct file_operations snapshot_fops = {
 	.open		= tracing_snapshot_open,
-	.read		= seq_read,
-	.write		= tracing_snapshot_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= tracing_snapshot_write,
 	.llseek		= tracing_lseek,
 	.release	= tracing_snapshot_release,
 };
 
 static const struct file_operations snapshot_raw_fops = {
 	.open		= snapshot_raw_open,
-	.read		= tracing_buffers_read,
+	.read_iter	= tracing_buffers_read,
 	.release	= tracing_buffers_release,
 	.splice_read	= tracing_buffers_splice_read,
 };
@@ -7447,16 +7455,17 @@ static const struct file_operations snapshot_raw_fops = {
  * and a lock to protect the write.
  */
 static ssize_t
-trace_min_max_write(struct file *filp, const char __user *ubuf, size_t cnt, loff_t *ppos)
+trace_min_max_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct trace_min_max_param *param = filp->private_data;
+	struct trace_min_max_param *param = iocb->ki_filp->private_data;
+	size_t cnt = iov_iter_count(from);
 	u64 val;
 	int err;
 
 	if (!param)
 		return -EFAULT;
 
-	err = kstrtoull_from_user(ubuf, cnt, 10, &val);
+	err = kstrtoull_from_iter(from, cnt, 10, &val);
 	if (err)
 		return err;
 
@@ -7483,19 +7492,17 @@ trace_min_max_write(struct file *filp, const char __user *ubuf, size_t cnt, loff
 
 /*
  * trace_min_max_read - Read a u64 value from a trace_min_max_param struct
- * @filp: The active open file structure
- * @ubuf: The userspace provided buffer to read value into
- * @cnt: The maximum number of bytes to read
- * @ppos: The current "file" position
+ * @iocb: The active kiocb structure
+ * @to: The iov_iter to read value into
  *
  * This function implements the read interface for a struct trace_min_max_param.
  * The filp->private_data must point to a trace_min_max_param struct with valid
  * data.
  */
 static ssize_t
-trace_min_max_read(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
+trace_min_max_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct trace_min_max_param *param = filp->private_data;
+	struct trace_min_max_param *param = iocb->ki_filp->private_data;
 	char buf[U64_STR_SIZE];
 	int len;
 	u64 val;
@@ -7505,18 +7512,15 @@ trace_min_max_read(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppo
 
 	val = *param->val;
 
-	if (cnt > sizeof(buf))
-		cnt = sizeof(buf);
-
 	len = snprintf(buf, sizeof(buf), "%llu\n", val);
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 const struct file_operations trace_min_max_fops = {
 	.open		= tracing_open_generic,
-	.read		= trace_min_max_read,
-	.write		= trace_min_max_write,
+	.read_iter	= trace_min_max_read,
+	.write_iter	= trace_min_max_write,
 };
 
 #define TRACING_LOG_ERRS_MAX	8
@@ -7766,11 +7770,10 @@ static int tracing_err_log_open(struct inode *inode, struct file *file)
 	return ret;
 }
 
-static ssize_t tracing_err_log_write(struct file *file,
-				     const char __user *buffer,
-				     size_t count, loff_t *ppos)
+static ssize_t tracing_err_log_write(struct kiocb *iocb,
+				     struct iov_iter *from)
 {
-	return count;
+	return iov_iter_count(from);
 }
 
 static int tracing_err_log_release(struct inode *inode, struct file *file)
@@ -7787,8 +7790,8 @@ static int tracing_err_log_release(struct inode *inode, struct file *file)
 
 static const struct file_operations tracing_err_log_fops = {
 	.open           = tracing_err_log_open,
-	.write		= tracing_err_log_write,
-	.read           = seq_read,
+	.write_iter	= tracing_err_log_write,
+	.read_iter      = seq_read_iter,
 	.llseek         = tracing_lseek,
 	.release        = tracing_err_log_release,
 };
@@ -7842,11 +7845,11 @@ tracing_buffers_poll(struct file *filp, poll_table *poll_table)
 }
 
 static ssize_t
-tracing_buffers_read(struct file *filp, char __user *ubuf,
-		     size_t count, loff_t *ppos)
+tracing_buffers_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ftrace_buffer_info *info = filp->private_data;
+	struct ftrace_buffer_info *info = iocb->ki_filp->private_data;
 	struct trace_iterator *iter = &info->iter;
+	size_t count = iov_iter_count(to);
 	void *trace_data;
 	int page_size;
 	ssize_t ret = 0;
@@ -7900,7 +7903,7 @@ tracing_buffers_read(struct file *filp, char __user *ubuf,
 			if (update_last_data_if_empty(iter->tr))
 				return 0;
 
-			if ((filp->f_flags & O_NONBLOCK))
+			if ((iocb->ki_filp->f_flags & O_NONBLOCK))
 				return -EAGAIN;
 
 			ret = wait_on_pipe(iter, 0);
@@ -7918,13 +7921,10 @@ tracing_buffers_read(struct file *filp, char __user *ubuf,
 	if (size > count)
 		size = count;
 	trace_data = ring_buffer_read_page_data(info->spare);
-	ret = copy_to_user(ubuf, trace_data + info->read, size);
-	if (ret == size)
+	if (!copy_to_iter_full(trace_data + info->read, size, to))
 		return -EFAULT;
 
-	size -= ret;
-
-	*ppos += size;
+	iocb->ki_pos += size;
 	info->read += size;
 
 	return size;
@@ -8274,7 +8274,7 @@ static int tracing_buffers_mmap(struct file *filp, struct vm_area_struct *vma)
 
 static const struct file_operations tracing_buffers_fops = {
 	.open		= tracing_buffers_open,
-	.read		= tracing_buffers_read,
+	.read_iter	= tracing_buffers_read,
 	.poll		= tracing_buffers_poll,
 	.release	= tracing_buffers_release,
 	.flush		= tracing_buffers_flush,
@@ -8284,10 +8284,9 @@ static const struct file_operations tracing_buffers_fops = {
 };
 
 static ssize_t
-tracing_stats_read(struct file *filp, char __user *ubuf,
-		   size_t count, loff_t *ppos)
+tracing_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct inode *inode = file_inode(filp);
+	struct inode *inode = file_inode(iocb->ki_filp);
 	struct trace_array *tr = inode->i_private;
 	struct array_buffer *trace_buf = &tr->array_buffer;
 	int cpu = tracing_get_cpu(inode);
@@ -8295,6 +8294,7 @@ tracing_stats_read(struct file *filp, char __user *ubuf,
 	unsigned long cnt;
 	unsigned long long t;
 	unsigned long usec_rem;
+	ssize_t ret;
 
 	s = kmalloc_obj(*s);
 	if (!s)
@@ -8339,17 +8339,17 @@ tracing_stats_read(struct file *filp, char __user *ubuf,
 	cnt = ring_buffer_read_events_cpu(trace_buf->buffer, cpu);
 	trace_seq_printf(s, "read events: %ld\n", cnt);
 
-	count = simple_read_from_buffer(ubuf, count, ppos,
-					s->buffer, trace_seq_used(s));
+	ret = simple_copy_to_iter(s->buffer, &iocb->ki_pos,
+				  trace_seq_used(s), to);
 
 	kfree(s);
 
-	return count;
+	return ret;
 }
 
 static const struct file_operations tracing_stats_fops = {
 	.open		= tracing_open_generic_tr,
-	.read		= tracing_stats_read,
+	.read_iter	= tracing_stats_read,
 	.llseek		= generic_file_llseek,
 	.release	= tracing_release_generic_tr,
 };
@@ -8357,8 +8357,7 @@ static const struct file_operations tracing_stats_fops = {
 #ifdef CONFIG_DYNAMIC_FTRACE
 
 static ssize_t
-tracing_read_dyn_info(struct file *filp, char __user *ubuf,
-		  size_t cnt, loff_t *ppos)
+tracing_read_dyn_info(struct kiocb *iocb, struct iov_iter *to)
 {
 	ssize_t ret;
 	char *buf;
@@ -8381,14 +8380,14 @@ tracing_read_dyn_info(struct file *filp, char __user *ubuf,
 		      ftrace_update_time,
 		      ftrace_total_mod_time);
 
-	ret = simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, r, to);
 	kfree(buf);
 	return ret;
 }
 
 static const struct file_operations tracing_dyn_info_fops = {
 	.open		= tracing_open_generic,
-	.read		= tracing_read_dyn_info,
+	.read_iter	= tracing_read_dyn_info,
 	.llseek		= generic_file_llseek,
 };
 #endif /* CONFIG_DYNAMIC_FTRACE */
@@ -8654,10 +8653,9 @@ tracing_init_tracefs_percpu(struct trace_array *tr, long cpu)
 #endif
 
 static ssize_t
-trace_options_read(struct file *filp, char __user *ubuf, size_t cnt,
-			loff_t *ppos)
+trace_options_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct trace_option_dentry *topt = filp->private_data;
+	struct trace_option_dentry *topt = iocb->ki_filp->private_data;
 	char *buf;
 
 	if (topt->flags->val & topt->opt->bit)
@@ -8665,18 +8663,18 @@ trace_options_read(struct file *filp, char __user *ubuf, size_t cnt,
 	else
 		buf = "0\n";
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
 static ssize_t
-trace_options_write(struct file *filp, const char __user *ubuf, size_t cnt,
-			 loff_t *ppos)
+trace_options_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct trace_option_dentry *topt = filp->private_data;
+	struct trace_option_dentry *topt = iocb->ki_filp->private_data;
+	size_t cnt = iov_iter_count(from);
 	unsigned long val;
 	int ret;
 
-	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+	ret = kstrtoul_from_iter(from, cnt, 10, &val);
 	if (ret)
 		return ret;
 
@@ -8691,7 +8689,7 @@ trace_options_write(struct file *filp, const char __user *ubuf, size_t cnt,
 			return ret;
 	}
 
-	*ppos += cnt;
+	iocb->ki_pos += cnt;
 
 	return cnt;
 }
@@ -8719,8 +8717,8 @@ static int tracing_release_options(struct inode *inode, struct file *file)
 
 static const struct file_operations trace_options_fops = {
 	.open = tracing_open_options,
-	.read = trace_options_read,
-	.write = trace_options_write,
+	.read_iter = trace_options_read,
+	.write_iter = trace_options_write,
 	.llseek	= generic_file_llseek,
 	.release = tracing_release_options,
 };
@@ -8759,10 +8757,9 @@ static void get_tr_index(void *data, struct trace_array **ptr,
 }
 
 static ssize_t
-trace_options_core_read(struct file *filp, char __user *ubuf, size_t cnt,
-			loff_t *ppos)
+trace_options_core_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	void *tr_index = filp->private_data;
+	void *tr_index = iocb->ki_filp->private_data;
 	struct trace_array *tr;
 	unsigned int index;
 	char *buf;
@@ -8774,22 +8771,22 @@ trace_options_core_read(struct file *filp, char __user *ubuf, size_t cnt,
 	else
 		buf = "0\n";
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
 static ssize_t
-trace_options_core_write(struct file *filp, const char __user *ubuf, size_t cnt,
-			 loff_t *ppos)
+trace_options_core_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	void *tr_index = filp->private_data;
+	void *tr_index = iocb->ki_filp->private_data;
 	struct trace_array *tr;
 	unsigned int index;
+	size_t cnt = iov_iter_count(from);
 	unsigned long val;
 	int ret;
 
 	get_tr_index(tr_index, &tr, &index);
 
-	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+	ret = kstrtoul_from_iter(from, cnt, 10, &val);
 	if (ret)
 		return ret;
 
@@ -8805,15 +8802,15 @@ trace_options_core_write(struct file *filp, const char __user *ubuf, size_t cnt,
 	if (ret < 0)
 		return ret;
 
-	*ppos += cnt;
+	iocb->ki_pos += cnt;
 
 	return cnt;
 }
 
 static const struct file_operations trace_options_core_fops = {
 	.open = tracing_open_generic,
-	.read = trace_options_core_read,
-	.write = trace_options_core_write,
+	.read_iter = trace_options_core_read,
+	.write_iter = trace_options_core_write,
 	.llseek = generic_file_llseek,
 };
 
@@ -9040,29 +9037,28 @@ static void create_trace_options_dir(struct trace_array *tr)
 }
 
 static ssize_t
-rb_simple_read(struct file *filp, char __user *ubuf,
-	       size_t cnt, loff_t *ppos)
+rb_simple_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
 	char buf[64];
 	int r;
 
 	r = tracer_tracing_is_on(tr);
 	r = sprintf(buf, "%d\n", r);
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, r, to);
 }
 
 static ssize_t
-rb_simple_write(struct file *filp, const char __user *ubuf,
-		size_t cnt, loff_t *ppos)
+rb_simple_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
 	struct trace_buffer *buffer = tr->array_buffer.buffer;
+	size_t cnt = iov_iter_count(from);
 	unsigned long val;
 	int ret;
 
-	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+	ret = kstrtoul_from_iter(from, cnt, 10, &val);
 	if (ret)
 		return ret;
 
@@ -9083,42 +9079,41 @@ rb_simple_write(struct file *filp, const char __user *ubuf,
 		}
 	}
 
-	(*ppos)++;
+	iocb->ki_pos++;
 
 	return cnt;
 }
 
 static const struct file_operations rb_simple_fops = {
 	.open		= tracing_open_generic_tr,
-	.read		= rb_simple_read,
-	.write		= rb_simple_write,
+	.read_iter	= rb_simple_read,
+	.write_iter	= rb_simple_write,
 	.release	= tracing_release_generic_tr,
 	.llseek		= default_llseek,
 };
 
 static ssize_t
-buffer_percent_read(struct file *filp, char __user *ubuf,
-		    size_t cnt, loff_t *ppos)
+buffer_percent_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
 	char buf[64];
 	int r;
 
 	r = tr->buffer_percent;
 	r = sprintf(buf, "%d\n", r);
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, r, to);
 }
 
 static ssize_t
-buffer_percent_write(struct file *filp, const char __user *ubuf,
-		     size_t cnt, loff_t *ppos)
+buffer_percent_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
+	size_t cnt = iov_iter_count(from);
 	unsigned long val;
 	int ret;
 
-	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+	ret = kstrtoul_from_iter(from, cnt, 10, &val);
 	if (ret)
 		return ret;
 
@@ -9127,23 +9122,23 @@ buffer_percent_write(struct file *filp, const char __user *ubuf,
 
 	tr->buffer_percent = val;
 
-	(*ppos)++;
+	iocb->ki_pos++;
 
 	return cnt;
 }
 
 static const struct file_operations buffer_percent_fops = {
 	.open		= tracing_open_generic_tr,
-	.read		= buffer_percent_read,
-	.write		= buffer_percent_write,
+	.read_iter	= buffer_percent_read,
+	.write_iter	= buffer_percent_write,
 	.release	= tracing_release_generic_tr,
 	.llseek		= default_llseek,
 };
 
 static ssize_t
-buffer_subbuf_size_read(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
+buffer_subbuf_size_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
 	size_t size;
 	char buf[64];
 	int order;
@@ -9154,21 +9149,21 @@ buffer_subbuf_size_read(struct file *filp, char __user *ubuf, size_t cnt, loff_t
 
 	r = sprintf(buf, "%zd\n", size);
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, r, to);
 }
 
 static ssize_t
-buffer_subbuf_size_write(struct file *filp, const char __user *ubuf,
-			 size_t cnt, loff_t *ppos)
+buffer_subbuf_size_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct trace_array *tr = filp->private_data;
+	struct trace_array *tr = iocb->ki_filp->private_data;
+	size_t cnt = iov_iter_count(from);
 	unsigned long val;
 	int old_order;
 	int order;
 	int pages;
 	int ret;
 
-	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+	ret = kstrtoul_from_iter(from, cnt, 10, &val);
 	if (ret)
 		return ret;
 
@@ -9221,7 +9216,7 @@ buffer_subbuf_size_write(struct file *filp, const char __user *ubuf,
 	}
  out_max:
 #endif
-	(*ppos)++;
+	iocb->ki_pos++;
  out:
 	if (ret)
 		cnt = ret;
@@ -9231,8 +9226,8 @@ buffer_subbuf_size_write(struct file *filp, const char __user *ubuf,
 
 static const struct file_operations buffer_subbuf_size_fops = {
 	.open		= tracing_open_generic_tr,
-	.read		= buffer_subbuf_size_read,
-	.write		= buffer_subbuf_size_write,
+	.read_iter	= buffer_subbuf_size_read,
+	.write_iter	= buffer_subbuf_size_write,
 	.release	= tracing_release_generic_tr,
 	.llseek		= default_llseek,
 };
@@ -10477,8 +10472,7 @@ EXPORT_SYMBOL_GPL(ftrace_dump);
 
 #define WRITE_BUFSIZE  4096
 
-ssize_t trace_parse_run_command(struct file *file, const char __user *buffer,
-				size_t count, loff_t *ppos,
+ssize_t trace_parse_run_command(struct file *file, struct iov_iter *from,
 				int (*createfn)(const char *))
 {
 	char *kbuf __free(kfree) = NULL;
@@ -10486,6 +10480,7 @@ ssize_t trace_parse_run_command(struct file *file, const char __user *buffer,
 	int ret = 0;
 	size_t done = 0;
 	size_t size;
+	size_t count = iov_iter_count(from);
 
 	kbuf = kmalloc(WRITE_BUFSIZE, GFP_KERNEL);
 	if (!kbuf)
@@ -10497,7 +10492,7 @@ ssize_t trace_parse_run_command(struct file *file, const char __user *buffer,
 		if (size >= WRITE_BUFSIZE)
 			size = WRITE_BUFSIZE - 1;
 
-		if (copy_from_user(kbuf, buffer + done, size))
+		if (!copy_from_iter_full(kbuf, size, from))
 			return -EFAULT;
 
 		kbuf[size] = '\0';

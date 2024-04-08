@@ -660,10 +660,8 @@ static void hwlat_tracer_stop(struct trace_array *tr);
 
 /**
  * hwlat_mode_write - Write function for "mode" entry
- * @filp: The active open file structure
- * @ubuf: The user buffer that contains the value to write
- * @cnt: The maximum number of bytes to write to "file"
- * @ppos: The current position in @file
+ * @iocb: Metadata for IO
+ * @from: The user buffer that contains the value to write
  *
  * This function provides a write implementation for the "mode" interface
  * to the hardware latency detector. hwlatd has different operation modes.
@@ -673,10 +671,10 @@ static void hwlat_tracer_stop(struct trace_array *tr);
  * among the allowed CPUs in a round-robin fashion. The "per-cpu" mode
  * creates one hwlatd thread per allowed CPU.
  */
-static ssize_t hwlat_mode_write(struct file *filp, const char __user *ubuf,
-				 size_t cnt, loff_t *ppos)
+static ssize_t hwlat_mode_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct trace_array *tr = hwlat_trace;
+	size_t cnt = iov_iter_count(from);
 	const char *mode;
 	char buf[64];
 	int ret, i;
@@ -684,7 +682,7 @@ static ssize_t hwlat_mode_write(struct file *filp, const char __user *ubuf,
 	if (cnt >= sizeof(buf))
 		return -EINVAL;
 
-	if (copy_from_user(buf, ubuf, cnt))
+	if (!copy_from_iter_full(buf, cnt, from))
 		return -EFAULT;
 
 	buf[cnt] = 0;
@@ -716,9 +714,7 @@ static ssize_t hwlat_mode_write(struct file *filp, const char __user *ubuf,
 		hwlat_tracer_start(tr);
 	mutex_unlock(&trace_types_lock);
 
-	*ppos += cnt;
-
-
+	iocb->ki_pos += cnt;
 
 	return ret;
 }
@@ -749,10 +745,10 @@ static struct trace_min_max_param hwlat_window = {
 
 static const struct file_operations thread_mode_fops = {
 	.open		= hwlat_mode_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
-	.write		= hwlat_mode_write
+	.write_iter	= hwlat_mode_write
 };
 /**
  * init_tracefs - A function to initialize the tracefs interface files

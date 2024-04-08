@@ -860,10 +860,8 @@ extern ftrace_func_t ftrace_trace_function;
 
 int ftrace_regex_open(struct ftrace_ops *ops, int flag,
 		  struct inode *inode, struct file *file);
-ssize_t ftrace_filter_write(struct file *file, const char __user *ubuf,
-			    size_t cnt, loff_t *ppos);
-ssize_t ftrace_notrace_write(struct file *file, const char __user *ubuf,
-			     size_t cnt, loff_t *ppos);
+ssize_t ftrace_filter_write_iter(struct kiocb *iocb, struct iov_iter *from);
+ssize_t ftrace_notrace_write_iter(struct kiocb *iocb, struct iov_iter *from);
 int ftrace_regex_release(struct inode *inode, struct file *file);
 
 void __init
@@ -1077,8 +1075,9 @@ static inline unsigned long ftrace_location(unsigned long ip)
 #define ftrace_free_filter(ops) do { } while (0)
 #define ftrace_ops_set_global_filter(ops) do { } while (0)
 
-static inline ssize_t ftrace_filter_write(struct file *file, const char __user *ubuf,
-			    size_t cnt, loff_t *ppos) { return -ENODEV; }
+static inline ssize_t ftrace_filter_write_iter(struct kiocb *iocb,
+					       struct iov_iter *from)
+{ return -ENODEV; }
 static inline ssize_t ftrace_notrace_write(struct file *file, const char __user *ubuf,
 			     size_t cnt, loff_t *ppos) { return -ENODEV; }
 static inline int

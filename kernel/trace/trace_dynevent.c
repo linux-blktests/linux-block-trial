@@ -254,20 +254,19 @@ static int dyn_event_open(struct inode *inode, struct file *file)
 	return seq_open(file, &dyn_event_seq_op);
 }
 
-static ssize_t dyn_event_write(struct file *file, const char __user *buffer,
-				size_t count, loff_t *ppos)
+static ssize_t dyn_event_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return trace_parse_run_command(file, buffer, count, ppos,
+	return trace_parse_run_command(iocb->ki_filp, from,
 				       create_dyn_event);
 }
 
 static const struct file_operations dynamic_events_ops = {
 	.owner          = THIS_MODULE,
 	.open           = dyn_event_open,
-	.read           = seq_read,
+	.read_iter      = seq_read_iter,
 	.llseek         = seq_lseek,
 	.release        = seq_release,
-	.write		= dyn_event_write,
+	.write_iter	= dyn_event_write,
 };
 
 /* Make a tracefs interface for controlling dynamic events */

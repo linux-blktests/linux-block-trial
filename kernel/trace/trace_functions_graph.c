@@ -1759,40 +1759,36 @@ static struct tracer graph_trace __tracer_data = {
 };
 
 
-static ssize_t
-graph_depth_write(struct file *filp, const char __user *ubuf, size_t cnt,
-		  loff_t *ppos)
+static ssize_t graph_depth_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t cnt = iov_iter_count(from);
 	unsigned long val;
 	int ret;
 
-	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+	ret = kstrtoul_from_iter(from, cnt, 10, &val);
 	if (ret)
 		return ret;
 
 	fgraph_max_depth = val;
 
-	*ppos += cnt;
+	iocb->ki_pos += cnt;
 
 	return cnt;
 }
 
-static ssize_t
-graph_depth_read(struct file *filp, char __user *ubuf, size_t cnt,
-		 loff_t *ppos)
+static ssize_t graph_depth_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[15]; /* More than enough to hold UINT_MAX + "\n"*/
 	int n;
 
 	n = sprintf(buf, "%d\n", fgraph_max_depth);
-
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, n);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, n, to);
 }
 
 static const struct file_operations graph_depth_fops = {
 	.open		= tracing_open_generic,
-	.write		= graph_depth_write,
-	.read		= graph_depth_read,
+	.write_iter	= graph_depth_write,
+	.read_iter	= graph_depth_read,
 	.llseek		= generic_file_llseek,
 };
 

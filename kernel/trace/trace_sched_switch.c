@@ -510,7 +510,7 @@ static int tracing_saved_tgids_open(struct inode *inode, struct file *filp)
 
 const struct file_operations tracing_saved_tgids_fops = {
 	.open		= tracing_saved_tgids_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
@@ -589,14 +589,13 @@ static int tracing_saved_cmdlines_open(struct inode *inode, struct file *filp)
 
 const struct file_operations tracing_saved_cmdlines_fops = {
 	.open		= tracing_saved_cmdlines_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
 
 static ssize_t
-tracing_saved_cmdlines_size_read(struct file *filp, char __user *ubuf,
-				 size_t cnt, loff_t *ppos)
+tracing_saved_cmdlines_size_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[64];
 	int r;
@@ -607,7 +606,7 @@ tracing_saved_cmdlines_size_read(struct file *filp, char __user *ubuf,
 	arch_spin_unlock(&trace_cmdline_lock);
 	preempt_enable();
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, r, to);
 }
 
 void trace_free_saved_cmdlines_buffer(void)
@@ -635,13 +634,13 @@ static int tracing_resize_saved_cmdlines(unsigned int val)
 }
 
 static ssize_t
-tracing_saved_cmdlines_size_write(struct file *filp, const char __user *ubuf,
-				  size_t cnt, loff_t *ppos)
+tracing_saved_cmdlines_size_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t cnt = iov_iter_count(from);
 	unsigned long val;
 	int ret;
 
-	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+	ret = kstrtoul_from_iter(from, cnt, 10, &val);
 	if (ret)
 		return ret;
 
@@ -653,13 +652,13 @@ tracing_saved_cmdlines_size_write(struct file *filp, const char __user *ubuf,
 	if (ret < 0)
 		return ret;
 
-	*ppos += cnt;
+	iocb->ki_pos += cnt;
 
 	return cnt;
 }
 
 const struct file_operations tracing_saved_cmdlines_size_fops = {
 	.open		= tracing_open_generic,
-	.read		= tracing_saved_cmdlines_size_read,
-	.write		= tracing_saved_cmdlines_size_write,
+	.read_iter	= tracing_saved_cmdlines_size_read,
+	.write_iter	= tracing_saved_cmdlines_size_write,
 };

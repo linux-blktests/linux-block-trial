@@ -627,8 +627,8 @@ struct tracer {
 	void			(*close)(struct trace_iterator *iter);
 	void			(*pipe_close)(struct trace_iterator *iter);
 	ssize_t			(*read)(struct trace_iterator *iter,
-					struct file *filp, char __user *ubuf,
-					size_t cnt, loff_t *ppos);
+					struct kiocb *iocb,
+					struct iov_iter *to);
 	ssize_t			(*splice_read)(struct trace_iterator *iter,
 					       struct file *filp,
 					       loff_t *ppos,
@@ -795,7 +795,7 @@ void *trace_pid_start(struct trace_pid_list *pid_list, loff_t *pos);
 int trace_pid_show(struct seq_file *m, void *v);
 int trace_pid_write(struct trace_pid_list *filtered_pids,
 		    struct trace_pid_list **new_pid_list,
-		    const char __user *ubuf, size_t cnt);
+		    struct iov_iter *from);
 
 #ifdef CONFIG_TRACER_SNAPSHOT
 void update_max_tr(struct trace_array *tr, struct task_struct *tsk, int cpu,
@@ -1344,8 +1344,8 @@ static inline void trace_parser_fail(struct trace_parser *parser)
 
 extern int trace_parser_get_init(struct trace_parser *parser, int size);
 extern void trace_parser_put(struct trace_parser *parser);
-extern int trace_get_user(struct trace_parser *parser, const char __user *ubuf,
-	size_t cnt, loff_t *ppos);
+extern int trace_get_user(struct trace_parser *parser, struct iov_iter *from,
+	loff_t *ppos);
 
 /*
  * Only create function graph options if function graph is configured.
@@ -2166,7 +2166,7 @@ extern int tracing_set_cpumask(struct trace_array *tr,
 #define MAX_EVENT_NAME_LEN	64
 
 extern ssize_t trace_parse_run_command(struct file *file,
-		const char __user *buffer, size_t count, loff_t *ppos,
+		struct iov_iter *from,
 		int (*createfn)(const char *));
 
 extern unsigned int err_pos(char *cmd, const char *str);

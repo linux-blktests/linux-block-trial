@@ -129,7 +129,7 @@ static int available_reactors_open(struct inode *inode, struct file *file)
 
 static const struct file_operations available_reactors_ops = {
 	.open    = available_reactors_open,
-	.read    = seq_read,
+	.read_iter    = seq_read_iter,
 	.llseek  = seq_lseek,
 	.release = seq_release
 };
@@ -200,10 +200,9 @@ static void monitor_swap_reactors(struct rv_monitor *mon, struct rv_reactor *rea
 	monitor_swap_reactors_single(mon, reactor, false);
 }
 
-static ssize_t
-monitor_reactors_write(struct file *file, const char __user *user_buf,
-		      size_t count, loff_t *ppos)
+static ssize_t monitor_reactors_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char buff[MAX_RV_REACTOR_NAME_SIZE + 2];
 	struct rv_monitor *mon;
 	struct rv_reactor *reactor;
@@ -217,7 +216,7 @@ monitor_reactors_write(struct file *file, const char __user *user_buf,
 
 	memset(buff, 0, sizeof(buff));
 
-	retval = simple_write_to_buffer(buff, sizeof(buff) - 1, ppos, user_buf, count);
+	retval = simple_copy_from_iter(buff, &iocb->ki_pos, sizeof(buff) - 1, from);
 	if (retval < 0)
 		return -EFAULT;
 
@@ -230,7 +229,7 @@ monitor_reactors_write(struct file *file, const char __user *user_buf,
 	/*
 	 * See monitor_reactors_open()
 	 */
-	seq_f = file->private_data;
+	seq_f = iocb->ki_filp->private_data;
 	mon = seq_f->private;
 
 	guard(mutex)(&rv_interface_lock);
@@ -275,10 +274,10 @@ static int monitor_reactors_open(struct inode *inode, struct file *file)
 
 static const struct file_operations monitor_reactors_ops = {
 	.open    = monitor_reactors_open,
-	.read    = seq_read,
+	.read_iter    = seq_read_iter,
 	.llseek  = seq_lseek,
 	.release = seq_release,
-	.write = monitor_reactors_write
+	.write_iter = monitor_reactors_write
 };
 
 static int __rv_register_reactor(struct rv_reactor *reactor)
@@ -345,15 +344,13 @@ static bool rv_reacting_on(void)
 	return READ_ONCE(reacting_on);
 }
 
-static ssize_t reacting_on_read_data(struct file *filp,
-				     char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t reacting_on_read_data(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *buff;
 
 	buff = rv_reacting_on() ? "1\n" : "0\n";
 
-	return simple_read_from_buffer(user_buf, count, ppos, buff, strlen(buff)+1);
+	return simple_copy_to_iter(buff, &iocb->ki_pos, strlen(buff)+1, to);
 }
 
 static void turn_reacting_off(void)
@@ -370,13 +367,13 @@ static void turn_reacting_on(void)
 	smp_wmb();
 }
 
-static ssize_t reacting_on_write_data(struct file *filp, const char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t reacting_on_write_data(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	int retval;
 	bool val;
 
-	retval = kstrtobool_from_user(user_buf, count, &val);
+	retval = kstrtobool_from_iter(from, count, &val);
 	if (retval)
 		return retval;
 
@@ -398,8 +395,8 @@ static ssize_t reacting_on_write_data(struct file *filp, const char __user *user
 
 static const struct file_operations reacting_on_fops = {
 	.open   = simple_open,
-	.write  = reacting_on_write_data,
-	.read   = reacting_on_read_data,
+	.write_iter  = reacting_on_write_data,
+	.read_iter   = reacting_on_read_data,
 };
 
 /**

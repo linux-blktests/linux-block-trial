@@ -320,29 +320,26 @@ static struct ftrace_ops trace_ops __read_mostly =
 	.func = stack_trace_call,
 };
 
-static ssize_t
-stack_max_size_read(struct file *filp, char __user *ubuf,
-		    size_t count, loff_t *ppos)
+static ssize_t stack_max_size_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	unsigned long *ptr = filp->private_data;
+	unsigned long *ptr = iocb->ki_filp->private_data;
 	char buf[64];
 	int r;
 
 	r = snprintf(buf, sizeof(buf), "%ld\n", *ptr);
 	if (r > sizeof(buf))
 		r = sizeof(buf);
-	return simple_read_from_buffer(ubuf, count, ppos, buf, r);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, r, to);
 }
 
-static ssize_t
-stack_max_size_write(struct file *filp, const char __user *ubuf,
-		     size_t count, loff_t *ppos)
+static ssize_t stack_max_size_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	long *ptr = filp->private_data;
+	long *ptr = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned long val, flags;
 	int ret;
 
-	ret = kstrtoul_from_user(ubuf, count, 10, &val);
+	ret = kstrtoul_from_iter(from, count, 10, &val);
 	if (ret)
 		return ret;
 
@@ -367,8 +364,8 @@ stack_max_size_write(struct file *filp, const char __user *ubuf,
 
 static const struct file_operations stack_max_size_fops = {
 	.open		= tracing_open_generic,
-	.read		= stack_max_size_read,
-	.write		= stack_max_size_write,
+	.read_iter	= stack_max_size_read,
+	.write_iter	= stack_max_size_write,
 	.llseek		= default_llseek,
 };
 
@@ -486,7 +483,7 @@ static int stack_trace_open(struct inode *inode, struct file *file)
 
 static const struct file_operations stack_trace_fops = {
 	.open		= stack_trace_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
@@ -505,8 +502,8 @@ stack_trace_filter_open(struct inode *inode, struct file *file)
 
 static const struct file_operations stack_trace_filter_fops = {
 	.open = stack_trace_filter_open,
-	.read = seq_read,
-	.write = ftrace_filter_write,
+	.read_iter = seq_read_iter,
+	.write_iter = ftrace_filter_write_iter,
 	.llseek = tracing_lseek,
 	.release = ftrace_regex_release,
 };

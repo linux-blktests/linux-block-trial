@@ -238,15 +238,14 @@ bool rv_is_container_monitor(struct rv_monitor *mon)
 /*
  * This section collects the monitor/ files and folders.
  */
-static ssize_t monitor_enable_read_data(struct file *filp, char __user *user_buf, size_t count,
-					loff_t *ppos)
+static ssize_t monitor_enable_read_data(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct rv_monitor *mon = filp->private_data;
+	struct rv_monitor *mon = iocb->ki_filp->private_data;
 	const char *buff;
 
 	buff = mon->enabled ? "1\n" : "0\n";
 
-	return simple_read_from_buffer(user_buf, count, ppos, buff, strlen(buff)+1);
+	return simple_copy_to_iter(buff, &iocb->ki_pos, strlen(buff)+1, to);
 }
 
 /*
@@ -364,14 +363,14 @@ int rv_enable_monitor(struct rv_monitor *mon)
 /*
  * interface for enabling/disabling a monitor.
  */
-static ssize_t monitor_enable_write_data(struct file *filp, const char __user *user_buf,
-					 size_t count, loff_t *ppos)
+static ssize_t monitor_enable_write_data(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct rv_monitor *mon = filp->private_data;
+	size_t count = iov_iter_count(from);
+	struct rv_monitor *mon = iocb->ki_filp->private_data;
 	int retval;
 	bool val;
 
-	retval = kstrtobool_from_user(user_buf, count, &val);
+	retval = kstrtobool_from_iter(from, count, &val);
 	if (retval)
 		return retval;
 
@@ -387,29 +386,28 @@ static ssize_t monitor_enable_write_data(struct file *filp, const char __user *u
 
 static const struct file_operations interface_enable_fops = {
 	.open   = simple_open,
-	.write  = monitor_enable_write_data,
-	.read   = monitor_enable_read_data,
+	.write_iter  = monitor_enable_write_data,
+	.read_iter   = monitor_enable_read_data,
 };
 
 /*
  * Interface to read monitors description.
  */
-static ssize_t monitor_desc_read_data(struct file *filp, char __user *user_buf, size_t count,
-				      loff_t *ppos)
+static ssize_t monitor_desc_read_data(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct rv_monitor *mon = filp->private_data;
+	struct rv_monitor *mon = iocb->ki_filp->private_data;
 	char buff[256];
 
 	memset(buff, 0, sizeof(buff));
 
 	snprintf(buff, sizeof(buff), "%s\n", mon->description);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buff, strlen(buff) + 1);
+	return simple_copy_to_iter(buff, &iocb->ki_pos, strlen(buff) + 1, to);
 }
 
 static const struct file_operations interface_desc_fops = {
 	.open   = simple_open,
-	.read	= monitor_desc_read_data,
+	.read_iter	= monitor_desc_read_data,
 };
 
 /*
@@ -545,7 +543,7 @@ static int available_monitors_open(struct inode *inode, struct file *file)
 
 static const struct file_operations available_monitors_ops = {
 	.open    = available_monitors_open,
-	.read    = seq_read,
+	.read_iter    = seq_read_iter,
 	.llseek  = seq_lseek,
 	.release = seq_release
 };
@@ -581,9 +579,9 @@ static int enabled_monitors_open(struct inode *inode, struct file *file)
 	return seq_open(file, &enabled_monitors_seq_ops);
 };
 
-static ssize_t enabled_monitors_write(struct file *filp, const char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t enabled_monitors_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char buff[MAX_RV_MONITOR_NAME_SIZE + 2];
 	struct rv_monitor *mon;
 	int retval = -EINVAL;
@@ -596,7 +594,7 @@ static ssize_t enabled_monitors_write(struct file *filp, const char __user *user
 
 	memset(buff, 0, sizeof(buff));
 
-	retval = simple_write_to_buffer(buff, sizeof(buff) - 1, ppos, user_buf, count);
+	retval = simple_copy_from_iter(buff, &iocb->ki_pos, sizeof(buff) - 1, from);
 	if (retval < 0)
 		return -EFAULT;
 
@@ -642,8 +640,8 @@ static ssize_t enabled_monitors_write(struct file *filp, const char __user *user
 
 static const struct file_operations enabled_monitors_ops = {
 	.open		= enabled_monitors_open,
-	.read		= seq_read,
-	.write		= enabled_monitors_write,
+	.read_iter		= seq_read_iter,
+	.write_iter		= enabled_monitors_write,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
@@ -666,14 +664,13 @@ bool rv_monitoring_on(void)
 /*
  * monitoring_on general switcher.
  */
-static ssize_t monitoring_on_read_data(struct file *filp, char __user *user_buf,
-				       size_t count, loff_t *ppos)
+static ssize_t monitoring_on_read_data(struct kiocb *iocb, struct iov_iter *to)
 {
 	const char *buff;
 
 	buff = rv_monitoring_on() ? "1\n" : "0\n";
 
-	return simple_read_from_buffer(user_buf, count, ppos, buff, strlen(buff) + 1);
+	return simple_copy_to_iter(buff, &iocb->ki_pos, strlen(buff) + 1, to);
 }
 
 static void turn_monitoring_off(void)
@@ -713,13 +710,13 @@ static void turn_monitoring_on_with_reset(void)
 	turn_monitoring_on();
 }
 
-static ssize_t monitoring_on_write_data(struct file *filp, const char __user *user_buf,
-					size_t count, loff_t *ppos)
+static ssize_t monitoring_on_write_data(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	int retval;
 	bool val;
 
-	retval = kstrtobool_from_user(user_buf, count, &val);
+	retval = kstrtobool_from_iter(from, count, &val);
 	if (retval)
 		return retval;
 
@@ -741,8 +738,8 @@ static ssize_t monitoring_on_write_data(struct file *filp, const char __user *us
 
 static const struct file_operations monitoring_on_fops = {
 	.open   = simple_open,
-	.write  = monitoring_on_write_data,
-	.read   = monitoring_on_read_data,
+	.write_iter  = monitoring_on_write_data,
+	.read_iter   = monitoring_on_read_data,
 };
 
 static void destroy_monitor_dir(struct rv_monitor *mon)

@@ -12,6 +12,7 @@
 #include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/rculist.h>
+#include <linux/uio.h>
 
 #include "trace.h"
 
@@ -331,11 +332,11 @@ int trigger_process_regex(struct trace_event_file *file, char *buff)
 	return -EINVAL;
 }
 
-static ssize_t event_trigger_regex_write(struct file *file,
-					 const char __user *ubuf,
-					 size_t cnt, loff_t *ppos)
+static ssize_t event_trigger_regex_write(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
 	struct trace_event_file *event_file;
+	size_t cnt = iov_iter_count(from);
 	ssize_t ret;
 	char *buf __free(kfree) = NULL;
 
@@ -345,13 +346,17 @@ static ssize_t event_trigger_regex_write(struct file *file,
 	if (cnt >= PAGE_SIZE)
 		return -EINVAL;
 
-	buf = memdup_user_nul(ubuf, cnt);
-	if (IS_ERR(buf))
-		return PTR_ERR(buf);
+	buf = kmalloc(cnt + 1, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	if (!copy_from_iter_full(buf, cnt, from))
+		return -EFAULT;
+	buf[cnt] = '\0';
 
 	guard(mutex)(&event_mutex);
 
-	event_file = event_file_file(file);
+	event_file = event_file_file(iocb->ki_filp);
 	if (unlikely(!event_file))
 		return -ENODEV;
 
@@ -359,7 +364,7 @@ static ssize_t event_trigger_regex_write(struct file *file,
 	if (ret < 0)
 		return ret;
 
-	*ppos += cnt;
+	iocb->ki_pos += cnt;
 	return cnt;
 }
 
@@ -372,10 +377,9 @@ static int event_trigger_regex_release(struct inode *inode, struct file *file)
 }
 
 static ssize_t
-event_trigger_write(struct file *filp, const char __user *ubuf,
-		    size_t cnt, loff_t *ppos)
+event_trigger_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return event_trigger_regex_write(filp, ubuf, cnt, ppos);
+	return event_trigger_regex_write(iocb, from);
 }
 
 static int
@@ -393,8 +397,8 @@ event_trigger_release(struct inode *inode, struct file *file)
 
 const struct file_operations event_trigger_fops = {
 	.open = event_trigger_open,
-	.read = seq_read,
-	.write = event_trigger_write,
+	.read_iter = seq_read_iter,
+	.write_iter = event_trigger_write,
 	.llseek = tracing_lseek,
 	.release = event_trigger_release,
 };

@@ -155,7 +155,7 @@ int trace_pid_show(struct seq_file *m, void *v)
 
 int trace_pid_write(struct trace_pid_list *filtered_pids,
 		    struct trace_pid_list **new_pid_list,
-		    const char __user *ubuf, size_t cnt)
+		    struct iov_iter *from)
 {
 	struct trace_pid_list *pid_list;
 	struct trace_parser parser;
@@ -195,17 +195,15 @@ int trace_pid_write(struct trace_pid_list *filtered_pids,
 	}
 
 	ret = 0;
-	while (cnt > 0) {
+	while (iov_iter_count(from) > 0) {
 
 		pos = 0;
 
-		ret = trace_get_user(&parser, ubuf, cnt, &pos);
+		ret = trace_get_user(&parser, from, &pos);
 		if (ret < 0)
 			break;
 
 		read += ret;
-		ubuf += ret;
-		cnt -= ret;
 
 		if (!trace_parser_loaded(&parser))
 			break;

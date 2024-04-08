@@ -2305,18 +2305,16 @@ static int synth_events_open(struct inode *inode, struct file *file)
 	return seq_open(file, &synth_events_seq_op);
 }
 
-static ssize_t synth_events_write(struct file *file,
-				  const char __user *buffer,
-				  size_t count, loff_t *ppos)
+static ssize_t synth_events_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return trace_parse_run_command(file, buffer, count, ppos,
+	return trace_parse_run_command(iocb->ki_filp, from,
 				       create_or_delete_synth_event);
 }
 
 static const struct file_operations synth_events_fops = {
 	.open           = synth_events_open,
-	.write		= synth_events_write,
-	.read           = seq_read,
+	.write_iter	= synth_events_write,
+	.read_iter      = seq_read_iter,
 	.llseek         = seq_lseek,
 	.release        = seq_release,
 };

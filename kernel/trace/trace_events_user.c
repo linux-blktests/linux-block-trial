@@ -2327,20 +2327,6 @@ static int user_events_open(struct inode *node, struct file *file)
 	return 0;
 }
 
-static ssize_t user_events_write(struct file *file, const char __user *ubuf,
-				 size_t count, loff_t *ppos)
-{
-	struct iov_iter i;
-
-	if (unlikely(*ppos != 0))
-		return -EFAULT;
-
-	if (unlikely(import_ubuf(ITER_SOURCE, (char __user *)ubuf, count, &i)))
-		return -EFAULT;
-
-	return user_events_write_core(file, &i);
-}
-
 static ssize_t user_events_write_iter(struct kiocb *kp, struct iov_iter *i)
 {
 	return user_events_write_core(kp->ki_filp, i);
@@ -2742,7 +2728,6 @@ out:
 
 static const struct file_operations user_data_fops = {
 	.open		= user_events_open,
-	.write		= user_events_write,
 	.write_iter	= user_events_write_iter,
 	.unlocked_ioctl	= user_events_ioctl,
 	.release	= user_events_release,
@@ -2838,7 +2823,7 @@ static int user_status_open(struct inode *node, struct file *file)
 
 static const struct file_operations user_status_fops = {
 	.open		= user_status_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };

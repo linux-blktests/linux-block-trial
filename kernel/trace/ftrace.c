@@ -946,14 +946,13 @@ static void unregister_ftrace_profiler(void)
 }
 #endif /* CONFIG_FUNCTION_GRAPH_TRACER */
 
-static ssize_t
-ftrace_profile_write(struct file *filp, const char __user *ubuf,
-		     size_t cnt, loff_t *ppos)
+static ssize_t ftrace_profile_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t cnt = iov_iter_count(from);
 	unsigned long val;
 	int ret;
 
-	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+	ret = kstrtoul_from_iter(from, cnt, 10, &val);
 	if (ret)
 		return ret;
 
@@ -980,26 +979,24 @@ ftrace_profile_write(struct file *filp, const char __user *ubuf,
 		}
 	}
 
-	*ppos += cnt;
+	iocb->ki_pos += cnt;
 
 	return cnt;
 }
 
-static ssize_t
-ftrace_profile_read(struct file *filp, char __user *ubuf,
-		     size_t cnt, loff_t *ppos)
+static ssize_t ftrace_profile_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[64];		/* big enough to hold a number */
 	int r;
 
 	r = sprintf(buf, "%u\n", ftrace_profile_enabled);
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, r, to);
 }
 
 static const struct file_operations ftrace_profile_fops = {
 	.open		= tracing_open_generic,
-	.read		= ftrace_profile_read,
-	.write		= ftrace_profile_write,
+	.read_iter	= ftrace_profile_read,
+	.write_iter	= ftrace_profile_write,
 	.llseek		= default_llseek,
 };
 
@@ -5802,12 +5799,13 @@ static int ftrace_process_regex(struct ftrace_iterator *iter,
 }
 
 static ssize_t
-ftrace_regex_write(struct file *file, const char __user *ubuf,
-		   size_t cnt, loff_t *ppos, int enable)
+ftrace_regex_write(struct kiocb *iocb, struct iov_iter *from, int enable)
 {
+	struct file *file = iocb->ki_filp;
 	struct ftrace_iterator *iter;
 	struct trace_parser *parser;
 	ssize_t ret, read;
+	size_t cnt = iov_iter_count(from);
 
 	if (!cnt)
 		return 0;
@@ -5824,7 +5822,7 @@ ftrace_regex_write(struct file *file, const char __user *ubuf,
 	/* iter->hash is a local copy, so we don't need regex_lock */
 
 	parser = &iter->parser;
-	read = trace_get_user(parser, ubuf, cnt, ppos);
+	read = trace_get_user(parser, from, &iocb->ki_pos);
 
 	if (read >= 0 && trace_parser_loaded(parser) &&
 	    !trace_parser_cont(parser)) {
@@ -5838,18 +5836,14 @@ ftrace_regex_write(struct file *file, const char __user *ubuf,
 	return read;
 }
 
-ssize_t
-ftrace_filter_write(struct file *file, const char __user *ubuf,
-		    size_t cnt, loff_t *ppos)
+ssize_t ftrace_filter_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	return ftrace_regex_write(file, ubuf, cnt, ppos, 1);
+	return ftrace_regex_write(iocb, from, 1);
 }
 
-ssize_t
-ftrace_notrace_write(struct file *file, const char __user *ubuf,
-		     size_t cnt, loff_t *ppos)
+ssize_t ftrace_notrace_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	return ftrace_regex_write(file, ubuf, cnt, ppos, 0);
+	return ftrace_regex_write(iocb, from, 0);
 }
 
 static int
@@ -6999,44 +6993,44 @@ int ftrace_regex_release(struct inode *inode, struct file *file)
 
 static const struct file_operations ftrace_avail_fops = {
 	.open = ftrace_avail_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = seq_release_private,
 };
 
 static const struct file_operations ftrace_enabled_fops = {
 	.open = ftrace_enabled_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = seq_release_private,
 };
 
 static const struct file_operations ftrace_touched_fops = {
 	.open = ftrace_touched_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = seq_release_private,
 };
 
 static const struct file_operations ftrace_avail_addrs_fops = {
 	.open = ftrace_avail_addrs_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = seq_release_private,
 };
 
 static const struct file_operations ftrace_filter_fops = {
 	.open = ftrace_filter_open,
-	.read = seq_read,
-	.write = ftrace_filter_write,
+	.read_iter = seq_read_iter,
+	.write_iter = ftrace_filter_write_iter,
 	.llseek = tracing_lseek,
 	.release = ftrace_regex_release,
 };
 
 static const struct file_operations ftrace_notrace_fops = {
 	.open = ftrace_notrace_open,
-	.read = seq_read,
-	.write = ftrace_notrace_write,
+	.read_iter = seq_read_iter,
+	.write_iter = ftrace_notrace_write_iter,
 	.llseek = tracing_lseek,
 	.release = ftrace_regex_release,
 };
@@ -7392,12 +7386,13 @@ ftrace_graph_set_hash(struct ftrace_hash *hash, char *buffer)
 }
 
 static ssize_t
-ftrace_graph_write(struct file *file, const char __user *ubuf,
-		   size_t cnt, loff_t *ppos)
+ftrace_graph_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	struct file *file = iocb->ki_filp;
 	ssize_t read, ret = 0;
 	struct ftrace_graph_data *fgd = file->private_data;
 	struct trace_parser *parser;
+	size_t cnt = iov_iter_count(from);
 
 	if (!cnt)
 		return 0;
@@ -7410,7 +7405,7 @@ ftrace_graph_write(struct file *file, const char __user *ubuf,
 
 	parser = &fgd->parser;
 
-	read = trace_get_user(parser, ubuf, cnt, ppos);
+	read = trace_get_user(parser, from, &iocb->ki_pos);
 
 	if (read >= 0 && trace_parser_loaded(parser) &&
 	    !trace_parser_cont(parser)) {
@@ -7428,16 +7423,16 @@ ftrace_graph_write(struct file *file, const char __user *ubuf,
 
 static const struct file_operations ftrace_graph_fops = {
 	.open		= ftrace_graph_open,
-	.read		= seq_read,
-	.write		= ftrace_graph_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= ftrace_graph_write,
 	.llseek		= tracing_lseek,
 	.release	= ftrace_graph_release,
 };
 
 static const struct file_operations ftrace_graph_notrace_fops = {
 	.open		= ftrace_graph_notrace_open,
-	.read		= seq_read,
-	.write		= ftrace_graph_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= ftrace_graph_write,
 	.llseek		= tracing_lseek,
 	.release	= ftrace_graph_release,
 };
@@ -8876,15 +8871,15 @@ static void ignore_task_cpu(void *data)
 }
 
 static ssize_t
-pid_write(struct file *filp, const char __user *ubuf,
-	  size_t cnt, loff_t *ppos, int type)
+pid_write(struct kiocb *iocb, struct iov_iter *from, int type)
 {
-	struct seq_file *m = filp->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct trace_array *tr = m->private;
 	struct trace_pid_list *filtered_pids;
 	struct trace_pid_list *other_pids;
 	struct trace_pid_list *pid_list;
 	ssize_t ret;
+	size_t cnt = iov_iter_count(from);
 
 	if (!cnt)
 		return 0;
@@ -8909,7 +8904,7 @@ pid_write(struct file *filp, const char __user *ubuf,
 		return -EINVAL;
 	}
 
-	ret = trace_pid_write(filtered_pids, &pid_list, ubuf, cnt);
+	ret = trace_pid_write(filtered_pids, &pid_list, from);
 	if (ret < 0)
 		return ret;
 
@@ -8941,23 +8936,21 @@ pid_write(struct file *filp, const char __user *ubuf,
 	ftrace_update_pid_func();
 	ftrace_startup_all(0);
 
-	*ppos += ret;
+	iocb->ki_pos += ret;
 
 	return ret;
 }
 
 static ssize_t
-ftrace_pid_write(struct file *filp, const char __user *ubuf,
-		 size_t cnt, loff_t *ppos)
+ftrace_pid_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return pid_write(filp, ubuf, cnt, ppos, TRACE_PIDS);
+	return pid_write(iocb, from, TRACE_PIDS);
 }
 
 static ssize_t
-ftrace_no_pid_write(struct file *filp, const char __user *ubuf,
-		    size_t cnt, loff_t *ppos)
+ftrace_no_pid_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return pid_write(filp, ubuf, cnt, ppos, TRACE_NO_PIDS);
+	return pid_write(iocb, from, TRACE_NO_PIDS);
 }
 
 static int
@@ -8972,16 +8965,16 @@ ftrace_pid_release(struct inode *inode, struct file *file)
 
 static const struct file_operations ftrace_pid_fops = {
 	.open		= ftrace_pid_open,
-	.write		= ftrace_pid_write,
-	.read		= seq_read,
+	.write_iter	= ftrace_pid_write,
+	.read_iter	= seq_read_iter,
 	.llseek		= tracing_lseek,
 	.release	= ftrace_pid_release,
 };
 
 static const struct file_operations ftrace_no_pid_fops = {
 	.open		= ftrace_no_pid_open,
-	.write		= ftrace_no_pid_write,
-	.read		= seq_read,
+	.write_iter	= ftrace_no_pid_write,
+	.read_iter	= seq_read_iter,
 	.llseek		= tracing_lseek,
 	.release	= ftrace_pid_release,
 };

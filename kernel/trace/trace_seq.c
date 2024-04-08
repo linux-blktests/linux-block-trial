@@ -21,6 +21,7 @@
  *
  */
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <linux/seq_file.h>
 #include <linux/trace_seq.h>
 
@@ -402,6 +403,51 @@ int trace_seq_to_user(struct trace_seq *s, char __user *ubuf, int cnt)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(trace_seq_to_user);
+
+/**
+ * trace_seq_to_iter - copy the sequence buffer to an iov_iter
+ * @s: trace sequence descriptor
+ * @iter: The iov_iter to copy to
+ * @cnt: The amount to copy
+ *
+ * Copies the sequence buffer into the iov_iter pointed to
+ * by @iter. It starts from the last read position (@s->readpos)
+ * and writes up to @cnt characters or till it reaches the end of
+ * the content in the buffer (@s->len), which ever comes first.
+ *
+ * On success, it returns a positive number of the number of bytes
+ * it copied.
+ *
+ * On failure it returns -EBUSY if all of the content in the
+ * sequence has been already read, which includes nothing in the
+ * sequence (@s->len == @s->readpos).
+ *
+ * Returns -EFAULT if the copy to the iter fails.
+ */
+int trace_seq_to_iter(struct trace_seq *s, struct iov_iter *iter, int cnt)
+{
+	int len;
+
+	__trace_seq_init(s);
+
+	if (!cnt)
+		return 0;
+
+	len = seq_buf_used(&s->seq);
+
+	if (len <= s->readpos)
+		return -EBUSY;
+
+	len -= s->readpos;
+	if (cnt > len)
+		cnt = len;
+	if (!copy_to_iter_full(s->seq.buffer + s->readpos, cnt, iter))
+		return -EFAULT;
+
+	s->readpos += cnt;
+	return cnt;
+}
+EXPORT_SYMBOL_GPL(trace_seq_to_iter);
 
 int trace_seq_hex_dump(struct trace_seq *s, const char *prefix_str,
 		       int prefix_type, int rowsize, int groupsize,

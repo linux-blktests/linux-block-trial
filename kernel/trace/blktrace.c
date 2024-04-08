@@ -18,6 +18,7 @@
 #include <linux/time.h>
 #include <linux/uaccess.h>
 #include <linux/list.h>
+#include <linux/uio.h>
 #include <linux/blk-cgroup.h>
 
 #include "../../block/blk.h"
@@ -566,39 +567,38 @@ int blk_trace_remove(struct request_queue *q)
 }
 EXPORT_SYMBOL_GPL(blk_trace_remove);
 
-static ssize_t blk_dropped_read(struct file *filp, char __user *buffer,
-				size_t count, loff_t *ppos)
+static ssize_t blk_dropped_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct blk_trace *bt = filp->private_data;
+	struct blk_trace *bt = iocb->ki_filp->private_data;
 	size_t dropped = relay_stats(bt->rchan, RELAY_STATS_BUF_FULL);
 	char buf[16];
 
 	snprintf(buf, sizeof(buf), "%zu\n", dropped);
 
-	return simple_read_from_buffer(buffer, count, ppos, buf, strlen(buf));
+	return simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 }
 
 static const struct file_operations blk_dropped_fops = {
 	.owner =	THIS_MODULE,
 	.open =		simple_open,
-	.read =		blk_dropped_read,
+	.read_iter =	blk_dropped_read,
 	.llseek =	default_llseek,
 };
 
-static ssize_t blk_msg_write(struct file *filp, const char __user *buffer,
-				size_t count, loff_t *ppos)
+static ssize_t blk_msg_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char *msg;
 	struct blk_trace *bt;
+	size_t count = iov_iter_count(from);
 
 	if (count >= BLK_TN_MAX_MSG)
 		return -EINVAL;
 
-	msg = memdup_user_nul(buffer, count);
-	if (IS_ERR(msg))
-		return PTR_ERR(msg);
+	msg = iterdup_nul(from, count);
+	if (!msg)
+		return -ENOMEM;
 
-	bt = filp->private_data;
+	bt = iocb->ki_filp->private_data;
 	__blk_trace_note_message(bt, NULL, "%s", msg);
 	kfree(msg);
 
@@ -608,7 +608,7 @@ static ssize_t blk_msg_write(struct file *filp, const char __user *buffer,
 static const struct file_operations blk_msg_fops = {
 	.owner =	THIS_MODULE,
 	.open =		simple_open,
-	.write =	blk_msg_write,
+	.write_iter =	blk_msg_write,
 	.llseek =	noop_llseek,
 };
 
