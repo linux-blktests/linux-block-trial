@@ -232,6 +232,32 @@ void *memdup_user(const void __user *src, size_t len)
 EXPORT_SYMBOL(memdup_user);
 
 /**
+ * iterdup - duplicate memory region
+ *
+ * @src: source iov_iter
+ * @len: number of bytes to copy
+ *
+ * Return: an ERR_PTR() on failure.  Result is physically
+ * contiguous, to be freed by kfree().
+ */
+void *iterdup(struct iov_iter *src, size_t len)
+{
+	void *p;
+
+	p = kmalloc_track_caller(len, GFP_USER | __GFP_NOWARN);
+	if (!p)
+		return ERR_PTR(-ENOMEM);
+
+	if (!copy_from_iter_full(p, len, src)) {
+		kfree(p);
+		return ERR_PTR(-EFAULT);
+	}
+
+	return p;
+}
+EXPORT_SYMBOL(iterdup);
+
+/**
  * vmemdup_user - duplicate memory region from user space
  *
  * @src: source address in user space
@@ -313,6 +339,37 @@ void *memdup_user_nul(const void __user *src, size_t len)
 	return p;
 }
 EXPORT_SYMBOL(memdup_user_nul);
+
+/**
+ * iterdup_nul - duplicate memory region from iov_iter and NUL-terminate
+ *
+ * @src: source address to copy from
+ * @len: number of bytes to copy
+ *
+ * Return: an ERR_PTR() on failure.
+ */
+void *iterdup_nul(struct iov_iter *src, size_t len)
+{
+	char *p;
+
+	/*
+	 * Always use GFP_KERNEL, since copy_from_iter_full() can sleep and
+	 * cause pagefault, which makes it pointless to use GFP_NOFS
+	 * or GFP_ATOMIC.
+	 */
+	p = kmalloc_track_caller(len + 1, GFP_KERNEL);
+	if (!p)
+		return ERR_PTR(-ENOMEM);
+
+	if (!copy_from_iter_full(p, len, src)) {
+		kfree(p);
+		return ERR_PTR(-EFAULT);
+	}
+	p[len] = '\0';
+
+	return p;
+}
+EXPORT_SYMBOL(iterdup_nul);
 
 /* Check if the vma is being used as a stack by this task */
 int vma_is_stack_for_current(const struct vm_area_struct *vma)

@@ -19,6 +19,10 @@ extern void *memdup_user(const void __user *, size_t) __realloc_size(2);
 extern void *vmemdup_user(const void __user *, size_t) __realloc_size(2);
 extern void *memdup_user_nul(const void __user *, size_t);
 
+struct iov_iter;
+void *iterdup_nul(struct iov_iter *, size_t);
+void *iterdup(struct iov_iter *, size_t);
+
 /**
  * memdup_array_user - duplicate array from user space
  * @src: source address in user space
