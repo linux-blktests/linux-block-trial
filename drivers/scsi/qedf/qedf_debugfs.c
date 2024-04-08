@@ -95,17 +95,14 @@ const struct qedf_debugfs_ops qedf_debugfs_ops[] = {
 
 DECLARE_PER_CPU(struct qedf_percpu_iothread_s, qedf_percpu_iothreads);
 
-static ssize_t
-qedf_dbg_fp_int_cmd_read(struct file *filp, char __user *buffer, size_t count,
-			 loff_t *ppos)
+static ssize_t qedf_dbg_fp_int_cmd_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	ssize_t ret;
 	size_t cnt = 0;
 	char *cbuf;
 	int id;
 	struct qedf_fastpath *fp = NULL;
-	struct qedf_dbg_ctx *qedf_dbg =
-				(struct qedf_dbg_ctx *)filp->private_data;
+	struct qedf_dbg_ctx *qedf_dbg = iocb->ki_filp->private_data;
 	struct qedf_ctx *qedf = container_of(qedf_dbg,
 	    struct qedf_ctx, dbg_ctx);
 
@@ -125,52 +122,47 @@ qedf_dbg_fp_int_cmd_read(struct file *filp, char __user *buffer, size_t count,
 				 "#%d: %lu\n", id, fp->completions);
 	}
 
-	ret = simple_read_from_buffer(buffer, count, ppos, cbuf, cnt);
-
+	ret = simple_copy_to_iter(cbuf, &iocb->ki_pos, cnt, to);
 	vfree(cbuf);
-
 	return ret;
 }
 
 static ssize_t
-qedf_dbg_fp_int_cmd_write(struct file *filp, const char __user *buffer,
-			  size_t count, loff_t *ppos)
+qedf_dbg_fp_int_cmd_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	if (!count || *ppos)
+	size_t count = iov_iter_count(from);
+
+	if (!count || iocb->ki_pos)
 		return 0;
 
 	return count;
 }
 
-static ssize_t
-qedf_dbg_debug_cmd_read(struct file *filp, char __user *buffer, size_t count,
-			loff_t *ppos)
+static ssize_t qedf_dbg_debug_cmd_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int cnt;
 	char cbuf[32];
-	struct qedf_dbg_ctx *qedf_dbg =
-				(struct qedf_dbg_ctx *)filp->private_data;
+	struct qedf_dbg_ctx *qedf_dbg = iocb->ki_filp->private_data;
 
 	QEDF_INFO(qedf_dbg, QEDF_LOG_DEBUGFS, "debug mask=0x%x\n", qedf_debug);
 	cnt = scnprintf(cbuf, sizeof(cbuf), "debug mask = 0x%x\n", qedf_debug);
 
-	return simple_read_from_buffer(buffer, count, ppos, cbuf, cnt);
+	return simple_copy_to_iter(cbuf, &iocb->ki_pos, cnt, to);
 }
 
 static ssize_t
-qedf_dbg_debug_cmd_write(struct file *filp, const char __user *buffer,
-			 size_t count, loff_t *ppos)
+qedf_dbg_debug_cmd_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	uint32_t val;
 	void *kern_buf;
 	int rval;
-	struct qedf_dbg_ctx *qedf_dbg =
-	    (struct qedf_dbg_ctx *)filp->private_data;
+	struct qedf_dbg_ctx *qedf_dbg = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 
-	if (!count || *ppos)
+	if (!count || iocb->ki_pos)
 		return 0;
 
-	kern_buf = memdup_user_nul(buffer, count);
+	kern_buf = iterdup_nul(from, count);
 	if (IS_ERR(kern_buf))
 		return PTR_ERR(kern_buf);
 
@@ -189,13 +181,11 @@ qedf_dbg_debug_cmd_write(struct file *filp, const char __user *buffer,
 }
 
 static ssize_t
-qedf_dbg_stop_io_on_error_cmd_read(struct file *filp, char __user *buffer,
-				   size_t count, loff_t *ppos)
+qedf_dbg_stop_io_on_error_cmd_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int cnt;
 	char cbuf[7];
-	struct qedf_dbg_ctx *qedf_dbg =
-				(struct qedf_dbg_ctx *)filp->private_data;
+	struct qedf_dbg_ctx *qedf_dbg = iocb->ki_filp->private_data;
 	struct qedf_ctx *qedf = container_of(qedf_dbg,
 	    struct qedf_ctx, dbg_ctx);
 
@@ -203,26 +193,24 @@ qedf_dbg_stop_io_on_error_cmd_read(struct file *filp, char __user *buffer,
 	cnt = scnprintf(cbuf, sizeof(cbuf), "%s\n",
 	    qedf->stop_io_on_error ? "true" : "false");
 
-	return simple_read_from_buffer(buffer, count, ppos, cbuf, cnt);
+	return simple_copy_to_iter(cbuf, &iocb->ki_pos, cnt, to);
 }
 
 static ssize_t
-qedf_dbg_stop_io_on_error_cmd_write(struct file *filp,
-				    const char __user *buffer, size_t count,
-				    loff_t *ppos)
+qedf_dbg_stop_io_on_error_cmd_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	void *kern_buf;
-	struct qedf_dbg_ctx *qedf_dbg =
-				(struct qedf_dbg_ctx *)filp->private_data;
+	struct qedf_dbg_ctx *qedf_dbg = iocb->ki_filp->private_data;
 	struct qedf_ctx *qedf = container_of(qedf_dbg, struct qedf_ctx,
 	    dbg_ctx);
+	size_t count = iov_iter_count(from);
 
 	QEDF_INFO(qedf_dbg, QEDF_LOG_DEBUGFS, "entered\n");
 
-	if (!count || *ppos)
+	if (!count || iocb->ki_pos)
 		return 0;
 
-	kern_buf = memdup_user(buffer, 6);
+	kern_buf = iterdup(from, 6);
 	if (IS_ERR(kern_buf))
 		return PTR_ERR(kern_buf);
 
@@ -383,30 +371,28 @@ qedf_dbg_driver_stats_open(struct inode *inode, struct file *file)
 }
 
 static ssize_t
-qedf_dbg_clear_stats_cmd_read(struct file *filp, char __user *buffer,
-				   size_t count, loff_t *ppos)
+qedf_dbg_clear_stats_cmd_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	int cnt = 0;
 
 	/* Essentially a read stub */
-	cnt = min_t(int, count, cnt - *ppos);
-	*ppos += cnt;
+	cnt = min_t(int, count, cnt - iocb->ki_pos);
+	iocb->ki_pos += cnt;
 	return cnt;
 }
 
 static ssize_t
-qedf_dbg_clear_stats_cmd_write(struct file *filp,
-				    const char __user *buffer, size_t count,
-				    loff_t *ppos)
+qedf_dbg_clear_stats_cmd_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct qedf_dbg_ctx *qedf_dbg =
-				(struct qedf_dbg_ctx *)filp->private_data;
+	struct qedf_dbg_ctx *qedf_dbg = iocb->ki_filp->private_data;
 	struct qedf_ctx *qedf = container_of(qedf_dbg, struct qedf_ctx,
 	    dbg_ctx);
+	size_t count = iov_iter_count(from);
 
 	QEDF_INFO(qedf_dbg, QEDF_LOG_DEBUGFS, "Clearing stat counters.\n");
 
-	if (!count || *ppos)
+	if (!count || iocb->ki_pos)
 		return 0;
 
 	/* Clear stat counters exposed by 'stats' node */

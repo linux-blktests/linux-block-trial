@@ -133,8 +133,8 @@ struct qedf_list_of_funcs {
 { \
 	.owner  = THIS_MODULE, \
 	.open   = simple_open, \
-	.read   = drv##_dbg_##ops##_cmd_read, \
-	.write  = drv##_dbg_##ops##_cmd_write \
+	.read_iter   = drv##_dbg_##ops##_cmd_read, \
+	.write_iter  = drv##_dbg_##ops##_cmd_write \
 }
 
 /* Used for debugfs sequential files */
@@ -142,7 +142,7 @@ struct qedf_list_of_funcs {
 { \
 	.owner = THIS_MODULE, \
 	.open = drv##_dbg_##ops##_open, \
-	.read = seq_read, \
+	.read_iter = seq_read_iter, \
 	.llseek = seq_lseek, \
 	.release = single_release, \
 }
