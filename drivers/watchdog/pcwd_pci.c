@@ -431,9 +431,9 @@ static int pcipcwd_get_timeleft(int *time_left)
  *	/dev/watchdog handling
  */
 
-static ssize_t pcipcwd_write(struct file *file, const char __user *data,
-			     size_t len, loff_t *ppos)
+static ssize_t pcipcwd_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	/* See if we got the magic character 'V' and reload the timer */
 	if (len) {
 		if (!nowayout) {
@@ -447,7 +447,7 @@ static ssize_t pcipcwd_write(struct file *file, const char __user *data,
 			 * magic character */
 			for (i = 0; i != len; i++) {
 				char c;
-				if (get_user(c, data + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_release = 42;
@@ -597,15 +597,14 @@ static int pcipcwd_release(struct inode *inode, struct file *file)
  *	/dev/temperature handling
  */
 
-static ssize_t pcipcwd_temp_read(struct file *file, char __user *data,
-				size_t len, loff_t *ppos)
+static ssize_t pcipcwd_temp_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int temperature;
 
 	if (pcipcwd_get_temperature(&temperature))
 		return -EFAULT;
 
-	if (copy_to_user(data, &temperature, 1))
+	if (!copy_to_iter_full(&temperature, 1, to))
 		return -EFAULT;
 
 	return 1;
@@ -643,7 +642,7 @@ static int pcipcwd_notify_sys(struct notifier_block *this, unsigned long code,
 
 static const struct file_operations pcipcwd_fops = {
 	.owner =	THIS_MODULE,
-	.write =	pcipcwd_write,
+	.write_iter =	pcipcwd_write,
 	.unlocked_ioctl = pcipcwd_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
 	.open =		pcipcwd_open,
@@ -658,7 +657,7 @@ static struct miscdevice pcipcwd_miscdev = {
 
 static const struct file_operations pcipcwd_temp_fops = {
 	.owner =	THIS_MODULE,
-	.read =		pcipcwd_temp_read,
+	.read_iter =	pcipcwd_temp_read,
 	.open =		pcipcwd_temp_open,
 	.release =	pcipcwd_temp_release,
 };
