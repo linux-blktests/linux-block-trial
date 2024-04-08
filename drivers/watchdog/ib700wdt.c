@@ -141,9 +141,9 @@ static int ibwdt_set_heartbeat(int t)
  *	/dev/watchdog handling
  */
 
-static ssize_t ibwdt_write(struct file *file, const char __user *buf,
-						size_t count, loff_t *ppos)
+static ssize_t ibwdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	if (count) {
 		if (!nowayout) {
 			size_t i;
@@ -153,7 +153,7 @@ static ssize_t ibwdt_write(struct file *file, const char __user *buf,
 
 			for (i = 0; i != count; i++) {
 				char c;
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_close = 42;
@@ -256,7 +256,7 @@ static int ibwdt_close(struct inode *inode, struct file *file)
 
 static const struct file_operations ibwdt_fops = {
 	.owner		= THIS_MODULE,
-	.write		= ibwdt_write,
+	.write_iter	= ibwdt_write,
 	.unlocked_ioctl	= ibwdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= ibwdt_open,
