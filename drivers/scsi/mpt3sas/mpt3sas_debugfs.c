@@ -36,17 +36,15 @@ static struct dentry *mpt3sas_debugfs_root;
  * @ppos:	Offset in the file
  */
 
-static ssize_t
-_debugfs_iocdump_read(struct file *filp, char __user *ubuf, size_t cnt,
-	loff_t *ppos)
+static ssize_t _debugfs_iocdump_read(struct kiocb *iocb, struct iov_iter *to)
 
 {
-	struct mpt3sas_debugfs_buffer *debug = filp->private_data;
+	struct mpt3sas_debugfs_buffer *debug = iocb->ki_filp->private_data;
 
 	if (!debug || !debug->buf)
 		return 0;
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, debug->buf, debug->len);
+	return simple_copy_to_iter(debug->buf, &iocb->ki_pos, debug->len, to);
 }
 
 /*
@@ -89,7 +87,7 @@ _debugfs_iocdump_release(struct inode *inode, struct file *file)
 static const struct file_operations mpt3sas_debugfs_iocdump_fops = {
 	.owner		= THIS_MODULE,
 	.open           = _debugfs_iocdump_open,
-	.read           = _debugfs_iocdump_read,
+	.read_iter      = _debugfs_iocdump_read,
 	.release        = _debugfs_iocdump_release,
 };
 
