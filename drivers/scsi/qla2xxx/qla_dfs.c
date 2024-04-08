@@ -563,7 +563,7 @@ out_free:
 
 static const struct file_operations dfs_fce_ops = {
 	.open		= qla2x00_dfs_fce_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= qla2x00_dfs_fce_release,
 	.write		= qla2x00_dfs_fce_write,
@@ -643,9 +643,8 @@ qla_dfs_naqp_show(struct seq_file *s, void *unused)
 		}							\
 	} while (0)
 
-static ssize_t
-qla_dfs_naqp_write(struct file *file, const char __user *buffer,
-    size_t count, loff_t *pos)
+static ssize_t qla_dfs_naqp_write(struct file *file,
+    const char __user *buffer, size_t count, loff_t *pos)
 {
 	struct seq_file *s = file->private_data;
 	struct scsi_qla_host *vha = s->private;
