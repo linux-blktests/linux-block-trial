@@ -161,9 +161,9 @@ static void wdt_keepalive(void)
  * /dev/watchdog handling
  */
 
-static ssize_t fop_write(struct file *file, const char __user *buf,
-						size_t count, loff_t *ppos)
+static ssize_t fop_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	/* See if we got the magic character 'V' and reload the timer */
 	if (count) {
 		if (!nowayout) {
@@ -177,7 +177,7 @@ static ssize_t fop_write(struct file *file, const char __user *buf,
 			   magic character */
 			for (ofs = 0; ofs != count; ofs++) {
 				char c;
-				if (get_user(c, buf + ofs))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					wdt_expect_close = 42;
@@ -275,7 +275,7 @@ static long fop_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 static const struct file_operations wdt_fops = {
 	.owner		= THIS_MODULE,
-	.write		= fop_write,
+	.write_iter	= fop_write,
 	.open		= fop_open,
 	.release	= fop_close,
 	.unlocked_ioctl	= fop_ioctl,
