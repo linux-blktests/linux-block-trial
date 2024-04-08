@@ -131,17 +131,16 @@ static int snapshot_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t snapshot_read(struct file *filp, char __user *buf,
-                             size_t count, loff_t *offp)
+static ssize_t snapshot_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	loff_t pg_offp = *offp & ~PAGE_MASK;
+	loff_t pg_offp = iocb->ki_pos & ~PAGE_MASK;
 	struct snapshot_data *data;
 	unsigned int sleep_flags;
 	ssize_t res;
 
 	sleep_flags = lock_system_sleep();
 
-	data = filp->private_data;
+	data = iocb->ki_filp->private_data;
 	if (!data->ready) {
 		res = -ENODATA;
 		goto Unlock;
@@ -154,10 +153,9 @@ static ssize_t snapshot_read(struct file *filp, char __user *buf,
 		res = PAGE_SIZE - pg_offp;
 	}
 
-	res = simple_read_from_buffer(buf, count, &pg_offp,
-			data_of(data->handle), res);
+	res = simple_copy_to_iter(data_of(data->handle), &iocb->ki_pos, res, to);
 	if (res > 0)
-		*offp += res;
+		iocb->ki_pos += res;
 
  Unlock:
 	unlock_system_sleep(sleep_flags);
@@ -165,10 +163,9 @@ static ssize_t snapshot_read(struct file *filp, char __user *buf,
 	return res;
 }
 
-static ssize_t snapshot_write(struct file *filp, const char __user *buf,
-                              size_t count, loff_t *offp)
+static ssize_t snapshot_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	loff_t pg_offp = *offp & ~PAGE_MASK;
+	loff_t pg_offp = iocb->ki_pos & ~PAGE_MASK;
 	struct snapshot_data *data;
 	unsigned long sleep_flags;
 	ssize_t res;
@@ -180,7 +177,7 @@ static ssize_t snapshot_write(struct file *filp, const char __user *buf,
 
 	sleep_flags = lock_system_sleep();
 
-	data = filp->private_data;
+	data = iocb->ki_filp->private_data;
 
 	if (!pg_offp) {
 		res = snapshot_write_next(&data->handle);
@@ -195,10 +192,9 @@ static ssize_t snapshot_write(struct file *filp, const char __user *buf,
 		goto unlock;
 	}
 
-	res = simple_write_to_buffer(data_of(data->handle), res, &pg_offp,
-			buf, count);
+	res = simple_copy_from_iter(data_of(data->handle), &iocb->ki_pos, res, from);
 	if (res > 0)
-		*offp += res;
+		iocb->ki_pos += res;
 unlock:
 	unlock_system_sleep(sleep_flags);
 
@@ -447,8 +443,8 @@ snapshot_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 static const struct file_operations snapshot_fops = {
 	.open = snapshot_open,
 	.release = snapshot_release,
-	.read = snapshot_read,
-	.write = snapshot_write,
+	.read_iter = snapshot_read,
+	.write_iter = snapshot_write,
 	.unlocked_ioctl = snapshot_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = snapshot_compat_ioctl,

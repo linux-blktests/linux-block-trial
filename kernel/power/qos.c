@@ -363,10 +363,9 @@ static int cpu_latency_qos_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t cpu_latency_qos_read(struct file *filp, char __user *buf,
-				    size_t count, loff_t *f_pos)
+static ssize_t cpu_latency_qos_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct pm_qos_request *req = filp->private_data;
+	struct pm_qos_request *req = iocb->ki_filp->private_data;
 	unsigned long flags;
 	s32 value;
 
@@ -377,33 +376,33 @@ static ssize_t cpu_latency_qos_read(struct file *filp, char __user *buf,
 	value = pm_qos_get_value(&cpu_latency_constraints);
 	spin_unlock_irqrestore(&pm_qos_lock, flags);
 
-	return simple_read_from_buffer(buf, count, f_pos, &value, sizeof(s32));
+	return simple_copy_to_iter(&value, &iocb->ki_pos, sizeof(s32), to);
 }
 
-static ssize_t cpu_latency_qos_write(struct file *filp, const char __user *buf,
-				     size_t count, loff_t *f_pos)
+static ssize_t cpu_latency_qos_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	s32 value;
 
 	if (count == sizeof(s32)) {
-		if (copy_from_user(&value, buf, sizeof(s32)))
+		if (!copy_from_iter_full(&value, sizeof(s32), from))
 			return -EFAULT;
 	} else {
 		int ret;
 
-		ret = kstrtos32_from_user(buf, count, 16, &value);
+		ret = kstrtos32_from_iter(from, count, 16, &value);
 		if (ret)
 			return ret;
 	}
 
-	cpu_latency_qos_update_request(filp->private_data, value);
+	cpu_latency_qos_update_request(iocb->ki_filp->private_data, value);
 
 	return count;
 }
 
 static const struct file_operations cpu_latency_qos_fops = {
-	.write = cpu_latency_qos_write,
-	.read = cpu_latency_qos_read,
+	.write_iter = cpu_latency_qos_write,
+	.read_iter = cpu_latency_qos_read,
 	.open = cpu_latency_qos_open,
 	.release = cpu_latency_qos_release,
 	.llseek = noop_llseek,
