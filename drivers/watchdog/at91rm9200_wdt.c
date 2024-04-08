@@ -199,11 +199,10 @@ static long at91_wdt_ioctl(struct file *file,
 /*
  * Pat the watchdog whenever device is written to.
  */
-static ssize_t at91_wdt_write(struct file *file, const char *data,
-						size_t len, loff_t *ppos)
+static ssize_t at91_wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	at91_wdt_reload();		/* pat the watchdog */
-	return len;
+	return iov_iter_count(from);
 }
 
 /* ......................................................................... */
@@ -214,7 +213,7 @@ static const struct file_operations at91wdt_fops = {
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= at91_wdt_open,
 	.release	= at91_wdt_close,
-	.write		= at91_wdt_write,
+	.write_iter	= at91_wdt_write,
 };
 
 static struct miscdevice at91wdt_miscdev = {
