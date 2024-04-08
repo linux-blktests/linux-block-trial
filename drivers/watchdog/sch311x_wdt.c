@@ -218,9 +218,9 @@ static void sch311x_wdt_get_status(int *status)
  *	/dev/watchdog handling
  */
 
-static ssize_t sch311x_wdt_write(struct file *file, const char __user *buf,
-						size_t count, loff_t *ppos)
+static ssize_t sch311x_wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	if (count) {
 		if (!nowayout) {
 			size_t i;
@@ -229,7 +229,7 @@ static ssize_t sch311x_wdt_write(struct file *file, const char __user *buf,
 
 			for (i = 0; i != count; i++) {
 				char c;
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					sch311x_wdt_expect_close = 42;
@@ -334,7 +334,7 @@ static int sch311x_wdt_close(struct inode *inode, struct file *file)
 
 static const struct file_operations sch311x_wdt_fops = {
 	.owner		= THIS_MODULE,
-	.write		= sch311x_wdt_write,
+	.write_iter	= sch311x_wdt_write,
 	.unlocked_ioctl	= sch311x_wdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= sch311x_wdt_open,
