@@ -104,10 +104,8 @@ static void reset_ip_core(struct axis_fifo *fifo)
 
 /**
  * axis_fifo_read() - Read a packet from AXIS-FIFO character device.
- * @f: Open file.
- * @buf: User space buffer to read to.
- * @len: User space buffer length.
- * @off: Buffer offset.
+ * @iocb: Metadata for IO.
+ * @to: User space buffer to read to.
  *
  * As defined by the device's documentation, we need to check the device's
  * occupancy before reading the length register and then the data. All these
@@ -198,10 +196,8 @@ FOPS_READ_ITER_HELPER(axis_fifo_read);
 
 /**
  * axis_fifo_write() - Write buffer to AXIS-FIFO character device.
- * @f: Open file.
- * @buf: User space buffer to write to the device.
- * @len: User space buffer length.
- * @off: Buffer offset.
+ * @iocb: Metadata for IO.
+ * @from: User space buffer to write to the device.
  *
  * As defined by the device's documentation, we need to write to the device's
  * data buffer then to the device's packet length register atomically. Also,
