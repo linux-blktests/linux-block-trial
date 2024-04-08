@@ -233,9 +233,9 @@ static void fei_attr_remove_all(void)
 	}
 }
 
-static ssize_t fei_write(struct file *file, const char __user *buffer,
-			 size_t count, loff_t *ppos)
+static ssize_t fei_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct fei_attr *attr;
 	unsigned long addr;
 	char *buf, *sym;
@@ -245,7 +245,7 @@ static ssize_t fei_write(struct file *file, const char __user *buffer,
 	if (count > KSYM_NAME_LEN)
 		count = KSYM_NAME_LEN;
 
-	buf = memdup_user_nul(buffer, count);
+	buf = iterdup_nul(from, count);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -306,8 +306,8 @@ out:
 
 static const struct file_operations fei_ops = {
 	.open =		fei_open,
-	.read =		seq_read,
-	.write =	fei_write,
+	.read_iter =	seq_read_iter,
+	.write_iter =	fei_write,
 	.llseek =	seq_lseek,
 	.release =	seq_release,
 };
