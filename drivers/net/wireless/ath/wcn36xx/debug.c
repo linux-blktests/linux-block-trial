@@ -25,10 +25,9 @@
 
 #ifdef CONFIG_WCN36XX_DEBUGFS
 
-static ssize_t read_file_bool_bmps(struct file *file, char __user *user_buf,
-				   size_t count, loff_t *ppos)
+static ssize_t read_file_bool_bmps(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wcn36xx *wcn = file->private_data;
+	struct wcn36xx *wcn = iocb->ki_filp->private_data;
 	struct wcn36xx_vif *vif_priv = NULL;
 	struct ieee80211_vif *vif = NULL;
 	char buf[3];
@@ -46,14 +45,13 @@ static ssize_t read_file_bool_bmps(struct file *file, char __user *user_buf,
 	buf[1] = '\n';
 	buf[2] = 0x00;
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
-static ssize_t write_file_bool_bmps(struct file *file,
-				    const char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t write_file_bool_bmps(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wcn36xx *wcn = file->private_data;
+	struct wcn36xx *wcn = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct wcn36xx_vif *vif_priv = NULL;
 	struct ieee80211_vif *vif = NULL;
 
@@ -61,7 +59,7 @@ static ssize_t write_file_bool_bmps(struct file *file,
 	int buf_size;
 
 	buf_size = min(count, (sizeof(buf)-1));
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 
 	switch (buf[0]) {
@@ -92,15 +90,14 @@ static ssize_t write_file_bool_bmps(struct file *file,
 
 static const struct file_operations fops_wcn36xx_bmps = {
 	.open = simple_open,
-	.read  =       read_file_bool_bmps,
-	.write =       write_file_bool_bmps,
+	.read_iter  =       read_file_bool_bmps,
+	.write_iter =       write_file_bool_bmps,
 };
 
-static ssize_t write_file_dump(struct file *file,
-				    const char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t write_file_dump(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wcn36xx *wcn = file->private_data;
+	struct wcn36xx *wcn = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char buf[255], *tmp;
 	int buf_size;
 	u32 arg[WCN36xx_MAX_DUMP_ARGS];
@@ -110,7 +107,7 @@ static ssize_t write_file_dump(struct file *file,
 	memset(arg, 0, sizeof(arg));
 
 	buf_size = min(count, (sizeof(buf) - 1));
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 
 	tmp = buf;
@@ -134,14 +131,13 @@ static ssize_t write_file_dump(struct file *file,
 
 static const struct file_operations fops_wcn36xx_dump = {
 	.open = simple_open,
-	.write =       write_file_dump,
+	.write_iter =       write_file_dump,
 };
 
-static ssize_t read_file_firmware_feature_caps(struct file *file,
-					       char __user *user_buf,
-					       size_t count, loff_t *ppos)
+static ssize_t read_file_firmware_feature_caps(struct kiocb *iocb,
+					       struct iov_iter *to)
 {
-	struct wcn36xx *wcn = file->private_data;
+	struct wcn36xx *wcn = iocb->ki_filp->private_data;
 	size_t len = 0, buf_len = 2048;
 	char *buf;
 	int i;
@@ -162,7 +158,7 @@ static ssize_t read_file_firmware_feature_caps(struct file *file,
 	}
 	mutex_unlock(&wcn->hal_mutex);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	kfree(buf);
 
 	return ret;
@@ -170,7 +166,7 @@ static ssize_t read_file_firmware_feature_caps(struct file *file,
 
 static const struct file_operations fops_wcn36xx_firmware_feat_caps = {
 	.open = simple_open,
-	.read = read_file_firmware_feature_caps,
+	.read_iter = read_file_firmware_feature_caps,
 };
 
 #define ADD_FILE(name, mode, fop, priv_data)		\
