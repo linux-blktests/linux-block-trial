@@ -733,8 +733,7 @@ static void dma_entry_free(struct dma_debug_entry *entry)
  *   2. Preallocate a given number of dma_debug_entry structs
  */
 
-static ssize_t filter_read(struct file *file, char __user *user_buf,
-			   size_t count, loff_t *ppos)
+static ssize_t filter_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[NAME_MAX_LEN + 1];
 	unsigned long flags;
@@ -752,12 +751,12 @@ static ssize_t filter_read(struct file *file, char __user *user_buf,
 	len = scnprintf(buf, NAME_MAX_LEN + 1, "%s\n", current_driver_name);
 	read_unlock_irqrestore(&driver_name_lock, flags);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t filter_write(struct file *file, const char __user *userbuf,
-			    size_t count, loff_t *ppos)
+static ssize_t filter_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char buf[NAME_MAX_LEN];
 	unsigned long flags;
 	size_t len;
@@ -770,7 +769,7 @@ static ssize_t filter_write(struct file *file, const char __user *userbuf,
 	 * need to copy to temporary buffer first
 	 */
 	len = min(count, (size_t)(NAME_MAX_LEN - 1));
-	if (copy_from_user(buf, userbuf, len))
+	if (!copy_from_iter_full(buf, len, from))
 		return -EFAULT;
 
 	buf[len] = 0;
@@ -820,8 +819,8 @@ out_unlock:
 }
 
 static const struct file_operations filter_fops = {
-	.read  = filter_read,
-	.write = filter_write,
+	.read_iter  = filter_read,
+	.write_iter = filter_write,
 	.llseek = default_llseek,
 };
 
