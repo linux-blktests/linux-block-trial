@@ -712,12 +712,12 @@ static struct device_node *fsi_slave_find_of_node(struct fsi_master *master,
 	return NULL;
 }
 
-static ssize_t cfam_read(struct file *filep, char __user *buf, size_t count,
-			 loff_t *offset)
+static ssize_t cfam_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct fsi_slave *slave = filep->private_data;
+	struct fsi_slave *slave = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	size_t total_len, read_len;
-	loff_t off = *offset;
+	loff_t off = iocb->ki_pos;
 	ssize_t rc;
 
 	if (off < 0)
@@ -735,7 +735,7 @@ static ssize_t cfam_read(struct file *filep, char __user *buf, size_t count,
 		rc = fsi_slave_read(slave, off, &data, read_len);
 		if (rc)
 			goto fail;
-		rc = copy_to_user(buf + total_len, &data, read_len);
+		rc = !copy_to_iter_full(&data, read_len, to);
 		if (rc) {
 			rc = -EFAULT;
 			goto fail;
@@ -744,16 +744,16 @@ static ssize_t cfam_read(struct file *filep, char __user *buf, size_t count,
 	}
 	rc = count;
  fail:
-	*offset = off;
+	iocb->ki_pos = off;
 	return rc;
 }
 
-static ssize_t cfam_write(struct file *filep, const char __user *buf,
-			  size_t count, loff_t *offset)
+static ssize_t cfam_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct fsi_slave *slave = filep->private_data;
+	struct fsi_slave *slave = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	size_t total_len, write_len;
-	loff_t off = *offset;
+	loff_t off = iocb->ki_pos;
 	ssize_t rc;
 
 
@@ -769,7 +769,7 @@ static ssize_t cfam_write(struct file *filep, const char __user *buf,
 		write_len = min_t(size_t, count, 4);
 		write_len -= off & 0x3;
 
-		rc = copy_from_user(&data, buf + total_len, write_len);
+		rc = !copy_from_iter_full(&data, write_len, from);
 		if (rc) {
 			rc = -EFAULT;
 			goto fail;
@@ -781,7 +781,7 @@ static ssize_t cfam_write(struct file *filep, const char __user *buf,
 	}
 	rc = count;
  fail:
-	*offset = off;
+	iocb->ki_pos = off;
 	return rc;
 }
 
@@ -813,8 +813,8 @@ static const struct file_operations cfam_fops = {
 	.owner		= THIS_MODULE,
 	.open		= cfam_open,
 	.llseek		= cfam_llseek,
-	.read		= cfam_read,
-	.write		= cfam_write,
+	.read_iter	= cfam_read,
+	.write_iter	= cfam_write,
 };
 
 static ssize_t send_term_store(struct device *dev,

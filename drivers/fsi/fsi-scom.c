@@ -310,11 +310,11 @@ static int get_scom(struct scom_device *scom, uint64_t *value,
 				 >> SCOM_STATUS_PIB_RESP_SHIFT);
 }
 
-static ssize_t scom_read(struct file *filep, char __user *buf, size_t len,
-			 loff_t *offset)
+static ssize_t scom_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct scom_device *scom = filep->private_data;
+	struct scom_device *scom = iocb->ki_filp->private_data;
 	struct device *dev = &scom->fsi_dev->dev;
+	size_t len = iov_iter_count(to);
 	uint64_t val;
 	int rc;
 
@@ -325,32 +325,32 @@ static ssize_t scom_read(struct file *filep, char __user *buf, size_t len,
 	if (scom->dead)
 		rc = -ENODEV;
 	else
-		rc = get_scom(scom, &val, *offset);
+		rc = get_scom(scom, &val, iocb->ki_pos);
 	mutex_unlock(&scom->lock);
 	if (rc) {
 		dev_dbg(dev, "get_scom fail:%d\n", rc);
 		return rc;
 	}
 
-	rc = copy_to_user(buf, &val, len);
+	rc = !copy_to_iter_full(&val, len, to);
 	if (rc)
 		dev_dbg(dev, "copy to user failed:%d\n", rc);
 
 	return rc ? rc : len;
 }
 
-static ssize_t scom_write(struct file *filep, const char __user *buf,
-			  size_t len, loff_t *offset)
+static ssize_t scom_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int rc;
-	struct scom_device *scom = filep->private_data;
+	struct scom_device *scom = iocb->ki_filp->private_data;
 	struct device *dev = &scom->fsi_dev->dev;
+	size_t len = iov_iter_count(from);
 	uint64_t val;
 
 	if (len != sizeof(uint64_t))
 		return -EINVAL;
 
-	rc = copy_from_user(&val, buf, len);
+	rc = !copy_from_iter_full(&val, len, from);
 	if (rc) {
 		dev_dbg(dev, "copy from user failed:%d\n", rc);
 		return -EINVAL;
@@ -360,7 +360,7 @@ static ssize_t scom_write(struct file *filep, const char __user *buf,
 	if (scom->dead)
 		rc = -ENODEV;
 	else
-		rc = put_scom(scom, val, *offset);
+		rc = put_scom(scom, val, iocb->ki_pos);
 	mutex_unlock(&scom->lock);
 	if (rc) {
 		dev_dbg(dev, "put_scom failed with:%d\n", rc);
@@ -514,8 +514,8 @@ static const struct file_operations scom_fops = {
 	.owner		= THIS_MODULE,
 	.open		= scom_open,
 	.llseek		= scom_llseek,
-	.read		= scom_read,
-	.write		= scom_write,
+	.read_iter	= scom_read,
+	.write_iter	= scom_write,
 	.unlocked_ioctl	= scom_ioctl,
 };
 

@@ -864,6 +864,7 @@ static ssize_t sbefifo_user_read(struct file *file, char __user *buf,
 	mutex_unlock(&user->file_lock);
 	return rc;
 }
+FOPS_READ_ITER_HELPER(sbefifo_user_read);
 
 static ssize_t sbefifo_user_write(struct file *file, const char __user *buf,
 				  size_t len, loff_t *offset)
@@ -927,6 +928,7 @@ static ssize_t sbefifo_user_write(struct file *file, const char __user *buf,
 	/* And that's it, we'll issue the command on a read */
 	return rc;
 }
+FOPS_WRITE_ITER_HELPER(sbefifo_user_write);
 
 static int sbefifo_user_release(struct inode *inode, struct file *file)
 {
@@ -1004,8 +1006,8 @@ static long sbefifo_user_ioctl(struct file *file, unsigned int cmd, unsigned lon
 static const struct file_operations sbefifo_fops = {
 	.owner		= THIS_MODULE,
 	.open		= sbefifo_user_open,
-	.read		= sbefifo_user_read,
-	.write		= sbefifo_user_write,
+	.read_iter	= sbefifo_user_read_iter,
+	.write_iter	= sbefifo_user_write_iter,
 	.release	= sbefifo_user_release,
 	.unlocked_ioctl = sbefifo_user_ioctl,
 };

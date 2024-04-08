@@ -32,41 +32,42 @@ static loff_t i2cr_scom_llseek(struct file *file, loff_t offset, int whence)
 	return offset;
 }
 
-static ssize_t i2cr_scom_read(struct file *filep, char __user *buf, size_t len, loff_t *offset)
+static ssize_t i2cr_scom_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct i2cr_scom *scom = filep->private_data;
+	struct i2cr_scom *scom = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	u64 data;
 	int ret;
 
 	if (len != sizeof(data))
 		return -EINVAL;
 
-	ret = fsi_master_i2cr_read(scom->i2cr, (u32)*offset, &data);
+	ret = fsi_master_i2cr_read(scom->i2cr, (u32)iocb->ki_pos, &data);
 	if (ret)
 		return ret;
 
-	ret = copy_to_user(buf, &data, len);
+	ret = !copy_to_iter_full(&data, len, to);
 	if (ret)
 		return ret;
 
 	return len;
 }
 
-static ssize_t i2cr_scom_write(struct file *filep, const char __user *buf, size_t len,
-			       loff_t *offset)
+static ssize_t i2cr_scom_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct i2cr_scom *scom = filep->private_data;
+	struct i2cr_scom *scom = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	u64 data;
 	int ret;
 
 	if (len != sizeof(data))
 		return -EINVAL;
 
-	ret = copy_from_user(&data, buf, len);
+	ret = !copy_from_iter(&data, len, from);
 	if (ret)
 		return ret;
 
-	ret = fsi_master_i2cr_write(scom->i2cr, (u32)*offset, data);
+	ret = fsi_master_i2cr_write(scom->i2cr, (u32)iocb->ki_pos, data);
 	if (ret)
 		return ret;
 
@@ -77,8 +78,8 @@ static const struct file_operations i2cr_scom_fops = {
 	.owner		= THIS_MODULE,
 	.open		= simple_open,
 	.llseek		= i2cr_scom_llseek,
-	.read		= i2cr_scom_read,
-	.write		= i2cr_scom_write,
+	.read_iter	= i2cr_scom_read,
+	.write_iter	= i2cr_scom_write,
 };
 
 static int i2cr_scom_probe(struct fsi_device *fsi_dev)

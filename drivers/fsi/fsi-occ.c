@@ -100,10 +100,10 @@ static int occ_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t occ_read(struct file *file, char __user *buf, size_t len,
-			loff_t *offset)
+static ssize_t occ_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct occ_client *client = file->private_data;
+	struct occ_client *client = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	ssize_t rc = 0;
 
 	if (!client)
@@ -122,7 +122,7 @@ static ssize_t occ_read(struct file *file, char __user *buf, size_t len,
 
 	/* Grab how much data we have to read */
 	rc = min(len, client->data_size - client->read_offset);
-	if (copy_to_user(buf, client->buffer + client->read_offset, rc))
+	if (!copy_to_iter_full(client->buffer + client->read_offset, rc, to))
 		rc = -EFAULT;
 	else
 		client->read_offset += rc;
@@ -133,10 +133,10 @@ static ssize_t occ_read(struct file *file, char __user *buf, size_t len,
 	return rc;
 }
 
-static ssize_t occ_write(struct file *file, const char __user *buf,
-			 size_t len, loff_t *offset)
+static ssize_t occ_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct occ_client *client = file->private_data;
+	struct occ_client *client = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	size_t rlen, data_length;
 	ssize_t rc;
 	u8 *cmd;
@@ -159,7 +159,7 @@ static ssize_t occ_write(struct file *file, const char __user *buf,
 	 * bytes 1-2: data length (msb first)
 	 * bytes 3-n: data
 	 */
-	if (copy_from_user(&cmd[1], buf, len)) {
+	if (!copy_from_iter_full(&cmd[1], len, from)) {
 		rc = -EFAULT;
 		goto done;
 	}
@@ -205,8 +205,8 @@ static int occ_release(struct inode *inode, struct file *file)
 static const struct file_operations occ_fops = {
 	.owner = THIS_MODULE,
 	.open = occ_open,
-	.read = occ_read,
-	.write = occ_write,
+	.read_iter = occ_read,
+	.write_iter = occ_write,
 	.release = occ_release,
 };
 
