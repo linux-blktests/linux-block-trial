@@ -550,6 +550,7 @@ free_old_hdr:
 	kfree(old_hdr);
 	return retval;
 }
+FOPS_READ_ITER_HELPER(sg_read);
 
 static ssize_t
 sg_new_read(Sg_fd * sfp, char __user *buf, size_t count, Sg_request * srp)
@@ -704,6 +705,7 @@ sg_write(struct file *filp, const char __user *buf, size_t count, loff_t * ppos)
 	k = sg_common_write(sfp, srp, cmnd, sfp->timeout, blocking);
 	return (k < 0) ? k : count;
 }
+FOPS_WRITE_ITER_HELPER(sg_write);
 
 static ssize_t
 sg_new_write(Sg_fd *sfp, struct file *file, const char __user *buf,
@@ -1410,8 +1412,8 @@ sg_rq_end_io(struct request *rq, blk_status_t status,
 
 static const struct file_operations sg_fops = {
 	.owner = THIS_MODULE,
-	.read = sg_read,
-	.write = sg_write,
+	.read_iter = sg_read_iter,
+	.write_iter = sg_write_iter,
 	.poll = sg_poll,
 	.unlocked_ioctl = sg_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
