@@ -228,9 +228,9 @@ static struct notifier_block it8712f_wdt_notifier = {
 	.notifier_call = it8712f_wdt_notify,
 };
 
-static ssize_t it8712f_wdt_write(struct file *file, const char __user *data,
-					size_t len, loff_t *ppos)
+static ssize_t it8712f_wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	/* check for a magic close character */
 	if (len) {
 		size_t i;
@@ -240,7 +240,7 @@ static ssize_t it8712f_wdt_write(struct file *file, const char __user *data,
 		expect_close = 0;
 		for (i = 0; i < len; ++i) {
 			char c;
-			if (get_user(c, data + i))
+			if (get_iter(c, from))
 				return -EFAULT;
 			if (c == 'V')
 				expect_close = 42;
@@ -341,7 +341,7 @@ static int it8712f_wdt_release(struct inode *inode, struct file *file)
 
 static const struct file_operations it8712f_wdt_fops = {
 	.owner = THIS_MODULE,
-	.write = it8712f_wdt_write,
+	.write_iter = it8712f_wdt_write,
 	.unlocked_ioctl = it8712f_wdt_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
 	.open = it8712f_wdt_open,
