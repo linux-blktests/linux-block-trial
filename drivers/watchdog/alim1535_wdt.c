@@ -134,9 +134,9 @@ static int ali_settimer(int t)
  *	the next close to turn off the watchdog.
  */
 
-static ssize_t ali_write(struct file *file, const char __user *data,
-						size_t len, loff_t *ppos)
+static ssize_t ali_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	/* See if we got the magic character 'V' and reload the timer */
 	if (len) {
 		if (!nowayout) {
@@ -150,7 +150,7 @@ static ssize_t ali_write(struct file *file, const char __user *data,
 			   the magic character */
 			for (i = 0; i != len; i++) {
 				char c;
-				if (get_user(c, data + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					ali_expect_release = 42;
@@ -359,7 +359,7 @@ static int __init ali_find_watchdog(void)
 
 static const struct file_operations ali_fops = {
 	.owner		=	THIS_MODULE,
-	.write		=	ali_write,
+	.write_iter	=	ali_write,
 	.unlocked_ioctl =	ali_ioctl,
 	.compat_ioctl	= 	compat_ptr_ioctl,
 	.open		=	ali_open,
