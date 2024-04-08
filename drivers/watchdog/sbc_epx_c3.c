@@ -89,9 +89,9 @@ static int epx_c3_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t epx_c3_write(struct file *file, const char __user *data,
-			size_t len, loff_t *ppos)
+static ssize_t epx_c3_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	/* Refresh the timer. */
 	if (len)
 		epx_c3_pet();
@@ -153,7 +153,7 @@ static int epx_c3_notify_sys(struct notifier_block *this, unsigned long code,
 
 static const struct file_operations epx_c3_fops = {
 	.owner		= THIS_MODULE,
-	.write		= epx_c3_write,
+	.write_iter	= epx_c3_write,
 	.unlocked_ioctl	= epx_c3_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= epx_c3_open,
