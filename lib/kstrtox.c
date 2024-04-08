@@ -19,6 +19,7 @@
 #include <linux/math64.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 
 #include "kstrtox.h"
 
@@ -409,6 +410,23 @@ int kstrtobool_from_user(const char __user *s, size_t count, bool *res)
 }
 EXPORT_SYMBOL(kstrtobool_from_user);
 
+/*
+ * Like kstrtobool_from_user(), but takes a source iov_iter rather than a
+ * buffer.
+ */
+int kstrtobool_from_iter(struct iov_iter *src, size_t count, bool *res)
+{
+	/* Longest string needed to differentiate, newline, terminator */
+	char buf[4];
+
+	count = min(count, sizeof(buf) - 1);
+	if (!copy_from_iter_full(buf, count, src))
+		return -EFAULT;
+	buf[count] = '\0';
+	return kstrtobool(buf, res);
+}
+EXPORT_SYMBOL(kstrtobool_from_iter);
+
 #define kstrto_from_user(f, g, type)					\
 int f(const char __user *s, size_t count, unsigned int base, type *res)	\
 {									\
@@ -433,3 +451,25 @@ kstrto_from_user(kstrtou16_from_user,	kstrtou16,	u16);
 kstrto_from_user(kstrtos16_from_user,	kstrtos16,	s16);
 kstrto_from_user(kstrtou8_from_user,	kstrtou8,	u8);
 kstrto_from_user(kstrtos8_from_user,	kstrtos8,	s8);
+
+#define kstrto_from_iter(f, g, type)					\
+int f(struct iov_iter *s, size_t count, unsigned int base, type *res)	\
+{									\
+	/* sign, base 2 representation, newline, terminator */		\
+	char buf[1 + sizeof(type) * 8 + 1 + 1];				\
+									\
+	count = min(count, sizeof(buf) - 1);				\
+	if (!copy_from_iter_full(buf, count, s))			\
+		return -EFAULT;						\
+	buf[count] = '\0';						\
+	return g(buf, base, res);					\
+}									\
+EXPORT_SYMBOL(f)
+
+kstrto_from_iter(kstrtoull_from_iter,	kstrtoull,	unsigned long long);
+kstrto_from_iter(kstrtoul_from_iter,	kstrtoul,	unsigned long);
+kstrto_from_iter(kstrtol_from_iter,	kstrtol,	long);
+kstrto_from_iter(kstrtouint_from_iter,	kstrtouint,	unsigned int);
+kstrto_from_iter(kstrtoint_from_iter,	kstrtoint,	int);
+kstrto_from_iter(kstrtou16_from_iter,	kstrtou16,	u16);
+kstrto_from_iter(kstrtou8_from_iter,	kstrtou8,	u8);
