@@ -958,12 +958,10 @@ static size_t relay_file_read_end_pos(struct rchan_buf *buf,
 	return end_pos;
 }
 
-static ssize_t relay_file_read(struct file *filp,
-			       char __user *buffer,
-			       size_t count,
-			       loff_t *ppos)
+static ssize_t relay_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct rchan_buf *buf = filp->private_data;
+	struct rchan_buf *buf = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	size_t read_start, avail;
 	size_t written = 0;
 	int ret;
@@ -971,7 +969,7 @@ static ssize_t relay_file_read(struct file *filp,
 	if (!count)
 		return 0;
 
-	inode_lock(file_inode(filp));
+	inode_lock(file_inode(iocb->ki_filp));
 	do {
 		void *from;
 
@@ -986,27 +984,25 @@ static ssize_t relay_file_read(struct file *filp,
 		avail = min(count, avail);
 		from = buf->start + read_start;
 		ret = avail;
-		if (copy_to_user(buffer, from, avail))
+		if (!copy_to_iter_full(from, avail, to))
 			break;
 
-		buffer += ret;
 		written += ret;
 		count -= ret;
 
 		relay_file_read_consume(buf, read_start, ret);
-		*ppos = relay_file_read_end_pos(buf, read_start, ret);
+		iocb->ki_pos = relay_file_read_end_pos(buf, read_start, ret);
 	} while (count);
-	inode_unlock(file_inode(filp));
+	inode_unlock(file_inode(iocb->ki_filp));
 
 	return written;
 }
-
 
 const struct file_operations relay_file_operations = {
 	.open		= relay_file_open,
 	.poll		= relay_file_poll,
 	.mmap_prepare	= relay_file_mmap_prepare,
-	.read		= relay_file_read,
+	.read_iter	= relay_file_read,
 	.release	= relay_file_release,
 };
 EXPORT_SYMBOL_GPL(relay_file_operations);
