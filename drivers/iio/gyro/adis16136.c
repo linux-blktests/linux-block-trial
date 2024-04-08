@@ -65,10 +65,9 @@ struct adis16136 {
 
 #ifdef CONFIG_DEBUG_FS
 
-static ssize_t adis16136_show_serial(struct file *file,
-		char __user *userbuf, size_t count, loff_t *ppos)
+static ssize_t adis16136_show_serial(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct adis16136 *adis16136 = file->private_data;
+	struct adis16136 *adis16136 = iocb->ki_filp->private_data;
 	uint16_t lot1, lot2, lot3, serial;
 	char buf[20];
 	size_t len;
@@ -94,12 +93,12 @@ static ssize_t adis16136_show_serial(struct file *file,
 	len = snprintf(buf, sizeof(buf), "%.4x%.4x%.4x-%.4x\n", lot1, lot2,
 		lot3, serial);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations adis16136_serial_fops = {
 	.open = simple_open,
-	.read = adis16136_show_serial,
+	.read_iter = adis16136_show_serial,
 	.llseek = default_llseek,
 	.owner = THIS_MODULE,
 };
