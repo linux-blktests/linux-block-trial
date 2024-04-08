@@ -1082,10 +1082,9 @@ static const struct gb_camera_debugfs_entry gb_camera_debugfs_entries[] = {
 	},
 };
 
-static ssize_t gb_camera_debugfs_read(struct file *file, char __user *buf,
-				      size_t len, loff_t *offset)
+static ssize_t gb_camera_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	const struct gb_camera_debugfs_entry *op = file->private_data;
+	const struct gb_camera_debugfs_entry *op = iocb->ki_filp->private_data;
 	struct gb_camera *gcam = file_inode(file)->i_private;
 	struct gb_camera_debugfs_buffer *buffer;
 	ssize_t ret;
@@ -1099,23 +1098,22 @@ static ssize_t gb_camera_debugfs_read(struct file *file, char __user *buf,
 
 	buffer = &gcam->debugfs.buffers[op->buffer];
 
-	return simple_read_from_buffer(buf, len, offset, buffer->data,
-				       buffer->length);
+	return simple_copy_to_iter(buffer->data, &iocb->ki_pos, buffer->length,
+					to);
 }
 
-static ssize_t gb_camera_debugfs_write(struct file *file,
-				       const char __user *buf, size_t len,
-				       loff_t *offset)
+static ssize_t gb_camera_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	const struct gb_camera_debugfs_entry *op = file->private_data;
+	const struct gb_camera_debugfs_entry *op = iocb->ki_filp->private_data;
 	struct gb_camera *gcam = file_inode(file)->i_private;
+	size_t len = iov_iter_count(from);
 	ssize_t ret;
 	char *kbuf;
 
 	if (len > 1024)
 		return -EINVAL;
 
-	kbuf = memdup_user_nul(buf, len);
+	kbuf = iterdup_nul(buf, len);
 	if (IS_ERR(kbuf))
 		return PTR_ERR(kbuf);
 
@@ -1134,8 +1132,8 @@ static int gb_camera_debugfs_open(struct inode *inode, struct file *file)
 
 static const struct file_operations gb_camera_debugfs_ops = {
 	.open = gb_camera_debugfs_open,
-	.read = gb_camera_debugfs_read,
-	.write = gb_camera_debugfs_write,
+	.read_iter = gb_camera_debugfs_read,
+	.write_iter = gb_camera_debugfs_write,
 };
 
 static int gb_camera_debugfs_init(struct gb_camera *gcam)

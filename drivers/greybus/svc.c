@@ -674,11 +674,10 @@ static int gb_svc_version_request(struct gb_operation *op)
 	return 0;
 }
 
-static ssize_t pwr_debugfs_voltage_read(struct file *file, char __user *buf,
-					size_t len, loff_t *offset)
+static ssize_t pwr_debugfs_voltage_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct svc_debugfs_pwrmon_rail *pwrmon_rails =
-		file_inode(file)->i_private;
+		file_inode(iocb->ki_filp)->i_private;
 	struct gb_svc *svc = pwrmon_rails->svc;
 	int ret, desc;
 	u32 value;
@@ -695,14 +694,13 @@ static ssize_t pwr_debugfs_voltage_read(struct file *file, char __user *buf,
 
 	desc = scnprintf(buff, sizeof(buff), "%u\n", value);
 
-	return simple_read_from_buffer(buf, len, offset, buff, desc);
+	return simple_copy_to_iter(buff, &iocb->ki_pos, desc, to);
 }
 
-static ssize_t pwr_debugfs_current_read(struct file *file, char __user *buf,
-					size_t len, loff_t *offset)
+static ssize_t pwr_debugfs_current_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct svc_debugfs_pwrmon_rail *pwrmon_rails =
-		file_inode(file)->i_private;
+		file_inode(iocb->ki_filp)->i_private;
 	struct gb_svc *svc = pwrmon_rails->svc;
 	int ret, desc;
 	u32 value;
@@ -719,14 +717,13 @@ static ssize_t pwr_debugfs_current_read(struct file *file, char __user *buf,
 
 	desc = scnprintf(buff, sizeof(buff), "%u\n", value);
 
-	return simple_read_from_buffer(buf, len, offset, buff, desc);
+	return simple_copy_to_iter(buff, &iocb->ki_pos, desc, to);
 }
 
-static ssize_t pwr_debugfs_power_read(struct file *file, char __user *buf,
-				      size_t len, loff_t *offset)
+static ssize_t pwr_debugfs_power_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct svc_debugfs_pwrmon_rail *pwrmon_rails =
-		file_inode(file)->i_private;
+		file_inode(iocb->ki_filp)->i_private;
 	struct gb_svc *svc = pwrmon_rails->svc;
 	int ret, desc;
 	u32 value;
@@ -742,19 +739,19 @@ static ssize_t pwr_debugfs_power_read(struct file *file, char __user *buf,
 
 	desc = scnprintf(buff, sizeof(buff), "%u\n", value);
 
-	return simple_read_from_buffer(buf, len, offset, buff, desc);
+	return simple_copy_to_iter(buff, &iocb->ki_pos, desc, to);
 }
 
 static const struct file_operations pwrmon_debugfs_voltage_fops = {
-	.read		= pwr_debugfs_voltage_read,
+	.read_iter	= pwr_debugfs_voltage_read,
 };
 
 static const struct file_operations pwrmon_debugfs_current_fops = {
-	.read		= pwr_debugfs_current_read,
+	.read_iter	= pwr_debugfs_current_read,
 };
 
 static const struct file_operations pwrmon_debugfs_power_fops = {
-	.read		= pwr_debugfs_power_read,
+	.read_iter	= pwr_debugfs_power_read,
 };
 
 static void gb_svc_pwrmon_debugfs_init(struct gb_svc *svc)

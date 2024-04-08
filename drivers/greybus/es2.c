@@ -1109,10 +1109,10 @@ static int apb_log_poll(void *data)
 	return 0;
 }
 
-static ssize_t apb_log_read(struct file *f, char __user *buf,
-			    size_t count, loff_t *ppos)
+static ssize_t apb_log_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct es2_ap_dev *es2 = file_inode(f)->i_private;
+	struct es2_ap_dev *es2 = file_inode(iocb->ki_filp)->i_private;
+	size_t count = iov_iter_count(to);
 	ssize_t ret;
 	size_t copied;
 	char *tmp_buf;
@@ -1125,7 +1125,7 @@ static ssize_t apb_log_read(struct file *f, char __user *buf,
 		return -ENOMEM;
 
 	copied = kfifo_out(&es2->apb_log_fifo, tmp_buf, count);
-	ret = simple_read_from_buffer(buf, count, ppos, tmp_buf, copied);
+	ret = simple_copy_to_iter(tmp_buf, &iocb->ki_pos, copied, to);
 
 	kfree(tmp_buf);
 
@@ -1133,7 +1133,7 @@ static ssize_t apb_log_read(struct file *f, char __user *buf,
 }
 
 static const struct file_operations apb_log_fops = {
-	.read	= apb_log_read,
+	.read_iter	= apb_log_read,
 };
 
 static void usb_log_enable(struct es2_ap_dev *es2)
@@ -1163,25 +1163,24 @@ static void usb_log_disable(struct es2_ap_dev *es2)
 	es2->apb_log_task = NULL;
 }
 
-static ssize_t apb_log_enable_read(struct file *f, char __user *buf,
-				   size_t count, loff_t *ppos)
+static ssize_t apb_log_enable_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct es2_ap_dev *es2 = file_inode(f)->i_private;
+	struct es2_ap_dev *es2 = file_inode(iocb->ki_filp)->i_private;
 	int enable = !IS_ERR_OR_NULL(es2->apb_log_task);
 	char tmp_buf[3];
 
 	sprintf(tmp_buf, "%d\n", enable);
-	return simple_read_from_buffer(buf, count, ppos, tmp_buf, 2);
+	return simple_copy_to_iter(tmp_buf, &iocb->ki_pos, 2, to);
 }
 
-static ssize_t apb_log_enable_write(struct file *f, const char __user *buf,
-				    size_t count, loff_t *ppos)
+static ssize_t apb_log_enable_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int enable;
 	ssize_t retval;
-	struct es2_ap_dev *es2 = file_inode(f)->i_private;
+	struct es2_ap_dev *es2 = file_inode(iocb->ki_filp)->i_private;
+	size_t count = iov_iter_count(from);
 
-	retval = kstrtoint_from_user(buf, count, 10, &enable);
+	retval = kstrtoint_from_iter(from, count, 10, &enable);
 	if (retval)
 		return retval;
 
@@ -1194,8 +1193,8 @@ static ssize_t apb_log_enable_write(struct file *f, const char __user *buf,
 }
 
 static const struct file_operations apb_log_enable_fops = {
-	.read	= apb_log_enable_read,
-	.write	= apb_log_enable_write,
+	.read_iter	= apb_log_enable_read,
+	.write_iter	= apb_log_enable_write,
 };
 
 static int apb_get_cport_count(struct usb_device *udev)

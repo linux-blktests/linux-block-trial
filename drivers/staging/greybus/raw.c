@@ -123,7 +123,7 @@ static int gb_raw_request_handler(struct gb_operation *op)
 	return receive_data(raw, len, receive->data);
 }
 
-static int gb_raw_send(struct gb_raw *raw, u32 len, const char __user *data)
+static int gb_raw_send(struct gb_raw *raw, u32 len, struct iov_iter *from)
 {
 	struct gb_connection *connection = raw->connection;
 	struct gb_raw_send_request *request;
@@ -133,7 +133,7 @@ static int gb_raw_send(struct gb_raw *raw, u32 len, const char __user *data)
 	if (!request)
 		return -ENOMEM;
 
-	if (copy_from_user(&request->data[0], data, len)) {
+	if (!copy_from_iter_full(&request->data[0], len, from)) {
 		kfree(request);
 		return -EFAULT;
 	}
@@ -266,10 +266,10 @@ static int raw_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t raw_write(struct file *file, const char __user *buf,
-			 size_t count, loff_t *ppos)
+static ssize_t raw_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct gb_raw *raw = file->private_data;
+	struct gb_raw *raw = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int retval;
 
 	if (!count)
@@ -278,7 +278,7 @@ static ssize_t raw_write(struct file *file, const char __user *buf,
 	if (count > MAX_PACKET_SIZE)
 		return -E2BIG;
 
-	retval = gb_raw_send(raw, count, buf);
+	retval = gb_raw_send(raw, count, from);
 	if (retval)
 		return retval;
 
@@ -316,11 +316,12 @@ exit:
 	mutex_unlock(&raw->list_lock);
 	return retval;
 }
+FOPS_READ_ITER_HELPER(raw_read);
 
 static const struct file_operations raw_fops = {
 	.owner		= THIS_MODULE,
-	.write		= raw_write,
-	.read		= raw_read,
+	.write_iter	= raw_write,
+	.read_iter	= raw_read_iter,
 	.open		= raw_open,
 	.llseek		= noop_llseek,
 };
