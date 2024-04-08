@@ -1149,15 +1149,15 @@ static int sdebug_error_open(struct inode *inode, struct file *file)
 	return single_open(file, sdebug_error_show, inode->i_private);
 }
 
-static ssize_t sdebug_error_write(struct file *file, const char __user *ubuf,
-		size_t count, loff_t *ppos)
+static ssize_t sdebug_error_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char *buf;
 	unsigned int inject_type;
 	struct sdebug_err_inject *inject;
-	struct scsi_device *sdev = (struct scsi_device *)file->f_inode->i_private;
+	struct scsi_device *sdev = (struct scsi_device *)iocb->ki_filp->f_inode->i_private;
+	size_t count = iov_iter_count(from);
 
-	buf = memdup_user_nul(ubuf, count);
+	buf = iterdup_nul(from, count);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -1217,8 +1217,8 @@ out_error:
 
 static const struct file_operations sdebug_error_fops = {
 	.open	= sdebug_error_open,
-	.read	= seq_read,
-	.write	= sdebug_error_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= sdebug_error_write,
 	.release = single_release,
 };
 
@@ -1254,11 +1254,12 @@ static ssize_t sdebug_target_reset_fail_write(struct file *file,
 	}
 	return -ENODEV;
 }
+FOPS_WRITE_ITER_HELPER(sdebug_target_reset_fail_write);
 
 static const struct file_operations sdebug_target_reset_fail_fops = {
 	.open	= sdebug_target_reset_fail_open,
-	.read	= seq_read,
-	.write	= sdebug_target_reset_fail_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= sdebug_target_reset_fail_write_iter,
 	.release = single_release,
 };
 
