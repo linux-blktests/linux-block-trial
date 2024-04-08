@@ -1918,7 +1918,8 @@ st_write(struct file *filp, const char __user *buf, size_t count, loff_t * ppos)
 
 	return retval;
 }
-
+FOPS_WRITE_ITER_HELPER(st_write);
+
 /* Read data from the tape. Returns zero in the normal case, one if the
    eof status has changed, and the negative error code in case of a
    fatal error. Otherwise updates the buffer and the eof state.
@@ -2265,8 +2266,7 @@ st_read(struct file *filp, char __user *buf, size_t count, loff_t * ppos)
 
 	return retval;
 }
-
-
+FOPS_READ_ITER_HELPER(st_read);
 
 DEB(
 /* Set the driver options */
@@ -4246,8 +4246,8 @@ __setup("st=", st_setup);
 static const struct file_operations st_fops =
 {
 	.owner =	THIS_MODULE,
-	.read =		st_read,
-	.write =	st_write,
+	.read_iter =	st_read_iter,
+	.write_iter =	st_write_iter,
 	.unlocked_ioctl = st_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = st_compat_ioctl,
