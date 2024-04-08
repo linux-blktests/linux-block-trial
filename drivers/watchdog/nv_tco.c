@@ -174,9 +174,9 @@ static int nv_tco_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t nv_tco_write(struct file *file, const char __user *data,
-			    size_t len, loff_t *ppos)
+static ssize_t nv_tco_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	/* See if we got the magic character 'V' and reload the timer */
 	if (len) {
 		if (!nowayout) {
@@ -194,7 +194,7 @@ static ssize_t nv_tco_write(struct file *file, const char __user *data,
 			 */
 			for (i = 0; i != len; i++) {
 				char c;
-				if (get_user(c, data + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					tco_expect_close = 42;
@@ -264,7 +264,7 @@ static long nv_tco_ioctl(struct file *file, unsigned int cmd,
 
 static const struct file_operations nv_tco_fops = {
 	.owner =		THIS_MODULE,
-	.write =		nv_tco_write,
+	.write_iter =		nv_tco_write,
 	.unlocked_ioctl =	nv_tco_ioctl,
 	.compat_ioctl =		compat_ptr_ioctl,
 	.open =			nv_tco_open,
