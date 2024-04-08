@@ -334,6 +334,7 @@ static ssize_t dvb_ca_write(struct file *file, const char __user *buf,
 	dprintk(8, "av7110:%p\n", av7110);
 	return ci_ll_write(&av7110->ci_wbuffer, file, buf, count, ppos);
 }
+FOPS_WRITE_ITER_HELPER(dvb_ca_write);
 
 static ssize_t dvb_ca_read(struct file *file, char __user *buf,
 			   size_t count, loff_t *ppos)
@@ -344,11 +345,12 @@ static ssize_t dvb_ca_read(struct file *file, char __user *buf,
 	dprintk(8, "av7110:%p\n", av7110);
 	return ci_ll_read(&av7110->ci_rbuffer, file, buf, count, ppos);
 }
+FOPS_READ_ITER_HELPER(dvb_ca_read);
 
 static const struct file_operations dvb_ca_fops = {
 	.owner		= THIS_MODULE,
-	.read		= dvb_ca_read,
-	.write		= dvb_ca_write,
+	.read_iter	= dvb_ca_read_iter,
+	.write_iter	= dvb_ca_write_iter,
 	.unlocked_ioctl	= dvb_generic_ioctl,
 	.open		= dvb_ca_open,
 	.release	= dvb_generic_release,

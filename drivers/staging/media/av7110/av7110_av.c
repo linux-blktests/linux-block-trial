@@ -973,6 +973,7 @@ static ssize_t dvb_video_write(struct file *file, const char __user *buf,
 	else
 		return dvb_play(av7110, buf, count, file->f_flags & O_NONBLOCK, 1);
 }
+FOPS_WRITE_ITER_HELPER(dvb_video_write);
 
 static __poll_t dvb_audio_poll(struct file *file, poll_table *wait)
 {
@@ -1016,6 +1017,7 @@ static ssize_t dvb_audio_write(struct file *file, const char __user *buf,
 	else
 		return dvb_aplay(av7110, buf, count, file->f_flags & O_NONBLOCK, 0);
 }
+FOPS_WRITE_ITER_HELPER(dvb_audio_write);
 
 static u8 iframe_header[] = { 0x00, 0x00, 0x01, 0xe0, 0x00, 0x00, 0x80, 0x00, 0x00 };
 
@@ -1580,7 +1582,7 @@ static int dvb_audio_release(struct inode *inode, struct file *file)
 
 static const struct file_operations dvb_video_fops = {
 	.owner		= THIS_MODULE,
-	.write		= dvb_video_write,
+	.write_iter	= dvb_video_write_iter,
 	.unlocked_ioctl	= dvb_generic_ioctl,
 	.compat_ioctl	= dvb_generic_ioctl,
 	.open		= dvb_video_open,
@@ -1600,7 +1602,7 @@ static struct dvb_device dvbdev_video = {
 
 static const struct file_operations dvb_audio_fops = {
 	.owner		= THIS_MODULE,
-	.write		= dvb_audio_write,
+	.write_iter	= dvb_audio_write_iter,
 	.unlocked_ioctl	= dvb_generic_ioctl,
 	.compat_ioctl	= dvb_generic_ioctl,
 	.open		= dvb_audio_open,
