@@ -91,8 +91,8 @@ const struct qedi_debugfs_ops qedi_debugfs_ops[] = {
 };
 
 static ssize_t
-qedi_dbg_do_not_recover_cmd_write(struct file *filp, const char __user *buffer,
-				  size_t count, loff_t *ppos)
+__qedi_dbg_do_not_recover_cmd_write(struct file *filp, const char __user *buffer,
+				    size_t count, loff_t *ppos)
 {
 	size_t cnt = 0;
 	struct qedi_dbg_ctx *qedi_dbg =
@@ -117,14 +117,26 @@ qedi_dbg_do_not_recover_cmd_write(struct file *filp, const char __user *buffer,
 }
 
 static ssize_t
-qedi_dbg_do_not_recover_cmd_read(struct file *filp, char __user *buffer,
-				 size_t count, loff_t *ppos)
+qedi_dbg_do_not_recover_cmd_write(struct kiocb *iocb, struct iov_iter *from)
+{
+	return vfs_write_iter(iocb, from, __qedi_dbg_do_not_recover_cmd_write);
+}
+
+static ssize_t
+__qedi_dbg_do_not_recover_cmd_read(struct file *filp, char __user *buffer,
+				   size_t count, loff_t *ppos)
 {
 	char buf[64];
 	int len;
 
 	len = sprintf(buf, "do_not_recover=%d\n", qedi_do_not_recover);
 	return simple_read_from_buffer(buffer, count, ppos, buf, len);
+}
+
+static ssize_t
+qedi_dbg_do_not_recover_cmd_read(struct kiocb *iocb, struct iov_iter *to)
+{
+	return vfs_read_iter(iocb, to, __qedi_dbg_do_not_recover_cmd_read);
 }
 
 static int
