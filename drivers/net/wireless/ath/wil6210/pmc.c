@@ -309,10 +309,10 @@ int wil_pmc_last_cmd_status(struct wil6210_priv *wil)
 /* Read from required position up to the end of current descriptor,
  * depends on descriptor size configured during alloc request.
  */
-ssize_t wil_pmc_read(struct file *filp, char __user *buf, size_t count,
-		     loff_t *f_pos)
+ssize_t wil_pmc_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wil6210_priv *wil = filp->private_data;
+	struct wil6210_priv *wil = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	struct pmc_ctx *pmc = &wil->pmc;
 	size_t retval = 0;
 	unsigned long long idx;
@@ -332,33 +332,30 @@ ssize_t wil_pmc_read(struct file *filp, char __user *buf, size_t count,
 
 	wil_dbg_misc(wil,
 		     "pmc_read: size %u, pos %lld\n",
-		     (u32)count, *f_pos);
+		     (u32)count, iocb->ki_pos);
 
 	pmc->last_cmd_status = 0;
 
-	idx = *f_pos;
+	idx = iocb->ki_pos;
 	do_div(idx, pmc->descriptor_size);
-	offset = *f_pos - (idx * pmc->descriptor_size);
+	offset = iocb->ki_pos - (idx * pmc->descriptor_size);
 
-	if (*f_pos >= pmc_size) {
+	if (iocb->ki_pos >= pmc_size) {
 		wil_dbg_misc(wil,
 			     "pmc_read: reached end of pmc buf: %lld >= %u\n",
-			     *f_pos, (u32)pmc_size);
+			     iocb->ki_pos, (u32)pmc_size);
 		pmc->last_cmd_status = -ERANGE;
 		goto out;
 	}
 
 	wil_dbg_misc(wil,
 		     "pmc_read: read from pos %lld (descriptor %llu, offset %llu) %zu bytes\n",
-		     *f_pos, idx, offset, count);
+		     iocb->ki_pos, idx, offset, count);
 
 	/* if no errors, return the copied byte count */
-	retval = simple_read_from_buffer(buf,
-					 count,
-					 &offset,
-					 pmc->descriptors[idx].va,
-					 pmc->descriptor_size);
-	*f_pos += retval;
+	retval = simple_copy_to_iter(pmc->descriptors[idx].va, &iocb->ki_pos,
+					 pmc->descriptor_size, to);
+	iocb->ki_pos += retval;
 out:
 	mutex_unlock(&pmc->lock);
 

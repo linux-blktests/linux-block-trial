@@ -611,14 +611,14 @@ static int memread_show(struct seq_file *s, void *data)
 }
 DEFINE_SHOW_ATTRIBUTE(memread);
 
-static ssize_t wil_read_file_ioblob(struct file *file, char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t wil_read_file_ioblob(struct kiocb *iocb, struct iov_iter *to)
 {
 	enum { max_count = 4096 };
-	struct wil_blob_wrapper *wil_blob = file->private_data;
+	struct wil_blob_wrapper *wil_blob = iocb->ki_filp->private_data;
 	struct wil6210_priv *wil = wil_blob->wil;
-	loff_t aligned_pos, pos = *ppos;
+	loff_t aligned_pos, pos = iocb->ki_pos;
 	size_t available = wil_blob->blob.size;
+	size_t count = iov_iter_count(to);
 	void *buf;
 	size_t unaligned_bytes, aligned_count, ret;
 	int rc;
@@ -659,7 +659,7 @@ static ssize_t wil_read_file_ioblob(struct file *file, char __user *user_buf,
 	wil_memcpy_fromio_32(buf, (const void __iomem *)
 			     wil_blob->blob.data + aligned_pos, aligned_count);
 
-	ret = copy_to_user(user_buf, buf + unaligned_bytes, count);
+	ret = !copy_to_iter_full(buf + unaligned_bytes, count, to);
 
 	wil_mem_access_unlock(wil);
 	wil_pm_runtime_put(wil);
@@ -669,13 +669,12 @@ static ssize_t wil_read_file_ioblob(struct file *file, char __user *user_buf,
 		return -EFAULT;
 
 	count -= ret;
-	*ppos = pos + count;
-
+	iocb->ki_pos = pos + count;
 	return count;
 }
 
 static const struct file_operations fops_ioblob = {
-	.read =		wil_read_file_ioblob,
+	.read_iter =	wil_read_file_ioblob,
 	.open =		simple_open,
 	.llseek =	default_llseek,
 };
@@ -690,15 +689,15 @@ struct dentry *wil_debugfs_create_ioblob(const char *name,
 }
 
 /*---write channel 1..4 to rxon for it, 0 to rxoff---*/
-static ssize_t wil_write_file_rxon(struct file *file, const char __user *buf,
-				   size_t len, loff_t *ppos)
+static ssize_t wil_write_file_rxon(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wil6210_priv *wil = file->private_data;
+	struct wil6210_priv *wil = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	int rc;
 	long channel;
 	bool on;
 
-	char *kbuf = memdup_user_nul(buf, len);
+	char *kbuf = iterdup_nul(from, len);
 
 	if (IS_ERR(kbuf))
 		return PTR_ERR(kbuf);
@@ -727,19 +726,18 @@ static ssize_t wil_write_file_rxon(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations fops_rxon = {
-	.write = wil_write_file_rxon,
+	.write_iter = wil_write_file_rxon,
 	.open  = simple_open,
 };
 
-static ssize_t wil_write_file_rbufcap(struct file *file,
-				      const char __user *buf,
-				      size_t count, loff_t *ppos)
+static ssize_t wil_write_file_rbufcap(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wil6210_priv *wil = file->private_data;
+	struct wil6210_priv *wil = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int val;
 	int rc;
 
-	rc = kstrtoint_from_user(buf, count, 0, &val);
+	rc = kstrtoint_from_iter(from, count, 0, &val);
 	if (rc) {
 		wil_err(wil, "Invalid argument\n");
 		return rc;
@@ -765,7 +763,7 @@ static ssize_t wil_write_file_rbufcap(struct file *file,
 }
 
 static const struct file_operations fops_rbufcap = {
-	.write = wil_write_file_rbufcap,
+	.write_iter = wil_write_file_rbufcap,
 	.open  = simple_open,
 };
 
@@ -774,10 +772,10 @@ static const struct file_operations fops_rbufcap = {
  * - "del_tx <ringid> <reason>" to trigger DELBA for Tx side
  * - "del_rx <CID> <TID> <reason>" to trigger DELBA for Rx side
  */
-static ssize_t wil_write_back(struct file *file, const char __user *buf,
-			      size_t len, loff_t *ppos)
+static ssize_t wil_write_back(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wil6210_priv *wil = file->private_data;
+	struct wil6210_priv *wil = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	int rc;
 	char *kbuf = kmalloc(len + 1, GFP_KERNEL);
 	char cmd[9];
@@ -786,7 +784,7 @@ static ssize_t wil_write_back(struct file *file, const char __user *buf,
 	if (!kbuf)
 		return -ENOMEM;
 
-	rc = simple_write_to_buffer(kbuf, len, ppos, buf, len);
+	rc = simple_copy_from_iter(kbuf, &iocb->ki_pos, len, from);
 	if (rc != len) {
 		kfree(kbuf);
 		return rc >= 0 ? -EIO : rc;
@@ -847,8 +845,7 @@ static ssize_t wil_write_back(struct file *file, const char __user *buf,
 	return len;
 }
 
-static ssize_t wil_read_back(struct file *file, char __user *user_buf,
-			     size_t count, loff_t *ppos)
+static ssize_t wil_read_back(struct kiocb *iocb, struct iov_iter *to)
 {
 	static const char text[] = "block ack control, write:\n"
 	" - \"add <ringid> <agg_size> <timeout>\" to trigger ADDBA\n"
@@ -857,13 +854,12 @@ static ssize_t wil_read_back(struct file *file, char __user *user_buf,
 	" - \"del_rx <CID> <TID> <reason>\" to trigger DELBA for Rx side\n"
 	"If missing, <reason> set to \"STA_LEAVING\" (36)\n";
 
-	return simple_read_from_buffer(user_buf, count, ppos, text,
-				       sizeof(text));
+	return simple_copy_to_iter(text, &iocb->ki_pos, sizeof(text), to);
 }
 
 static const struct file_operations fops_back = {
-	.read = wil_read_back,
-	.write = wil_write_back,
+	.read_iter = wil_read_back,
+	.write_iter = wil_write_back,
 	.open  = simple_open,
 };
 
@@ -871,10 +867,10 @@ static const struct file_operations fops_back = {
  * - "alloc <num descriptors> <descriptor_size>" to allocate PMC
  * - "free" to release memory allocated for PMC
  */
-static ssize_t wil_write_pmccfg(struct file *file, const char __user *buf,
-				size_t len, loff_t *ppos)
+static ssize_t wil_write_pmccfg(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wil6210_priv *wil = file->private_data;
+	struct wil6210_priv *wil = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	int rc;
 	char *kbuf = kmalloc(len + 1, GFP_KERNEL);
 	char cmd[9];
@@ -883,7 +879,7 @@ static ssize_t wil_write_pmccfg(struct file *file, const char __user *buf,
 	if (!kbuf)
 		return -ENOMEM;
 
-	rc = simple_write_to_buffer(kbuf, len, ppos, buf, len);
+	rc = simple_copy_from_iter(kbuf, &iocb->ki_pos, len, from);
 	if (rc != len) {
 		kfree(kbuf);
 		return rc >= 0 ? -EIO : rc;
@@ -921,10 +917,9 @@ static ssize_t wil_write_pmccfg(struct file *file, const char __user *buf,
 	return len;
 }
 
-static ssize_t wil_read_pmccfg(struct file *file, char __user *user_buf,
-			       size_t count, loff_t *ppos)
+static ssize_t wil_read_pmccfg(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wil6210_priv *wil = file->private_data;
+	struct wil6210_priv *wil = iocb->ki_filp->private_data;
 	char text[256];
 	char help[] = "pmc control, write:\n"
 	" - \"alloc <num descriptors> <descriptor_size>\" to allocate pmc\n"
@@ -933,19 +928,18 @@ static ssize_t wil_read_pmccfg(struct file *file, char __user *user_buf,
 	snprintf(text, sizeof(text), "Last command status: %d\n\n%s",
 		 wil_pmc_last_cmd_status(wil), help);
 
-	return simple_read_from_buffer(user_buf, count, ppos, text,
-				       strlen(text) + 1);
+	return simple_copy_to_iter(text, &iocb->ki_pos, strlen(text) + 1, to);
 }
 
 static const struct file_operations fops_pmccfg = {
-	.read = wil_read_pmccfg,
-	.write = wil_write_pmccfg,
+	.read_iter = wil_read_pmccfg,
+	.write_iter = wil_write_pmccfg,
 	.open  = simple_open,
 };
 
 static const struct file_operations fops_pmcdata = {
 	.open		= simple_open,
-	.read		= wil_pmc_read,
+	.read_iter	= wil_pmc_read,
 	.llseek		= wil_pmc_llseek,
 };
 
@@ -957,16 +951,16 @@ static int wil_pmcring_seq_open(struct inode *inode, struct file *file)
 static const struct file_operations fops_pmcring = {
 	.open		= wil_pmcring_seq_open,
 	.release	= single_release,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 };
 
 /*---tx_mgmt---*/
 /* Write mgmt frame to this file to send it */
-static ssize_t wil_write_file_txmgmt(struct file *file, const char __user *buf,
-				     size_t len, loff_t *ppos)
+static ssize_t wil_write_file_txmgmt(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wil6210_priv *wil = file->private_data;
+	struct wil6210_priv *wil = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	struct wiphy *wiphy = wil_to_wiphy(wil);
 	struct wireless_dev *wdev = wil->main_ndev->ieee80211_ptr;
 	struct cfg80211_mgmt_tx_params params;
@@ -978,7 +972,7 @@ static ssize_t wil_write_file_txmgmt(struct file *file, const char __user *buf,
 	if (!len)
 		return -EINVAL;
 
-	frame = memdup_user(buf, len);
+	frame = iterdup(from, len);
 	if (IS_ERR(frame))
 		return PTR_ERR(frame);
 
@@ -994,17 +988,17 @@ static ssize_t wil_write_file_txmgmt(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations fops_txmgmt = {
-	.write = wil_write_file_txmgmt,
+	.write_iter = wil_write_file_txmgmt,
 	.open  = simple_open,
 };
 
 /* Write WMI command (w/o mbox header) to this file to send it
  * WMI starts from wil6210_mbox_hdr_wmi header
  */
-static ssize_t wil_write_file_wmi(struct file *file, const char __user *buf,
-				  size_t len, loff_t *ppos)
+static ssize_t wil_write_file_wmi(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wil6210_priv *wil = file->private_data;
+	struct wil6210_priv *wil = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	struct wil6210_vif *vif = ndev_to_vif(wil->main_ndev);
 	struct wmi_cmd_hdr *wmi;
 	void *cmd;
@@ -1012,10 +1006,10 @@ static ssize_t wil_write_file_wmi(struct file *file, const char __user *buf,
 	u16 cmdid;
 	int rc1;
 
-	if (cmdlen < 0 || *ppos != 0)
+	if (cmdlen < 0 || iocb->ki_pos != 0)
 		return -EINVAL;
 
-	wmi = memdup_user(buf, len);
+	wmi = iterdup(from, len);
 	if (IS_ERR(wmi))
 		return PTR_ERR(wmi);
 
@@ -1031,7 +1025,7 @@ static ssize_t wil_write_file_wmi(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations fops_wmi = {
-	.write = wil_write_file_wmi,
+	.write_iter = wil_write_file_wmi,
 	.open  = simple_open,
 };
 
@@ -1484,10 +1478,9 @@ DEFINE_SHOW_ATTRIBUTE(info);
 /* mode = [manual|auto]
  * state = [idle|pending|running]
  */
-static ssize_t wil_read_file_recovery(struct file *file, char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t wil_read_file_recovery(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wil6210_priv *wil = file->private_data;
+	struct wil6210_priv *wil = iocb->ki_filp->private_data;
 	char buf[80];
 	int n;
 	static const char * const sstate[] = {"idle", "pending", "running"};
@@ -1498,17 +1491,16 @@ static ssize_t wil_read_file_recovery(struct file *file, char __user *user_buf,
 
 	n = min_t(int, n, sizeof(buf));
 
-	return simple_read_from_buffer(user_buf, count, ppos,
-				       buf, n);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, n, to);
 }
 
-static ssize_t wil_write_file_recovery(struct file *file,
-				       const char __user *buf_,
-				       size_t count, loff_t *ppos)
+static ssize_t wil_write_file_recovery(struct kiocb *iocb,
+				       struct iov_iter *from)
 {
-	struct wil6210_priv *wil = file->private_data;
+	struct wil6210_priv *wil = iocb->ki_filp->private_data;
 	static const char run_command[] = "run";
 	char buf[sizeof(run_command) + 1]; /* to detect "runx" */
+	size_t count = iov_iter_count(from);
 	ssize_t rc;
 
 	if (wil->recovery_state != fw_recovery_pending) {
@@ -1516,8 +1508,8 @@ static ssize_t wil_write_file_recovery(struct file *file,
 		return -EINVAL;
 	}
 
-	if (*ppos != 0) {
-		wil_err(wil, "Offset [%d]\n", (int)*ppos);
+	if (iocb->ki_pos != 0) {
+		wil_err(wil, "Offset [%d]\n", (int)iocb->ki_pos);
 		return -EINVAL;
 	}
 
@@ -1526,7 +1518,7 @@ static ssize_t wil_write_file_recovery(struct file *file,
 		return -EINVAL;
 	}
 
-	rc = simple_write_to_buffer(buf, sizeof(buf) - 1, ppos, buf_, count);
+	rc = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf) - 1, from);
 	if (rc < 0)
 		return rc;
 
@@ -1540,8 +1532,8 @@ static ssize_t wil_write_file_recovery(struct file *file,
 }
 
 static const struct file_operations fops_recovery = {
-	.read = wil_read_file_recovery,
-	.write = wil_write_file_recovery,
+	.read_iter = wil_read_file_recovery,
+	.write_iter = wil_write_file_recovery,
 	.open  = simple_open,
 };
 
@@ -1766,15 +1758,15 @@ static int wil_tx_latency_seq_open(struct inode *inode, struct file *file)
 			   inode->i_private);
 }
 
-static ssize_t wil_tx_latency_write(struct file *file, const char __user *buf,
-				    size_t len, loff_t *ppos)
+static ssize_t wil_tx_latency_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	struct wil6210_priv *wil = s->private;
 	int val, rc, i;
 	bool enable;
 
-	rc = kstrtoint_from_user(buf, len, 0, &val);
+	rc = kstrtoint_from_iter(from, len, 0, &val);
 	if (rc) {
 		wil_err(wil, "Invalid argument\n");
 		return rc;
@@ -1818,8 +1810,8 @@ static ssize_t wil_tx_latency_write(struct file *file, const char __user *buf,
 static const struct file_operations fops_tx_latency = {
 	.open		= wil_tx_latency_seq_open,
 	.release	= single_release,
-	.read		= seq_read,
-	.write		= wil_tx_latency_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= wil_tx_latency_write,
 	.llseek		= seq_lseek,
 };
 
@@ -1930,10 +1922,10 @@ static int wil_link_stats_seq_open(struct inode *inode, struct file *file)
 	return single_open(file, wil_link_stats_debugfs_show, inode->i_private);
 }
 
-static ssize_t wil_link_stats_write(struct file *file, const char __user *buf,
-				    size_t len, loff_t *ppos)
+static ssize_t wil_link_stats_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	struct wil6210_priv *wil = s->private;
 	int cid, interval, rc, i;
 	struct wil6210_vif *vif;
@@ -1942,7 +1934,7 @@ static ssize_t wil_link_stats_write(struct file *file, const char __user *buf,
 	if (!kbuf)
 		return -ENOMEM;
 
-	rc = simple_write_to_buffer(kbuf, len, ppos, buf, len);
+	rc = simple_copy_from_iter(kbuf, &iocb->ki_pos, len, from);
 	if (rc != len) {
 		kfree(kbuf);
 		return rc >= 0 ? -EIO : rc;
@@ -1982,8 +1974,8 @@ static ssize_t wil_link_stats_write(struct file *file, const char __user *buf,
 static const struct file_operations fops_link_stats = {
 	.open		= wil_link_stats_seq_open,
 	.release	= single_release,
-	.read		= seq_read,
-	.write		= wil_link_stats_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= wil_link_stats_write,
 	.llseek		= seq_lseek,
 };
 
@@ -2009,16 +2001,16 @@ wil_link_stats_global_seq_open(struct inode *inode, struct file *file)
 }
 
 static ssize_t
-wil_link_stats_global_write(struct file *file, const char __user *buf,
-			    size_t len, loff_t *ppos)
+wil_link_stats_global_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	struct wil6210_priv *wil = s->private;
 	int interval, rc;
 	struct wil6210_vif *vif = ndev_to_vif(wil->main_ndev);
 
 	/* specify snapshot interval in ms */
-	rc = kstrtoint_from_user(buf, len, 0, &interval);
+	rc = kstrtoint_from_iter(from, len, 0, &interval);
 	if (rc || interval < 0) {
 		wil_err(wil, "Invalid argument\n");
 		return -EINVAL;
@@ -2036,13 +2028,12 @@ wil_link_stats_global_write(struct file *file, const char __user *buf,
 static const struct file_operations fops_link_stats_global = {
 	.open		= wil_link_stats_global_seq_open,
 	.release	= single_release,
-	.read		= seq_read,
-	.write		= wil_link_stats_global_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= wil_link_stats_global_write,
 	.llseek		= seq_lseek,
 };
 
-static ssize_t wil_read_file_led_cfg(struct file *file, char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t wil_read_file_led_cfg(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[80];
 	int n;
@@ -2053,19 +2044,17 @@ static ssize_t wil_read_file_led_cfg(struct file *file, char __user *user_buf,
 
 	n = min_t(int, n, sizeof(buf));
 
-	return simple_read_from_buffer(user_buf, count, ppos,
-				       buf, n);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, n, to);
 }
 
-static ssize_t wil_write_file_led_cfg(struct file *file,
-				      const char __user *buf_,
-				      size_t count, loff_t *ppos)
+static ssize_t wil_write_file_led_cfg(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct wil6210_priv *wil = file->private_data;
+	struct wil6210_priv *wil = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int val;
 	int rc;
 
-	rc = kstrtoint_from_user(buf_, count, 0, &val);
+	rc = kstrtoint_from_iter(from, count, 0, &val);
 	if (rc) {
 		wil_err(wil, "Invalid argument\n");
 		return rc;
@@ -2083,25 +2072,25 @@ static ssize_t wil_write_file_led_cfg(struct file *file,
 }
 
 static const struct file_operations fops_led_cfg = {
-	.read = wil_read_file_led_cfg,
-	.write = wil_write_file_led_cfg,
+	.read_iter = wil_read_file_led_cfg,
+	.write_iter = wil_write_file_led_cfg,
 	.open  = simple_open,
 };
 
 /* led_blink_time, write:
  * "<blink_on_slow> <blink_off_slow> <blink_on_med> <blink_off_med> <blink_on_fast> <blink_off_fast>
  */
-static ssize_t wil_write_led_blink_time(struct file *file,
-					const char __user *buf,
-					size_t len, loff_t *ppos)
+static ssize_t wil_write_led_blink_time(struct kiocb *iocb,
+					struct iov_iter *from)
 {
 	int rc;
+	size_t len = iov_iter_count(from);
 	char *kbuf = kmalloc(len + 1, GFP_KERNEL);
 
 	if (!kbuf)
 		return -ENOMEM;
 
-	rc = simple_write_to_buffer(kbuf, len, ppos, buf, len);
+	rc = simple_copy_from_iter(kbuf, &iocb->ki_pos, len, from);
 	if (rc != len) {
 		kfree(kbuf);
 		return rc >= 0 ? -EIO : rc;
@@ -2125,8 +2114,7 @@ static ssize_t wil_write_led_blink_time(struct file *file,
 	return len;
 }
 
-static ssize_t wil_read_led_blink_time(struct file *file, char __user *user_buf,
-				       size_t count, loff_t *ppos)
+static ssize_t wil_read_led_blink_time(struct kiocb *iocb, struct iov_iter *to)
 {
 	static char text[400];
 
@@ -2143,13 +2131,12 @@ static ssize_t wil_read_led_blink_time(struct file *file, char __user *user_buf,
 		 led_blink_time[WIL_LED_TIME_FAST].on_ms,
 		 led_blink_time[WIL_LED_TIME_FAST].off_ms);
 
-	return simple_read_from_buffer(user_buf, count, ppos, text,
-				       sizeof(text));
+	return simple_copy_to_iter(text, &iocb->ki_pos, sizeof(text), to);
 }
 
 static const struct file_operations fops_led_blink_time = {
-	.read = wil_read_led_blink_time,
-	.write = wil_write_led_blink_time,
+	.read_iter = wil_read_led_blink_time,
+	.write_iter = wil_write_led_blink_time,
 	.open  = simple_open,
 };
 
@@ -2180,22 +2167,18 @@ static int fw_version_show(struct seq_file *s, void *data)
 DEFINE_SHOW_ATTRIBUTE(fw_version);
 
 /*---------suspend_stats---------*/
-static ssize_t wil_write_suspend_stats(struct file *file,
-				       const char __user *buf,
-				       size_t len, loff_t *ppos)
+static ssize_t wil_write_suspend_stats(struct kiocb *iocb,
+				       struct iov_iter *from)
 {
-	struct wil6210_priv *wil = file->private_data;
+	struct wil6210_priv *wil = iocb->ki_filp->private_data;
 
 	memset(&wil->suspend_stats, 0, sizeof(wil->suspend_stats));
-
-	return len;
+	return iov_iter_count(from);
 }
 
-static ssize_t wil_read_suspend_stats(struct file *file,
-				      char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t wil_read_suspend_stats(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wil6210_priv *wil = file->private_data;
+	struct wil6210_priv *wil = iocb->ki_filp->private_data;
 	char *text;
 	int n, ret, text_size = 500;
 
@@ -2226,7 +2209,7 @@ static ssize_t wil_read_suspend_stats(struct file *file,
 
 	n = min_t(int, n, text_size);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, text, n);
+	ret = simple_copy_to_iter(text, &iocb->ki_pos, n, to);
 
 	kfree(text);
 
@@ -2234,22 +2217,22 @@ static ssize_t wil_read_suspend_stats(struct file *file,
 }
 
 static const struct file_operations fops_suspend_stats = {
-	.read = wil_read_suspend_stats,
-	.write = wil_write_suspend_stats,
+	.read_iter = wil_read_suspend_stats,
+	.write_iter = wil_write_suspend_stats,
 	.open  = simple_open,
 };
 
 /*---------compressed_rx_status---------*/
-static ssize_t wil_compressed_rx_status_write(struct file *file,
-					      const char __user *buf,
-					      size_t len, loff_t *ppos)
+static ssize_t wil_compressed_rx_status_write(struct kiocb *iocb,
+					      struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	struct wil6210_priv *wil = s->private;
 	int compressed_rx_status;
 	int rc;
 
-	rc = kstrtoint_from_user(buf, len, 0, &compressed_rx_status);
+	rc = kstrtoint_from_iter(from, len, 0, &compressed_rx_status);
 	if (rc) {
 		wil_err(wil, "Invalid argument\n");
 		return rc;
@@ -2288,8 +2271,8 @@ wil_compressed_rx_status_seq_open(struct inode *inode, struct file *file)
 static const struct file_operations fops_compressed_rx_status = {
 	.open  = wil_compressed_rx_status_seq_open,
 	.release = single_release,
-	.read = seq_read,
-	.write = wil_compressed_rx_status_write,
+	.read_iter = seq_read_iter,
+	.write_iter = wil_compressed_rx_status_write,
 	.llseek	= seq_lseek,
 };
 
