@@ -91,9 +91,9 @@ static void wafwdt_stop(void)
 	inb_p(wdt_stop);
 }
 
-static ssize_t wafwdt_write(struct file *file, const char __user *buf,
-						size_t count, loff_t *ppos)
+static ssize_t wafwdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	/* See if we got the magic character 'V' and reload the timer */
 	if (count) {
 		if (!nowayout) {
@@ -106,7 +106,7 @@ static ssize_t wafwdt_write(struct file *file, const char __user *buf,
 			   character */
 			for (i = 0; i != count; i++) {
 				char c;
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_close = 42;
@@ -227,7 +227,7 @@ static int wafwdt_notify_sys(struct notifier_block *this, unsigned long code,
 
 static const struct file_operations wafwdt_fops = {
 	.owner		= THIS_MODULE,
-	.write		= wafwdt_write,
+	.write_iter	= wafwdt_write,
 	.unlocked_ioctl	= wafwdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= wafwdt_open,
