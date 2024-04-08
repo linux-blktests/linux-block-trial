@@ -401,24 +401,23 @@ static void sd_print_group(struct mlx5_core_dev *primary)
 			MLX5_CAP_GEN(pos, vhca_id));
 }
 
-static ssize_t dev_read(struct file *filp, char __user *buf, size_t count,
-			loff_t *pos)
+static ssize_t dev_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct mlx5_core_dev *dev;
 	char tbuf[32];
 	int ret;
 
-	dev = filp->private_data;
+	dev = iocb->ki_filp->private_data;
 	ret = snprintf(tbuf, sizeof(tbuf), "%s vhca %#x\n", pci_name(dev->pdev),
 		       MLX5_CAP_GEN(dev, vhca_id));
 
-	return simple_read_from_buffer(buf, count, pos, tbuf, ret);
+	return simple_copy_to_iter(tbuf, &iocb->ki_pos, ret, to);
 }
 
 static const struct file_operations dev_fops = {
-	.owner	= THIS_MODULE,
-	.open	= simple_open,
-	.read	= dev_read,
+	.owner		= THIS_MODULE,
+	.open		= simple_open,
+	.read_iter	= dev_read_iter,
 };
 
 int mlx5_sd_init(struct mlx5_core_dev *dev)

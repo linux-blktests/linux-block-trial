@@ -126,29 +126,28 @@ void mlx5_eq_debugfs_cleanup(struct mlx5_core_dev *dev)
 	debugfs_remove_recursive(dev->priv.dbg.eq_debugfs);
 }
 
-static ssize_t average_read(struct file *filp, char __user *buf, size_t count,
-			    loff_t *pos)
+static ssize_t average_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct mlx5_cmd_stats *stats;
 	u64 field = 0;
 	int ret;
 	char tbuf[22];
 
-	stats = filp->private_data;
+	stats = iocb->ki_filp->private_data;
 	spin_lock_irq(&stats->lock);
 	if (stats->n)
 		field = div64_u64(stats->sum, stats->n);
 	spin_unlock_irq(&stats->lock);
 	ret = snprintf(tbuf, sizeof(tbuf), "%llu\n", field);
-	return simple_read_from_buffer(buf, count, pos, tbuf, ret);
+	return simple_copy_to_iter(tbuf, &iocb->ki_pos, ret, to);
 }
 
-static ssize_t reset_write(struct file *filp, const char __user *buf,
-			   size_t count, loff_t *pos)
+static ssize_t reset_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct mlx5_cmd_stats *stats;
 
-	stats = filp->private_data;
+	stats = iocb->ki_filp->private_data;
 	spin_lock_irq(&stats->lock);
 	stats->sum = 0;
 	stats->n = 0;
@@ -159,25 +158,23 @@ static ssize_t reset_write(struct file *filp, const char __user *buf,
 	stats->last_failed_syndrome = 0;
 	spin_unlock_irq(&stats->lock);
 
-	*pos += count;
-
+	iocb->ki_pos += count;
 	return count;
 }
 
 static const struct file_operations reset_fops = {
 	.owner	= THIS_MODULE,
 	.open	= simple_open,
-	.write	= reset_write,
+	.write_iter	= reset_write,
 };
 
 static const struct file_operations average_fops = {
 	.owner	= THIS_MODULE,
 	.open	= simple_open,
-	.read	= average_read,
+	.read_iter	= average_read,
 };
 
-static ssize_t slots_read(struct file *filp, char __user *buf, size_t count,
-			  loff_t *pos)
+static ssize_t slots_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct mlx5_cmd *cmd;
 	char tbuf[6];
@@ -185,17 +182,17 @@ static ssize_t slots_read(struct file *filp, char __user *buf, size_t count,
 	int field;
 	int ret;
 
-	cmd = filp->private_data;
+	cmd = iocb->ki_filp->private_data;
 	weight = bitmap_weight(&cmd->vars.bitmask, cmd->vars.max_reg_cmds);
 	field = cmd->vars.max_reg_cmds - weight;
 	ret = snprintf(tbuf, sizeof(tbuf), "%d\n", field);
-	return simple_read_from_buffer(buf, count, pos, tbuf, ret);
+	return simple_copy_to_iter(tbuf, &iocb->ki_pos, ret, to);
 }
 
 static const struct file_operations slots_fops = {
-	.owner	= THIS_MODULE,
-	.open	= simple_open,
-	.read	= slots_read,
+	.owner		= THIS_MODULE,
+	.open		= simple_open,
+	.read_iter	= slots_read,
 };
 
 static struct mlx5_cmd_stats *
@@ -457,8 +454,7 @@ out:
 	return param;
 }
 
-static ssize_t dbg_read(struct file *filp, char __user *buf, size_t count,
-			loff_t *pos)
+static ssize_t dbg_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct mlx5_field_desc *desc;
 	struct mlx5_rsc_debug *d;
@@ -467,7 +463,7 @@ static ssize_t dbg_read(struct file *filp, char __user *buf, size_t count,
 	u64 field;
 	int ret;
 
-	desc = filp->private_data;
+	desc = iocb->ki_filp->private_data;
 	d = (void *)(desc - desc->i) - sizeof(*d);
 	switch (d->type) {
 	case MLX5_DBG_RSC_QP:
@@ -492,13 +488,13 @@ static ssize_t dbg_read(struct file *filp, char __user *buf, size_t count,
 	else
 		ret = snprintf(tbuf, sizeof(tbuf), "0x%llx\n", field);
 
-	return simple_read_from_buffer(buf, count, pos, tbuf, ret);
+	return simple_copy_to_iter(tbuf, &iocb->ki_pos, ret, to);
 }
 
 static const struct file_operations fops = {
-	.owner	= THIS_MODULE,
-	.open	= simple_open,
-	.read	= dbg_read,
+	.owner		= THIS_MODULE,
+	.open		= simple_open,
+	.read_iter	= dbg_read_iter,
 };
 
 static int add_res_tree(struct mlx5_core_dev *dev, enum dbg_rsc_type type,

@@ -1331,13 +1331,13 @@ out_free:
 	return err ? : status;
 }
 
-static ssize_t dbg_write(struct file *filp, const char __user *buf,
-			 size_t count, loff_t *pos)
+static ssize_t dbg_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mlx5_core_dev *dev = filp->private_data;
+	struct mlx5_core_dev *dev = iocb->ki_filp->private_data;
 	struct mlx5_cmd_debug *dbg = &dev->cmd.dbg;
 	char lbuf[3];
 	int err;
+	size_t count = iov_iter_count(from);
 
 	if (!dbg->in_msg || !dbg->out_msg)
 		return -ENOMEM;
@@ -1345,7 +1345,7 @@ static ssize_t dbg_write(struct file *filp, const char __user *buf,
 	if (count < sizeof(lbuf) - 1)
 		return -EINVAL;
 
-	if (copy_from_user(lbuf, buf, sizeof(lbuf) - 1))
+	if (!copy_from_iter_full(lbuf, sizeof(lbuf) - 1, from))
 		return -EFAULT;
 
 	lbuf[sizeof(lbuf) - 1] = 0;
@@ -1359,9 +1359,9 @@ static ssize_t dbg_write(struct file *filp, const char __user *buf,
 }
 
 static const struct file_operations fops = {
-	.owner	= THIS_MODULE,
-	.open	= simple_open,
-	.write	= dbg_write,
+	.owner		= THIS_MODULE,
+	.open		= simple_open,
+	.write_iter	= dbg_write_iter,
 };
 
 static int mlx5_copy_to_msg(struct mlx5_cmd_msg *to, void *from, int size,
@@ -1520,54 +1520,56 @@ static void mlx5_free_cmd_msg(struct mlx5_core_dev *dev,
 	kfree(msg);
 }
 
-static ssize_t data_write(struct file *filp, const char __user *buf,
-			  size_t count, loff_t *pos)
+static ssize_t data_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mlx5_core_dev *dev = filp->private_data;
+	struct mlx5_core_dev *dev = iocb->ki_filp->private_data;
 	struct mlx5_cmd_debug *dbg = &dev->cmd.dbg;
 	void *ptr;
+	size_t count = iov_iter_count(from);
 
-	if (*pos != 0)
+	if (iocb->ki_pos != 0)
 		return -EINVAL;
 
 	kfree(dbg->in_msg);
 	dbg->in_msg = NULL;
 	dbg->inlen = 0;
-	ptr = memdup_user(buf, count);
-	if (IS_ERR(ptr))
-		return PTR_ERR(ptr);
+	ptr = kmalloc(count, GFP_KERNEL);
+	if (!ptr)
+		return -ENOMEM;
+
+	if (!copy_from_iter_full(ptr, count, from))
+		return -EFAULT;
+
 	dbg->in_msg = ptr;
 	dbg->inlen = count;
 
-	*pos = count;
+	iocb->ki_pos = count;
 
 	return count;
 }
 
-static ssize_t data_read(struct file *filp, char __user *buf, size_t count,
-			 loff_t *pos)
+static ssize_t data_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mlx5_core_dev *dev = filp->private_data;
+	struct mlx5_core_dev *dev = iocb->ki_filp->private_data;
 	struct mlx5_cmd_debug *dbg = &dev->cmd.dbg;
 
 	if (!dbg->out_msg)
 		return -ENOMEM;
 
-	return simple_read_from_buffer(buf, count, pos, dbg->out_msg,
-				       dbg->outlen);
+	return simple_copy_to_iter(dbg->out_msg, &iocb->ki_pos,
+				   dbg->outlen, to);
 }
 
 static const struct file_operations dfops = {
-	.owner	= THIS_MODULE,
-	.open	= simple_open,
-	.write	= data_write,
-	.read	= data_read,
+	.owner		= THIS_MODULE,
+	.open		= simple_open,
+	.write_iter	= data_write_iter,
+	.read_iter	= data_read_iter,
 };
 
-static ssize_t outlen_read(struct file *filp, char __user *buf, size_t count,
-			   loff_t *pos)
+static ssize_t outlen_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mlx5_core_dev *dev = filp->private_data;
+	struct mlx5_core_dev *dev = iocb->ki_filp->private_data;
 	struct mlx5_cmd_debug *dbg = &dev->cmd.dbg;
 	char outlen[8];
 	int err;
@@ -1576,27 +1578,27 @@ static ssize_t outlen_read(struct file *filp, char __user *buf, size_t count,
 	if (err < 0)
 		return err;
 
-	return simple_read_from_buffer(buf, count, pos, outlen, err);
+	return simple_copy_to_iter(outlen, &iocb->ki_pos, err, to);
 }
 
-static ssize_t outlen_write(struct file *filp, const char __user *buf,
-			    size_t count, loff_t *pos)
+static ssize_t outlen_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mlx5_core_dev *dev = filp->private_data;
+	struct mlx5_core_dev *dev = iocb->ki_filp->private_data;
 	struct mlx5_cmd_debug *dbg = &dev->cmd.dbg;
 	char outlen_str[8] = {0};
 	int outlen;
 	void *ptr;
 	int err;
+	size_t count = iov_iter_count(from);
 
-	if (*pos != 0 || count > 6)
+	if (iocb->ki_pos != 0 || count > 6)
 		return -EINVAL;
 
 	kfree(dbg->out_msg);
 	dbg->out_msg = NULL;
 	dbg->outlen = 0;
 
-	if (copy_from_user(outlen_str, buf, count))
+	if (!copy_from_iter_full(outlen_str, count, from))
 		return -EFAULT;
 
 	err = sscanf(outlen_str, "%d", &outlen);
@@ -1610,16 +1612,16 @@ static ssize_t outlen_write(struct file *filp, const char __user *buf,
 	dbg->out_msg = ptr;
 	dbg->outlen = outlen;
 
-	*pos = count;
+	iocb->ki_pos = count;
 
 	return count;
 }
 
 static const struct file_operations olfops = {
-	.owner	= THIS_MODULE,
-	.open	= simple_open,
-	.write	= outlen_write,
-	.read	= outlen_read,
+	.owner		= THIS_MODULE,
+	.open		= simple_open,
+	.write_iter	= outlen_write_iter,
+	.read_iter	= outlen_read_iter,
 };
 
 static void set_wqname(struct mlx5_core_dev *dev)
