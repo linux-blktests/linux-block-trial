@@ -76,9 +76,9 @@ static int fitpc2_wdt_open(struct inode *inode, struct file *file)
 	return stream_open(inode, file);
 }
 
-static ssize_t fitpc2_wdt_write(struct file *file, const char __user *data,
-						size_t len, loff_t *ppos)
+static ssize_t fitpc2_wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	size_t i;
 
 	if (!len)
@@ -94,7 +94,7 @@ static ssize_t fitpc2_wdt_write(struct file *file, const char __user *data,
 	for (i = 0; i != len; i++) {
 		char c;
 
-		if (get_user(c, data + i))
+		if (get_iter(c, from))
 			return -EFAULT;
 
 		if (c == 'V')
@@ -106,7 +106,6 @@ out:
 
 	return len;
 }
-
 
 static const struct watchdog_info ident = {
 	.options	= WDIOF_MAGICCLOSE | WDIOF_SETTIMEOUT |
@@ -181,7 +180,7 @@ static int fitpc2_wdt_release(struct inode *inode, struct file *file)
 
 static const struct file_operations fitpc2_wdt_fops = {
 	.owner		= THIS_MODULE,
-	.write		= fitpc2_wdt_write,
+	.write_iter	= fitpc2_wdt_write,
 	.unlocked_ioctl	= fitpc2_wdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= fitpc2_wdt_open,
