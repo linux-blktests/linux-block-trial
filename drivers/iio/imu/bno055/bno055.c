@@ -1277,10 +1277,9 @@ static int bno055_debugfs_reg_access(struct iio_dev *iio_dev, unsigned int reg,
 		return regmap_write(priv->regmap, reg, writeval);
 }
 
-static ssize_t bno055_show_fw_version(struct file *file, char __user *userbuf,
-				      size_t count, loff_t *ppos)
+static ssize_t bno055_show_fw_version( struct kiocb *iocb, struct iov_iter *to)
 {
-	struct bno055_priv *priv = file->private_data;
+	struct bno055_priv *priv = iocb->ki_filp->private_data;
 	int rev, ver;
 	char *buf;
 	int ret;
@@ -1297,7 +1296,7 @@ static ssize_t bno055_show_fw_version(struct file *file, char __user *userbuf,
 	if (!buf)
 		return -ENOMEM;
 
-	ret = simple_read_from_buffer(userbuf, count, ppos, buf, strlen(buf));
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 	kfree(buf);
 
 	return ret;
@@ -1305,7 +1304,7 @@ static ssize_t bno055_show_fw_version(struct file *file, char __user *userbuf,
 
 static const struct file_operations bno055_fw_version_ops = {
 	.open = simple_open,
-	.read = bno055_show_fw_version,
+	.read_iter = bno055_show_fw_version,
 	.llseek = default_llseek,
 	.owner = THIS_MODULE,
 };
