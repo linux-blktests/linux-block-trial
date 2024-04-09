@@ -511,14 +511,15 @@ static ssize_t crtc_updates_write(struct file *file,
 
 	return len;
 }
+FOPS_WRITE_ITER_HELPER(crtc_updates_write);
 
 static const struct file_operations crtc_updates_fops = {
 	.owner = THIS_MODULE,
 	.open = crtc_updates_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = crtc_updates_write
+	.write_iter = crtc_updates_write_iter
 };
 
 static void crtc_updates_add(struct intel_crtc *crtc)
@@ -803,11 +804,12 @@ i915_fifo_underrun_reset_write(struct file *filp,
 
 	return cnt;
 }
+FOPS_WRITE_ITER_HELPER(i915_fifo_underrun_reset_write);
 
 static const struct file_operations i915_fifo_underrun_reset_ops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.write = i915_fifo_underrun_reset_write,
+	.write_iter = i915_fifo_underrun_reset_write_iter,
 	.llseek = default_llseek,
 };
 
@@ -986,6 +988,7 @@ static ssize_t i915_dsc_fec_support_write(struct file *file,
 	*offp += len;
 	return len;
 }
+FOPS_WRITE_ITER_HELPER(i915_dsc_fec_support_write);
 
 static int i915_dsc_fec_support_open(struct inode *inode,
 				     struct file *file)
@@ -997,10 +1000,10 @@ static int i915_dsc_fec_support_open(struct inode *inode,
 static const struct file_operations i915_dsc_fec_support_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_dsc_fec_support_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = i915_dsc_fec_support_write
+	.write_iter = i915_dsc_fec_support_write_iter
 };
 
 static int i915_dsc_bpc_show(struct seq_file *m, void *data)
@@ -1033,23 +1036,22 @@ out:	drm_modeset_unlock(&display->drm->mode_config.connection_mutex);
 	return ret;
 }
 
-static ssize_t i915_dsc_bpc_write(struct file *file,
-				  const char __user *ubuf,
-				  size_t len, loff_t *offp)
+static ssize_t i915_dsc_bpc_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct intel_connector *connector = m->private;
 	struct intel_encoder *encoder = intel_attached_encoder(connector);
 	struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
+	size_t len = iov_iter_count(from);
 	int dsc_bpc = 0;
 	int ret;
 
-	ret = kstrtoint_from_user(ubuf, len, 0, &dsc_bpc);
+	ret = kstrtoint_from_iter(from, len, 0, &dsc_bpc);
 	if (ret < 0)
 		return ret;
 
 	intel_dp->force_dsc_bpc = dsc_bpc;
-	*offp += len;
+	iocb->ki_pos += len;
 
 	return len;
 }
@@ -1063,10 +1065,10 @@ static int i915_dsc_bpc_open(struct inode *inode,
 static const struct file_operations i915_dsc_bpc_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_dsc_bpc_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = i915_dsc_bpc_write
+	.write_iter = i915_dsc_bpc_write
 };
 
 static int i915_dsc_output_format_show(struct seq_file *m, void *data)
@@ -1100,23 +1102,23 @@ out:	drm_modeset_unlock(&display->drm->mode_config.connection_mutex);
 	return ret;
 }
 
-static ssize_t i915_dsc_output_format_write(struct file *file,
-					    const char __user *ubuf,
-					    size_t len, loff_t *offp)
+static ssize_t i915_dsc_output_format_write(struct kiocb *iocb,
+					    struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct intel_connector *connector = m->private;
 	struct intel_encoder *encoder = intel_attached_encoder(connector);
 	struct intel_dp *intel_dp = enc_to_intel_dp(encoder);
+	size_t len = iov_iter_count(from);
 	int dsc_output_format = 0;
 	int ret;
 
-	ret = kstrtoint_from_user(ubuf, len, 0, &dsc_output_format);
+	ret = kstrtoint_from_iter(from, len, 0, &dsc_output_format);
 	if (ret < 0)
 		return ret;
 
 	intel_dp->force_dsc_output_format = dsc_output_format;
-	*offp += len;
+	iocb->ki_pos += len;
 
 	return len;
 }
@@ -1130,10 +1132,10 @@ static int i915_dsc_output_format_open(struct inode *inode,
 static const struct file_operations i915_dsc_output_format_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_dsc_output_format_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = i915_dsc_output_format_write
+	.write_iter = i915_dsc_output_format_write
 };
 
 static int i915_dsc_fractional_bpp_show(struct seq_file *m, void *data)
@@ -1198,6 +1200,7 @@ static ssize_t i915_dsc_fractional_bpp_write(struct file *file,
 
 	return len;
 }
+FOPS_WRITE_ITER_HELPER(i915_dsc_fractional_bpp_write);
 
 static int i915_dsc_fractional_bpp_open(struct inode *inode,
 					struct file *file)
@@ -1208,10 +1211,10 @@ static int i915_dsc_fractional_bpp_open(struct inode *inode,
 static const struct file_operations i915_dsc_fractional_bpp_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_dsc_fractional_bpp_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = i915_dsc_fractional_bpp_write
+	.write_iter = i915_dsc_fractional_bpp_write_iter
 };
 
 /*
@@ -1257,20 +1260,19 @@ static int i915_joiner_show(struct seq_file *m, void *data)
 	return 0;
 }
 
-static ssize_t i915_joiner_write(struct file *file,
-				 const char __user *ubuf,
-				 size_t len, loff_t *offp)
+static ssize_t i915_joiner_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct intel_connector *connector = m->private;
 	struct intel_display *display = to_intel_display(connector);
+	size_t len = iov_iter_count(from);
 	int force_joined_pipes = 0;
 	int ret;
 
 	if (len == 0)
 		return 0;
 
-	ret = kstrtoint_from_user(ubuf, len, 0, &force_joined_pipes);
+	ret = kstrtoint_from_iter(from, len, 0, &force_joined_pipes);
 	if (ret < 0)
 		return ret;
 
@@ -1291,7 +1293,7 @@ static ssize_t i915_joiner_write(struct file *file,
 		return -EINVAL;
 	}
 
-	*offp += len;
+	iocb->ki_pos += len;
 
 	return len;
 }
@@ -1304,10 +1306,10 @@ static int i915_joiner_open(struct inode *inode, struct file *file)
 static const struct file_operations i915_joiner_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_joiner_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = i915_joiner_write
+	.write_iter = i915_joiner_write
 };
 
 /**

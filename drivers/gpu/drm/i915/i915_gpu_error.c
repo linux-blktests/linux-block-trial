@@ -2475,6 +2475,7 @@ out:
 	kfree(buf);
 	return ret;
 }
+FOPS_READ_ITER_HELPER(gpu_state_read);
 
 static int gpu_state_release(struct inode *inode, struct file *file)
 {
@@ -2502,7 +2503,7 @@ static int i915_gpu_info_open(struct inode *inode, struct file *file)
 static const struct file_operations i915_gpu_info_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_gpu_info_open,
-	.read = gpu_state_read,
+	.read_iter = gpu_state_read_iter,
 	.llseek = default_llseek,
 	.release = gpu_state_release,
 };
@@ -2523,6 +2524,7 @@ i915_error_state_write(struct file *filp,
 
 	return cnt;
 }
+FOPS_WRITE_ITER_HELPER(i915_error_state_write);
 
 static int i915_error_state_open(struct inode *inode, struct file *file)
 {
@@ -2539,8 +2541,8 @@ static int i915_error_state_open(struct inode *inode, struct file *file)
 static const struct file_operations i915_error_state_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_error_state_open,
-	.read = gpu_state_read,
-	.write = i915_error_state_write,
+	.read_iter = gpu_state_read_iter,
+	.write_iter = i915_error_state_write_iter,
 	.llseek = default_llseek,
 	.release = gpu_state_release,
 };

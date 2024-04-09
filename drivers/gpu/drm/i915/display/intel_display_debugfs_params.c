@@ -27,20 +27,20 @@ static int intel_display_param_int_open(struct inode *inode, struct file *file)
 	return single_open(file, intel_display_param_int_show, inode->i_private);
 }
 
-static ssize_t intel_display_param_int_write(struct file *file,
-					     const char __user *ubuf, size_t len,
-					     loff_t *offp)
+static ssize_t intel_display_param_int_write(struct kiocb *iocb,
+					     struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	int *value = m->private;
 	int ret;
 
-	ret = kstrtoint_from_user(ubuf, len, 0, value);
+	ret = kstrtoint_from_iter(from, len, 0, value);
 	if (ret) {
 		/* support boolean values too */
 		bool b;
 
-		ret = kstrtobool_from_user(ubuf, len, &b);
+		ret = kstrtobool_from_iter(from, len, &b);
 		if (!ret)
 			*value = b;
 	}
@@ -51,8 +51,8 @@ static ssize_t intel_display_param_int_write(struct file *file,
 static const struct file_operations intel_display_param_int_fops = {
 	.owner = THIS_MODULE,
 	.open = intel_display_param_int_open,
-	.read = seq_read,
-	.write = intel_display_param_int_write,
+	.read_iter = seq_read_iter,
+	.write_iter = intel_display_param_int_write,
 	.llseek = default_llseek,
 	.release = single_release,
 };
@@ -60,7 +60,7 @@ static const struct file_operations intel_display_param_int_fops = {
 static const struct file_operations intel_display_param_int_fops_ro = {
 	.owner = THIS_MODULE,
 	.open = intel_display_param_int_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = default_llseek,
 	.release = single_release,
 };
@@ -80,20 +80,20 @@ static int intel_display_param_uint_open(struct inode *inode, struct file *file)
 	return single_open(file, intel_display_param_uint_show, inode->i_private);
 }
 
-static ssize_t intel_display_param_uint_write(struct file *file,
-					      const char __user *ubuf, size_t len,
-					      loff_t *offp)
+static ssize_t intel_display_param_uint_write(struct kiocb *iocb,
+					      struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	unsigned int *value = m->private;
 	int ret;
 
-	ret = kstrtouint_from_user(ubuf, len, 0, value);
+	ret = kstrtouint_from_iter(from, len, 0, value);
 	if (ret) {
 		/* support boolean values too */
 		bool b;
 
-		ret = kstrtobool_from_user(ubuf, len, &b);
+		ret = kstrtobool_from_iter(from, len, &b);
 		if (!ret)
 			*value = b;
 	}
@@ -104,8 +104,8 @@ static ssize_t intel_display_param_uint_write(struct file *file,
 static const struct file_operations intel_display_param_uint_fops = {
 	.owner = THIS_MODULE,
 	.open = intel_display_param_uint_open,
-	.read = seq_read,
-	.write = intel_display_param_uint_write,
+	.read_iter = seq_read_iter,
+	.write_iter = intel_display_param_uint_write,
 	.llseek = default_llseek,
 	.release = single_release,
 };
@@ -113,7 +113,7 @@ static const struct file_operations intel_display_param_uint_fops = {
 static const struct file_operations intel_display_param_uint_fops_ro = {
 	.owner = THIS_MODULE,
 	.open = intel_display_param_uint_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = default_llseek,
 	.release = single_release,
 };

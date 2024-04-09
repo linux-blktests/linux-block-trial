@@ -50,20 +50,19 @@ static int notify_guc(struct drm_i915_private *i915)
 	return ret;
 }
 
-static ssize_t i915_param_int_write(struct file *file,
-				    const char __user *ubuf, size_t len,
-				    loff_t *offp)
+static ssize_t i915_param_int_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	int *value = m->private;
 	int ret;
 
-	ret = kstrtoint_from_user(ubuf, len, 0, value);
+	ret = kstrtoint_from_iter(from, len, 0, value);
 	if (ret) {
 		/* support boolean values too */
 		bool b;
 
-		ret = kstrtobool_from_user(ubuf, len, &b);
+		ret = kstrtobool_from_iter(from, len, &b);
 		if (!ret)
 			*value = b;
 	}
@@ -74,8 +73,8 @@ static ssize_t i915_param_int_write(struct file *file,
 static const struct file_operations i915_param_int_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_param_int_open,
-	.read = seq_read,
-	.write = i915_param_int_write,
+	.read_iter = seq_read_iter,
+	.write_iter = i915_param_int_write,
 	.llseek = default_llseek,
 	.release = single_release,
 };
@@ -83,7 +82,7 @@ static const struct file_operations i915_param_int_fops = {
 static const struct file_operations i915_param_int_fops_ro = {
 	.owner = THIS_MODULE,
 	.open = i915_param_int_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = default_llseek,
 	.release = single_release,
 };
@@ -103,27 +102,26 @@ static int i915_param_uint_open(struct inode *inode, struct file *file)
 	return single_open(file, i915_param_uint_show, inode->i_private);
 }
 
-static ssize_t i915_param_uint_write(struct file *file,
-				     const char __user *ubuf, size_t len,
-				     loff_t *offp)
+static ssize_t i915_param_uint_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct drm_i915_private *i915;
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	unsigned int *value = m->private;
 	unsigned int old = *value;
 	int ret;
 
-	ret = kstrtouint_from_user(ubuf, len, 0, value);
+	ret = kstrtouint_from_iter(from, len, 0, value);
 	if (ret) {
 		/* support boolean values too */
 		bool b;
 
-		ret = kstrtobool_from_user(ubuf, len, &b);
+		ret = kstrtobool_from_iter(from, len, &b);
 		if (!ret)
 			*value = b;
 	}
 
-	if (!ret && MATCH_DEBUGFS_NODE_NAME(file, "reset")) {
+	if (!ret && MATCH_DEBUGFS_NODE_NAME(iocb->ki_filp, "reset")) {
 		GET_I915(i915, reset, value);
 
 		ret = notify_guc(i915);
@@ -137,8 +135,8 @@ static ssize_t i915_param_uint_write(struct file *file,
 static const struct file_operations i915_param_uint_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_param_uint_open,
-	.read = seq_read,
-	.write = i915_param_uint_write,
+	.read_iter = seq_read_iter,
+	.write_iter = i915_param_uint_write,
 	.llseek = default_llseek,
 	.release = single_release,
 };
@@ -146,7 +144,7 @@ static const struct file_operations i915_param_uint_fops = {
 static const struct file_operations i915_param_uint_fops_ro = {
 	.owner = THIS_MODULE,
 	.open = i915_param_uint_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = default_llseek,
 	.release = single_release,
 };
@@ -187,12 +185,13 @@ static ssize_t i915_param_charp_write(struct file *file,
 out:
 	return len;
 }
+FOPS_WRITE_ITER_HELPER(i915_param_charp_write);
 
 static const struct file_operations i915_param_charp_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_param_charp_open,
-	.read = seq_read,
-	.write = i915_param_charp_write,
+	.read_iter = seq_read_iter,
+	.write_iter = i915_param_charp_write_iter,
 	.llseek = default_llseek,
 	.release = single_release,
 };
@@ -200,7 +199,7 @@ static const struct file_operations i915_param_charp_fops = {
 static const struct file_operations i915_param_charp_fops_ro = {
 	.owner = THIS_MODULE,
 	.open = i915_param_charp_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = default_llseek,
 	.release = single_release,
 };

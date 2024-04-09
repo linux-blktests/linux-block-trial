@@ -117,17 +117,14 @@ static int guc_log_relay_open(struct inode *inode, struct file *file)
 	return intel_guc_log_relay_open(log);
 }
 
-static ssize_t
-guc_log_relay_write(struct file *filp,
-		    const char __user *ubuf,
-		    size_t cnt,
-		    loff_t *ppos)
+static ssize_t guc_log_relay_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct intel_guc_log *log = filp->private_data;
+	struct intel_guc_log *log = iocb->ki_filp->private_data;
+	size_t cnt = iov_iter_count(from);
 	int val;
 	int ret;
 
-	ret = kstrtoint_from_user(ubuf, cnt, 0, &val);
+	ret = kstrtoint_from_iter(from, cnt, 0, &val);
 	if (ret < 0)
 		return ret;
 
@@ -154,7 +151,7 @@ static int guc_log_relay_release(struct inode *inode, struct file *file)
 static const struct file_operations guc_log_relay_fops = {
 	.owner = THIS_MODULE,
 	.open = guc_log_relay_open,
-	.write = guc_log_relay_write,
+	.write_iter = guc_log_relay_write,
 	.release = guc_log_relay_release,
 };
 

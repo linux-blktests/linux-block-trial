@@ -3481,6 +3481,7 @@ static ssize_t i915_perf_read(struct file *file,
 	/* Possible values for ret are 0, -EFAULT, -ENOSPC, -EIO, ... */
 	return offset ?: (ret ?: -EAGAIN);
 }
+FOPS_READ_ITER_HELPER(i915_perf_read);
 
 static enum hrtimer_restart oa_poll_check_timer_cb(struct hrtimer *hrtimer)
 {
@@ -3756,7 +3757,7 @@ static const struct file_operations fops = {
 	.owner		= THIS_MODULE,
 	.release	= i915_perf_release,
 	.poll		= i915_perf_poll,
-	.read		= i915_perf_read,
+	.read_iter	= i915_perf_read_iter,
 	.unlocked_ioctl	= i915_perf_ioctl,
 	/* Our ioctl have no arguments, so it's safe to use the same function
 	 * to handle 32bits compatibility.

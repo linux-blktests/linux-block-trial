@@ -4049,14 +4049,15 @@ static ssize_t skl_watermark_ipc_status_write(struct file *file,
 
 	return len;
 }
+FOPS_WRITE_ITER_HELPER(skl_watermark_ipc_status_write);
 
 static const struct file_operations skl_watermark_ipc_status_fops = {
 	.owner = THIS_MODULE,
 	.open = skl_watermark_ipc_status_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = skl_watermark_ipc_status_write
+	.write_iter = skl_watermark_ipc_status_write_iter
 };
 
 static int intel_sagv_status_show(struct seq_file *m, void *unused)

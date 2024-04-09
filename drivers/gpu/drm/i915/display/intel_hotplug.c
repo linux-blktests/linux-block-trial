@@ -1241,6 +1241,7 @@ static ssize_t i915_hpd_storm_ctl_write(struct file *file,
 
 	return len;
 }
+FOPS_WRITE_ITER_HELPER(i915_hpd_storm_ctl_write);
 
 static int i915_hpd_storm_ctl_open(struct inode *inode, struct file *file)
 {
@@ -1250,10 +1251,10 @@ static int i915_hpd_storm_ctl_open(struct inode *inode, struct file *file)
 static const struct file_operations i915_hpd_storm_ctl_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_hpd_storm_ctl_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = i915_hpd_storm_ctl_write
+	.write_iter = i915_hpd_storm_ctl_write_iter
 };
 
 static int i915_hpd_short_storm_ctl_show(struct seq_file *m, void *data)
@@ -1319,14 +1320,15 @@ static ssize_t i915_hpd_short_storm_ctl_write(struct file *file,
 
 	return len;
 }
+FOPS_WRITE_ITER_HELPER(i915_hpd_short_storm_ctl_write);
 
 static const struct file_operations i915_hpd_short_storm_ctl_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_hpd_short_storm_ctl_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = i915_hpd_short_storm_ctl_write,
+	.write_iter = i915_hpd_short_storm_ctl_write_iter,
 };
 
 void intel_hpd_debugfs_register(struct intel_display *display)
