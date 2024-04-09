@@ -366,21 +366,19 @@ static int vpu_dbg_inst_open(struct inode *inode, struct file *filp)
 	return single_open(filp, vpu_dbg_instance, inode->i_private);
 }
 
-static ssize_t vpu_dbg_inst_write(struct file *file,
-				  const char __user *user_buf, size_t size, loff_t *ppos)
+static ssize_t vpu_dbg_inst_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct vpu_inst *inst = s->private;
 
 	vpu_session_debug(inst);
 
-	return size;
+	return iov_iter_count(from);
 }
 
-static ssize_t vpu_dbg_core_write(struct file *file,
-				  const char __user *user_buf, size_t size, loff_t *ppos)
+static ssize_t vpu_dbg_core_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct vpu_core *core = s->private;
 
 	pm_runtime_resume_and_get(core->dev);
@@ -395,7 +393,7 @@ static ssize_t vpu_dbg_core_write(struct file *file,
 	mutex_unlock(&core->lock);
 	pm_runtime_put_sync(core->dev);
 
-	return size;
+	return iov_iter_count(from);
 }
 
 static int vpu_dbg_core_open(struct inode *inode, struct file *filp)
@@ -412,23 +410,23 @@ static const struct file_operations vpu_dbg_inst_fops = {
 	.owner = THIS_MODULE,
 	.open = vpu_dbg_inst_open,
 	.release = single_release,
-	.read = seq_read,
-	.write = vpu_dbg_inst_write,
+	.read_iter = seq_read_iter,
+	.write_iter = vpu_dbg_inst_write,
 };
 
 static const struct file_operations vpu_dbg_core_fops = {
 	.owner = THIS_MODULE,
 	.open = vpu_dbg_core_open,
 	.release = single_release,
-	.read = seq_read,
-	.write = vpu_dbg_core_write,
+	.read_iter = seq_read_iter,
+	.write_iter = vpu_dbg_core_write,
 };
 
 static const struct file_operations vpu_dbg_fwlog_fops = {
 	.owner = THIS_MODULE,
 	.open = vpu_dbg_fwlog_open,
 	.release = single_release,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 };
 
 int vpu_inst_create_dbgfs_file(struct vpu_inst *inst)
