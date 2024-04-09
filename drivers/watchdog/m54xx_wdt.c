@@ -87,9 +87,10 @@ static int m54xx_wdt_open(struct inode *inode, struct file *file)
 	return stream_open(inode, file);
 }
 
-static ssize_t m54xx_wdt_write(struct file *file, const char *data,
-						size_t len, loff_t *ppos)
+static ssize_t m54xx_wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
+
 	if (len) {
 		if (!nowayout) {
 			size_t i;
@@ -99,7 +100,7 @@ static ssize_t m54xx_wdt_write(struct file *file, const char *data,
 			for (i = 0; i != len; i++) {
 				char c;
 
-				if (get_user(c, data + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					set_bit(WDT_OK_TO_CLOSE, &wdt_status);
@@ -179,7 +180,7 @@ static int m54xx_wdt_release(struct inode *inode, struct file *file)
 
 static const struct file_operations m54xx_wdt_fops = {
 	.owner		= THIS_MODULE,
-	.write		= m54xx_wdt_write,
+	.write_iter	= m54xx_wdt_write,
 	.unlocked_ioctl	= m54xx_wdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= m54xx_wdt_open,
