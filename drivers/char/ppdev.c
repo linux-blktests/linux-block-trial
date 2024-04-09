@@ -112,10 +112,11 @@ static inline void pp_enable_irq(struct pp_struct *pp)
 	port->ops->enable_irq(port);
 }
 
-static ssize_t pp_read(struct file *file, char __user *buf, size_t count,
-		       loff_t *ppos)
+static ssize_t pp_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	struct file *file = iocb->ki_filp;
 	unsigned int minor = iminor(file_inode(file));
+	size_t count = iov_iter_count(to);
 	struct pp_struct *pp = file->private_data;
 	char *kbuffer;
 	ssize_t bytes_read = 0;
@@ -182,7 +183,7 @@ static ssize_t pp_read(struct file *file, char __user *buf, size_t count,
 
 	parport_set_timeout(pp->pdev, pp->default_inactivity);
 
-	if (bytes_read > 0 && copy_to_user(buf, kbuffer, bytes_read))
+	if (bytes_read > 0 && !copy_to_iter_full(kbuffer, bytes_read, to))
 		bytes_read = -EFAULT;
 
 	kfree(kbuffer);
@@ -190,10 +191,11 @@ static ssize_t pp_read(struct file *file, char __user *buf, size_t count,
 	return bytes_read;
 }
 
-static ssize_t pp_write(struct file *file, const char __user *buf,
-			size_t count, loff_t *ppos)
+static ssize_t pp_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	struct file *file = iocb->ki_filp;
 	unsigned int minor = iminor(file_inode(file));
+	size_t count = iov_iter_count(from);
 	struct pp_struct *pp = file->private_data;
 	char *kbuffer;
 	ssize_t bytes_written = 0;
@@ -222,7 +224,7 @@ static ssize_t pp_write(struct file *file, const char __user *buf,
 	while (bytes_written < count) {
 		ssize_t n = min_t(unsigned long, count - bytes_written, PP_BUFFER_SIZE);
 
-		if (copy_from_user(kbuffer, buf + bytes_written, n)) {
+		if (!copy_from_iter_full(kbuffer, n, from)) {
 			bytes_written = -EFAULT;
 			break;
 		}
@@ -786,8 +788,8 @@ static const struct class ppdev_class = {
 
 static const struct file_operations pp_fops = {
 	.owner		= THIS_MODULE,
-	.read		= pp_read,
-	.write		= pp_write,
+	.read_iter	= pp_read,
+	.write_iter	= pp_write,
 	.poll		= pp_poll,
 	.unlocked_ioctl	= pp_ioctl,
 	.compat_ioctl   = compat_ptr_ioctl,
