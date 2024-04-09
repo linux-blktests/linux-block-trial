@@ -298,10 +298,11 @@ static int lp_wait_ready(int minor, int nonblock)
 	return error;
 }
 
-static ssize_t lp_write(struct file *file, const char __user *buf,
-			size_t count, loff_t *ppos)
+static ssize_t lp_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	struct file *file = iocb->ki_filp;
 	unsigned int minor = iminor(file_inode(file));
+	size_t count = iov_iter_count(from);
 	struct parport *port = lp_table[minor].dev->port;
 	char *kbuf = lp_table[minor].lp_buffer;
 	ssize_t retv = 0;
@@ -324,7 +325,7 @@ static ssize_t lp_write(struct file *file, const char __user *buf,
 	if (mutex_lock_interruptible(&lp_table[minor].port_mutex))
 		return -EINTR;
 
-	if (copy_from_user(kbuf, buf, copy_size)) {
+	if (!copy_from_iter_full(kbuf, copy_size, from)) {
 		retv = -EFAULT;
 		goto out_unlock;
 	}
@@ -347,7 +348,6 @@ static ssize_t lp_write(struct file *file, const char __user *buf,
 		if (written > 0) {
 			copy_size -= written;
 			count -= written;
-			buf  += written;
 			retv += written;
 		}
 
@@ -391,7 +391,7 @@ static ssize_t lp_write(struct file *file, const char __user *buf,
 			if (copy_size > LP_BUFFER_SIZE)
 				copy_size = LP_BUFFER_SIZE;
 
-			if (copy_from_user(kbuf, buf, copy_size)) {
+			if (!copy_from_iter_full(kbuf, copy_size, from)) {
 				if (retv == 0)
 					retv = -EFAULT;
 				break;
@@ -416,9 +416,10 @@ out_unlock:
 #ifdef CONFIG_PARPORT_1284
 
 /* Status readback conforming to ieee1284 */
-static ssize_t lp_read(struct file *file, char __user *buf,
-		       size_t count, loff_t *ppos)
+static ssize_t lp_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	struct file *file = iocb->ki_filp;
+	size_t count = iov_iter_count(to);
 	DEFINE_WAIT(wait);
 	unsigned int minor=iminor(file_inode(file));
 	struct parport *port = lp_table[minor].dev->port;
@@ -485,7 +486,7 @@ static ssize_t lp_read(struct file *file, char __user *buf,
  out:
 	lp_release_parport(&lp_table[minor]);
 
-	if (retval > 0 && copy_to_user(buf, kbuf, retval))
+	if (retval > 0 && !copy_to_iter_full(kbuf, retval, to))
 		retval = -EFAULT;
 
 	mutex_unlock(&lp_table[minor].port_mutex);
@@ -785,7 +786,7 @@ static long lp_compat_ioctl(struct file *file, unsigned int cmd,
 
 static const struct file_operations lp_fops = {
 	.owner		= THIS_MODULE,
-	.write		= lp_write,
+	.write_iter	= lp_write,
 	.unlocked_ioctl	= lp_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= lp_compat_ioctl,
@@ -793,7 +794,7 @@ static const struct file_operations lp_fops = {
 	.open		= lp_open,
 	.release	= lp_release,
 #ifdef CONFIG_PARPORT_1284
-	.read		= lp_read,
+	.read_iter	= lp_read,
 #endif
 	.llseek		= noop_llseek,
 };
