@@ -81,12 +81,11 @@ struct c4iw_debugfs_data {
 	int pos;
 };
 
-static ssize_t debugfs_read(struct file *file, char __user *buf, size_t count,
-			    loff_t *ppos)
+static ssize_t debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct c4iw_debugfs_data *d = file->private_data;
+	struct c4iw_debugfs_data *d = iocb->ki_filp->private_data;
 
-	return simple_read_from_buffer(buf, count, ppos, d->buf, d->pos);
+	return simple_copy_to_iter(d->buf, &iocb->ki_pos, d->pos, to);
 }
 
 void c4iw_log_wr_stats(struct t4_wq *wq, struct t4_cqe *cqe)
@@ -175,25 +174,24 @@ static int wr_log_open(struct inode *inode, struct file *file)
 	return single_open(file, wr_log_show, inode->i_private);
 }
 
-static ssize_t wr_log_clear(struct file *file, const char __user *buf,
-			    size_t count, loff_t *pos)
+static ssize_t wr_log_clear(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct c4iw_dev *dev = ((struct seq_file *)file->private_data)->private;
+	struct c4iw_dev *dev = ((struct seq_file *)iocb->ki_filp->private_data)->private;
 	int i;
 
 	if (dev->rdev.wr_log)
 		for (i = 0; i < dev->rdev.wr_log_size; i++)
 			dev->rdev.wr_log[i].valid = 0;
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations wr_log_debugfs_fops = {
 	.owner   = THIS_MODULE,
 	.open    = wr_log_open,
 	.release = single_release,
-	.read    = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek  = seq_lseek,
-	.write   = wr_log_clear,
+	.write_iter = wr_log_clear,
 };
 
 static struct sockaddr_in zero_sin = {
@@ -365,7 +363,7 @@ static const struct file_operations qp_debugfs_fops = {
 	.owner   = THIS_MODULE,
 	.open    = qp_open,
 	.release = qp_release,
-	.read    = debugfs_read,
+	.read_iter = debugfs_read,
 	.llseek  = default_llseek,
 };
 
@@ -460,7 +458,7 @@ static const struct file_operations stag_debugfs_fops = {
 	.owner   = THIS_MODULE,
 	.open    = stag_open,
 	.release = stag_release,
-	.read    = debugfs_read,
+	.read_iter = debugfs_read,
 	.llseek  = default_llseek,
 };
 
@@ -515,10 +513,9 @@ static int stats_open(struct inode *inode, struct file *file)
 	return single_open(file, stats_show, inode->i_private);
 }
 
-static ssize_t stats_clear(struct file *file, const char __user *buf,
-		size_t count, loff_t *pos)
+static ssize_t stats_clear(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct c4iw_dev *dev = ((struct seq_file *)file->private_data)->private;
+	struct c4iw_dev *dev = ((struct seq_file *)iocb->ki_filp->private_data)->private;
 
 	mutex_lock(&dev->rdev.stats.lock);
 	dev->rdev.stats.pd.max = 0;
@@ -543,16 +540,16 @@ static ssize_t stats_clear(struct file *file, const char __user *buf,
 	dev->rdev.stats.act_ofld_conn_fails = 0;
 	dev->rdev.stats.pas_ofld_conn_fails = 0;
 	mutex_unlock(&dev->rdev.stats.lock);
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations stats_debugfs_fops = {
 	.owner   = THIS_MODULE,
 	.open    = stats_open,
 	.release = single_release,
-	.read    = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek  = seq_lseek,
-	.write   = stats_clear,
+	.write_iter = stats_clear,
 };
 
 static int dump_ep(struct c4iw_ep *ep, struct c4iw_debugfs_data *epd)
@@ -722,7 +719,7 @@ static const struct file_operations ep_debugfs_fops = {
 	.owner   = THIS_MODULE,
 	.open    = ep_open,
 	.release = ep_release,
-	.read    = debugfs_read,
+	.read_iter = debugfs_read,
 };
 
 static void setup_debugfs(struct c4iw_dev *devp)
