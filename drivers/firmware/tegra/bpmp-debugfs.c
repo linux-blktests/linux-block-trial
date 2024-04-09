@@ -363,21 +363,21 @@ out:
 	return err;
 }
 
-static ssize_t bpmp_debug_store(struct file *file, const char __user *buf,
-		size_t count, loff_t *f_pos)
+static ssize_t bpmp_debug_store(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct inode *inode = file_inode(file);
+	struct inode *inode = file_inode(iocb->ki_filp);
 	struct tegra_bpmp *bpmp = inode->i_private;
+	size_t count = iov_iter_count(from);
 	char *databuf = NULL;
 	char fnamebuf[256];
 	const char *filename;
 	ssize_t err;
 
-	filename = get_filename(bpmp, file, fnamebuf, sizeof(fnamebuf));
+	filename = get_filename(bpmp, iocb->ki_filp, fnamebuf, sizeof(fnamebuf));
 	if (!filename)
 		return -ENOENT;
 
-	databuf = memdup_user(buf, count);
+	databuf = iterdup(from, count);
 	if (IS_ERR(databuf))
 		return PTR_ERR(databuf);
 
@@ -394,9 +394,9 @@ static int bpmp_debug_open(struct inode *inode, struct file *file)
 
 static const struct file_operations bpmp_debug_fops = {
 	.open		= bpmp_debug_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
-	.write		= bpmp_debug_store,
+	.write_iter	= bpmp_debug_store,
 	.release	= single_release,
 };
 
@@ -630,11 +630,11 @@ static int debugfs_open(struct inode *inode, struct file *file)
 	return single_open_size(file, debugfs_show, file, SZ_128K);
 }
 
-static ssize_t debugfs_store(struct file *file, const char __user *buf,
-		size_t count, loff_t *f_pos)
+static ssize_t debugfs_store(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct inode *inode = file_inode(file);
+	struct inode *inode = file_inode(iocb->ki_filp);
 	struct tegra_bpmp *bpmp = inode->i_private;
+	size_t count = iov_iter_count(from);
 	const size_t datasize = count;
 	const size_t namesize = SZ_256;
 	void *datavirt, *namevirt;
@@ -644,7 +644,7 @@ static ssize_t debugfs_store(struct file *file, const char __user *buf,
 	size_t len;
 	int err;
 
-	filename = get_filename(bpmp, file, fnamebuf, sizeof(fnamebuf));
+	filename = get_filename(bpmp, iocb->ki_filp, fnamebuf, sizeof(fnamebuf));
 	if (!filename)
 		return -ENOENT;
 
@@ -663,7 +663,7 @@ static ssize_t debugfs_store(struct file *file, const char __user *buf,
 	len = strlen(filename);
 	strscpy_pad(namevirt, filename, namesize);
 
-	if (copy_from_user(datavirt, buf, count)) {
+	if (!copy_from_iter_full(datavirt, count, from)) {
 		err = -EFAULT;
 		goto free_databuf;
 	}
@@ -681,9 +681,9 @@ free_namebuf:
 
 static const struct file_operations debugfs_fops = {
 	.open		= debugfs_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
-	.write		= debugfs_store,
+	.write_iter	= debugfs_store,
 	.release	= single_release,
 };
 
