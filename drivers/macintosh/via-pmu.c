@@ -2165,12 +2165,11 @@ pmu_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t 
-pmu_read(struct file *file, char __user *buf,
-			size_t count, loff_t *ppos)
+static ssize_t pmu_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct pmu_private *pp = file->private_data;
+	struct pmu_private *pp = iocb->ki_filp->private_data;
 	DECLARE_WAITQUEUE(wait, current);
+	size_t count = iov_iter_count(to);
 	unsigned long flags;
 	int ret = 0;
 
@@ -2190,7 +2189,7 @@ pmu_read(struct file *file, char __user *buf,
 			spin_unlock_irqrestore(&pp->lock, flags);
 			if (ret > count)
 				ret = count;
-			if (ret > 0 && copy_to_user(buf, rp->data, ret))
+			if (ret > 0 && !copy_to_iter_full(rp->data, ret, to))
 				ret = -EFAULT;
 			if (++i >= RB_SIZE)
 				i = 0;
@@ -2199,7 +2198,7 @@ pmu_read(struct file *file, char __user *buf,
 		}
 		if (ret >= 0)
 			break;
-		if (file->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			break;
 		ret = -ERESTARTSYS;
 		if (signal_pending(current))
@@ -2215,9 +2214,7 @@ pmu_read(struct file *file, char __user *buf,
 	return ret;
 }
 
-static ssize_t
-pmu_write(struct file *file, const char __user *buf,
-			 size_t count, loff_t *ppos)
+static ssize_t pmu_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return 0;
 }
@@ -2464,8 +2461,8 @@ static long compat_pmu_ioctl (struct file *filp, u_int cmd, u_long arg)
 #endif
 
 static const struct file_operations pmu_device_fops = {
-	.read		= pmu_read,
-	.write		= pmu_write,
+	.read_iter	= pmu_read,
+	.write_iter	= pmu_write,
 	.poll		= pmu_fpoll,
 	.unlocked_ioctl	= pmu_unlocked_ioctl,
 #ifdef CONFIG_COMPAT
