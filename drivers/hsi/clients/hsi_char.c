@@ -409,10 +409,10 @@ static inline void hsc_tx_get(struct hsi_client *cl, struct hsc_tx_config *txc)
 	txc->arb_mode = cl->tx_cfg.arb_mode;
 }
 
-static ssize_t hsc_read(struct file *file, char __user *buf, size_t len,
-						loff_t *ppos __maybe_unused)
+static ssize_t hsc_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hsc_channel *channel = file->private_data;
+	struct hsc_channel *channel = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	struct hsi_msg *msg;
 	ssize_t ret;
 
@@ -451,8 +451,8 @@ static ssize_t hsc_read(struct file *file, char __user *buf, size_t len,
 	msg = hsc_get_first_msg(channel, &channel->rx_msgs_queue);
 	if (msg) {
 		if (msg->status != HSI_STATUS_ERROR) {
-			ret = copy_to_user((void __user *)buf,
-			sg_virt(msg->sgt.sgl), hsc_msg_len_get(msg));
+			ret = !copy_to_iter_full(sg_virt(msg->sgt.sgl),
+						 hsc_msg_len_get(msg), to);
 			if (ret)
 				ret = -EFAULT;
 			else
@@ -468,10 +468,10 @@ out:
 	return ret;
 }
 
-static ssize_t hsc_write(struct file *file, const char __user *buf, size_t len,
-						loff_t *ppos __maybe_unused)
+static ssize_t hsc_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hsc_channel *channel = file->private_data;
+	struct hsc_channel *channel = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(from);
 	struct hsi_msg *msg;
 	ssize_t ret;
 
@@ -488,7 +488,7 @@ static ssize_t hsc_write(struct file *file, const char __user *buf, size_t len,
 		clear_bit(HSC_CH_WRITE, &channel->flags);
 		return -ENOSPC;
 	}
-	if (copy_from_user(sg_virt(msg->sgt.sgl), (void __user *)buf, len)) {
+	if (!copy_from_iter_full(sg_virt(msg->sgt.sgl), len, from)) {
 		ret = -EFAULT;
 		goto out;
 	}
@@ -655,8 +655,8 @@ static int hsc_release(struct inode *inode __maybe_unused, struct file *file)
 
 static const struct file_operations hsc_fops = {
 	.owner		= THIS_MODULE,
-	.read		= hsc_read,
-	.write		= hsc_write,
+	.read_iter	= hsc_read,
+	.write_iter	= hsc_write,
 	.unlocked_ioctl	= hsc_ioctl,
 	.open		= hsc_open,
 	.release	= hsc_release,
