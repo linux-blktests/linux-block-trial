@@ -83,12 +83,13 @@ static int armada_debugfs_crtc_reg_write(struct file *file,
 
 	return len;
 }
+FOPS_WRITE_ITER_HELPER(armada_debugfs_crtc_reg_write);
 
 static const struct file_operations armada_debugfs_crtc_reg_fops = {
 	.owner = THIS_MODULE,
 	.open = armada_debugfs_crtc_reg_open,
-	.read = seq_read,
-	.write = armada_debugfs_crtc_reg_write,
+	.read_iter = seq_read_iter,
+	.write_iter = armada_debugfs_crtc_reg_write_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
