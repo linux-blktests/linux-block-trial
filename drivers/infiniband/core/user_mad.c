@@ -438,6 +438,7 @@ static ssize_t ib_umad_read(struct file *filp, char __user *buf,
 	}
 	return ret;
 }
+FOPS_READ_ITER_HELPER(ib_umad_read);
 
 static int copy_rmpp_mad(struct ib_mad_send_buf *msg, const char __user *buf)
 {
@@ -673,6 +674,7 @@ err:
 	kfree(packet);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ib_umad_write);
 
 static __poll_t ib_umad_poll(struct file *filp, struct poll_table_struct *wait)
 {
@@ -1077,8 +1079,8 @@ static int ib_umad_close(struct inode *inode, struct file *filp)
 
 static const struct file_operations umad_fops = {
 	.owner		= THIS_MODULE,
-	.read		= ib_umad_read,
-	.write		= ib_umad_write,
+	.read_iter	= ib_umad_read_iter,
+	.write_iter	= ib_umad_write_iter,
 	.poll		= ib_umad_poll,
 	.unlocked_ioctl = ib_umad_ioctl,
 #ifdef CONFIG_COMPAT
