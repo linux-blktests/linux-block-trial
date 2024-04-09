@@ -149,10 +149,8 @@ static ssize_t efi_capsule_submit_update(struct capsule_info *cap_info)
 /**
  * efi_capsule_write - store the capsule binary and pass it to
  *		       efi_capsule_update() API
- * @file: file pointer
- * @buff: buffer pointer
- * @count: number of bytes in @buff
- * @offp: not used
+ * @iocb: metadata for IO
+ * @from: buffer pointer
  *
  *	Expectation:
  *	- A user space tool should start at the beginning of capsule binary and
@@ -165,11 +163,11 @@ static ssize_t efi_capsule_submit_update(struct capsule_info *cap_info)
  *	- An EFI capsule header must be located at the beginning of capsule
  *	  binary file and passed in as first block data of write operation.
  **/
-static ssize_t efi_capsule_write(struct file *file, const char __user *buff,
-				 size_t count, loff_t *offp)
+static ssize_t efi_capsule_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int ret;
-	struct capsule_info *cap_info = file->private_data;
+	struct capsule_info *cap_info = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct page *page;
 	void *kbuff = NULL;
 	size_t write_byte;
@@ -202,7 +200,7 @@ static ssize_t efi_capsule_write(struct file *file, const char __user *buff,
 
 	/* Copy capsule binary data from user space to kernel space buffer */
 	write_byte = min_t(size_t, count, cap_info->page_bytes_remain);
-	if (copy_from_user(kbuff, buff, write_byte)) {
+	if (!copy_from_iter_full(kbuff, write_byte, from)) {
 		ret = -EFAULT;
 		goto fail_unmap;
 	}
@@ -307,7 +305,7 @@ static int efi_capsule_open(struct inode *inode, struct file *file)
 static const struct file_operations efi_capsule_fops = {
 	.owner = THIS_MODULE,
 	.open = efi_capsule_open,
-	.write = efi_capsule_write,
+	.write_iter = efi_capsule_write,
 	.release = efi_capsule_release,
 };
 
