@@ -166,9 +166,9 @@ static long mtx1_wdt_ioctl(struct file *file, unsigned int cmd,
 }
 
 
-static ssize_t mtx1_wdt_write(struct file *file, const char *buf,
-						size_t count, loff_t *ppos)
+static ssize_t mtx1_wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	if (!count)
 		return -EIO;
 	mtx1_wdt_reset();
@@ -180,7 +180,7 @@ static const struct file_operations mtx1_wdt_fops = {
 	.unlocked_ioctl	= mtx1_wdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= mtx1_wdt_open,
-	.write		= mtx1_wdt_write,
+	.write_iter	= mtx1_wdt_write,
 	.release	= mtx1_wdt_release,
 };
 
