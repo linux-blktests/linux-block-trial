@@ -648,14 +648,13 @@ static void vpu_init_ipi_handler(void *data, unsigned int len, void *priv)
 }
 
 #ifdef CONFIG_DEBUG_FS
-static ssize_t vpu_debug_read(struct file *file, char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t vpu_debug_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[256];
 	unsigned int len;
 	unsigned int running, pc, vpu_to_host, host_to_vpu, wdt, idle, ra, sp;
 	int ret;
-	struct device *dev = file->private_data;
+	struct device *dev = iocb->ki_filp->private_data;
 	struct mtk_vpu *vpu = dev_get_drvdata(dev);
 
 	ret = vpu_clock_enable(vpu);
@@ -692,12 +691,12 @@ static ssize_t vpu_debug_read(struct file *file, char __user *user_buf,
 		len = snprintf(buf, sizeof(buf), "VPU not running\n");
 	}
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations vpu_debug_fops = {
 	.open = simple_open,
-	.read = vpu_debug_read,
+	.read_iter = vpu_debug_read,
 };
 #endif /* CONFIG_DEBUG_FS */
 
