@@ -15,6 +15,7 @@
 #include <linux/poll.h>
 #include <linux/sched.h>
 #include <linux/timer.h>
+#include <linux/uio.h>
 
 /*
  * This is a BMC device used to communicate to the host
@@ -172,17 +173,17 @@ static int bt_bmc_open(struct inode *inode, struct file *file)
  *    Length  NetFn/LUN  Seq     Cmd     Data
  *
  */
-static ssize_t bt_bmc_read(struct file *file, char __user *buf,
-			   size_t count, loff_t *ppos)
+static ssize_t bt_bmc_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct bt_bmc *bt_bmc = file_bt_bmc(file);
+	struct bt_bmc *bt_bmc = file_bt_bmc(iocb->ki_filp);
+	size_t count = iov_iter_count(to);
 	u8 len;
 	int len_byte = 1;
 	u8 kbuffer[BT_BMC_BUFFER_SIZE];
 	ssize_t ret = 0;
 	ssize_t nread;
 
-	WARN_ON(*ppos);
+	WARN_ON(iocb->ki_pos);
 
 	if (wait_event_interruptible(bt_bmc->queue,
 				     bt_inb(bt_bmc, BT_CTRL) & BT_CTRL_H2B_ATN))
@@ -215,12 +216,11 @@ static ssize_t bt_bmc_read(struct file *file, char __user *buf,
 
 		bt_readn(bt_bmc, kbuffer + len_byte, nread);
 
-		if (copy_to_user(buf, kbuffer, nread + len_byte)) {
+		if (!copy_to_iter_full(kbuffer, nread + len_byte, to)) {
 			ret = -EFAULT;
 			break;
 		}
 		len -= nread;
-		buf += nread + len_byte;
 		ret += nread + len_byte;
 		len_byte = 0;
 	}
@@ -238,11 +238,11 @@ out_unlock:
  *    Byte 1  Byte 2     Byte 3  Byte 4  Byte 5  Byte 6:N
  *    Length  NetFn/LUN  Seq     Cmd     Code    Data
  */
-static ssize_t bt_bmc_write(struct file *file, const char __user *buf,
-			    size_t count, loff_t *ppos)
+static ssize_t bt_bmc_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct bt_bmc *bt_bmc = file_bt_bmc(file);
+	struct bt_bmc *bt_bmc = file_bt_bmc(iocb->ki_filp);
 	u8 kbuffer[BT_BMC_BUFFER_SIZE];
+	size_t count = iov_iter_count(from);
 	ssize_t ret = 0;
 	ssize_t nwritten;
 
@@ -252,7 +252,7 @@ static ssize_t bt_bmc_write(struct file *file, const char __user *buf,
 	if (count < 5)
 		return -EINVAL;
 
-	WARN_ON(*ppos);
+	WARN_ON(iocb->ki_pos);
 
 	/*
 	 * There's no interrupt for clearing bmc busy so we have to
@@ -275,7 +275,7 @@ static ssize_t bt_bmc_write(struct file *file, const char __user *buf,
 
 	while (count) {
 		nwritten = min_t(ssize_t, count, sizeof(kbuffer));
-		if (copy_from_user(&kbuffer, buf, nwritten)) {
+		if (!copy_from_iter_full(&kbuffer, nwritten, from)) {
 			ret = -EFAULT;
 			break;
 		}
@@ -283,7 +283,6 @@ static ssize_t bt_bmc_write(struct file *file, const char __user *buf,
 		bt_writen(bt_bmc, kbuffer, nwritten);
 
 		count -= nwritten;
-		buf += nwritten;
 		ret += nwritten;
 	}
 
@@ -338,8 +337,8 @@ static __poll_t bt_bmc_poll(struct file *file, poll_table *wait)
 static const struct file_operations bt_bmc_fops = {
 	.owner		= THIS_MODULE,
 	.open		= bt_bmc_open,
-	.read		= bt_bmc_read,
-	.write		= bt_bmc_write,
+	.read_iter	= bt_bmc_read,
+	.write_iter	= bt_bmc_write,
 	.release	= bt_bmc_release,
 	.poll		= bt_bmc_poll,
 	.unlocked_ioctl	= bt_bmc_ioctl,

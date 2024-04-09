@@ -130,9 +130,10 @@ static const char *state_to_string(enum ssif_state state)
 }
 
 /* Handle SSIF message that will be sent to user */
-static ssize_t ssif_bmc_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+static ssize_t ssif_bmc_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ssif_bmc_ctx *ssif_bmc = to_ssif_bmc(file);
+	struct ssif_bmc_ctx *ssif_bmc = to_ssif_bmc(iocb->ki_filp);
+	size_t count = iov_iter_count(to);
 	struct ipmi_ssif_msg msg;
 	unsigned long flags;
 	ssize_t ret;
@@ -140,7 +141,7 @@ static ssize_t ssif_bmc_read(struct file *file, char __user *buf, size_t count, 
 	spin_lock_irqsave(&ssif_bmc->lock, flags);
 	while (!ssif_bmc->request_available) {
 		spin_unlock_irqrestore(&ssif_bmc->lock, flags);
-		if (file->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 		ret = wait_event_interruptible(ssif_bmc->wait_queue,
 					       ssif_bmc->request_available);
@@ -162,17 +163,19 @@ static ssize_t ssif_bmc_read(struct file *file, char __user *buf, size_t count, 
 		ssif_bmc->request_available = false;
 		spin_unlock_irqrestore(&ssif_bmc->lock, flags);
 
-		ret = copy_to_user(buf, &msg, count);
+		ret = -EFAULT;
+		if (copy_to_iter_full(&msg, count, to))
+			ret = 0;
 	}
 
 	return (ret < 0) ? ret : count;
 }
 
 /* Handle SSIF message that is written by user */
-static ssize_t ssif_bmc_write(struct file *file, const char __user *buf, size_t count,
-			      loff_t *ppos)
+static ssize_t ssif_bmc_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ssif_bmc_ctx *ssif_bmc = to_ssif_bmc(file);
+	struct ssif_bmc_ctx *ssif_bmc = to_ssif_bmc(iocb->ki_filp);
+	size_t count = iov_iter_count(from);
 	struct ipmi_ssif_msg msg;
 	unsigned long flags;
 	ssize_t ret;
@@ -181,7 +184,7 @@ static ssize_t ssif_bmc_write(struct file *file, const char __user *buf, size_t 
 	    count > sizeof(struct ipmi_ssif_msg))
 		return -EINVAL;
 
-	if (copy_from_user(&msg, buf, count))
+	if (!copy_from_iter_full(&msg, count, from))
 		return -EFAULT;
 
 	if (!msg.len || msg.len > IPMI_SSIF_PAYLOAD_MAX ||
@@ -191,7 +194,7 @@ static ssize_t ssif_bmc_write(struct file *file, const char __user *buf, size_t 
 	spin_lock_irqsave(&ssif_bmc->lock, flags);
 	while (ssif_bmc->response_in_progress) {
 		spin_unlock_irqrestore(&ssif_bmc->lock, flags);
-		if (file->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 		ret = wait_event_interruptible(ssif_bmc->wait_queue,
 					       !ssif_bmc->response_in_progress);
@@ -277,8 +280,8 @@ static int ssif_bmc_release(struct inode *inode, struct file *file)
 static const struct file_operations ssif_bmc_fops = {
 	.owner		= THIS_MODULE,
 	.open		= ssif_bmc_open,
-	.read		= ssif_bmc_read,
-	.write		= ssif_bmc_write,
+	.read_iter	= ssif_bmc_read,
+	.write_iter	= ssif_bmc_write,
 	.release	= ssif_bmc_release,
 	.poll		= ssif_bmc_poll,
 };

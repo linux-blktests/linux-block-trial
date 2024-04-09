@@ -16,6 +16,7 @@
 #include <linux/poll.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/uio.h>
 
 #include "kcs_bmc_client.h"
 
@@ -317,15 +318,15 @@ static __poll_t kcs_bmc_ipmi_poll(struct file *filp, poll_table *wait)
 	return mask;
 }
 
-static ssize_t kcs_bmc_ipmi_read(struct file *filp, char __user *buf,
-			    size_t count, loff_t *ppos)
+static ssize_t kcs_bmc_ipmi_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct kcs_bmc_ipmi *priv = to_kcs_bmc(filp);
+	struct kcs_bmc_ipmi *priv = to_kcs_bmc(iocb->ki_filp);
+	size_t count = iov_iter_count(to);
 	bool data_avail;
 	size_t data_len;
 	ssize_t ret;
 
-	if (!(filp->f_flags & O_NONBLOCK))
+	if (!(iocb->ki_filp->f_flags & O_NONBLOCK))
 		wait_event_interruptible(priv->queue,
 					 priv->data_in_avail);
 
@@ -356,7 +357,7 @@ static ssize_t kcs_bmc_ipmi_read(struct file *filp, char __user *buf,
 		goto out_unlock;
 	}
 
-	if (copy_to_user(buf, priv->kbuffer, data_len)) {
+	if (!copy_to_iter_full(priv->kbuffer, data_len, to)) {
 		ret = -EFAULT;
 		goto out_unlock;
 	}
@@ -379,10 +380,10 @@ out_unlock:
 	return ret;
 }
 
-static ssize_t kcs_bmc_ipmi_write(struct file *filp, const char __user *buf,
-			     size_t count, loff_t *ppos)
+static ssize_t kcs_bmc_ipmi_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct kcs_bmc_ipmi *priv = to_kcs_bmc(filp);
+	struct kcs_bmc_ipmi *priv = to_kcs_bmc(iocb->ki_filp);
+	size_t count = iov_iter_count(from);
 	ssize_t ret;
 
 	/* a minimum response size '3' : netfn + cmd + ccode */
@@ -391,7 +392,7 @@ static ssize_t kcs_bmc_ipmi_write(struct file *filp, const char __user *buf,
 
 	mutex_lock(&priv->mutex);
 
-	if (copy_from_user(priv->kbuffer, buf, count)) {
+	if (!copy_from_iter_full(priv->kbuffer, count, from)) {
 		ret = -EFAULT;
 		goto out_unlock;
 	}
@@ -459,8 +460,8 @@ static int kcs_bmc_ipmi_release(struct inode *inode, struct file *filp)
 static const struct file_operations kcs_bmc_ipmi_fops = {
 	.owner          = THIS_MODULE,
 	.open           = kcs_bmc_ipmi_open,
-	.read           = kcs_bmc_ipmi_read,
-	.write          = kcs_bmc_ipmi_write,
+	.read_iter      = kcs_bmc_ipmi_read,
+	.write_iter     = kcs_bmc_ipmi_write,
 	.release        = kcs_bmc_ipmi_release,
 	.poll           = kcs_bmc_ipmi_poll,
 	.unlocked_ioctl = kcs_bmc_ipmi_ioctl,

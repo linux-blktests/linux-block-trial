@@ -37,6 +37,7 @@
 #include <linux/delay.h>
 #include <linux/atomic.h>
 #include <linux/sched/signal.h>
+#include <linux/uio.h>
 
 #ifdef CONFIG_X86
 /*
@@ -710,12 +711,10 @@ static long ipmi_unlocked_ioctl(struct file *file,
 	return ret;
 }
 
-static ssize_t ipmi_write(struct file *file,
-			  const char  __user *buf,
-			  size_t      len,
-			  loff_t      *ppos)
+static ssize_t ipmi_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int rv;
+	size_t len = iov_iter_count(from);
 
 	if (len) {
 		if (!nowayout) {
@@ -727,7 +726,7 @@ static ssize_t ipmi_write(struct file *file,
 			for (i = 0; i != len; i++) {
 				char c;
 
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_close = 42;
@@ -740,11 +739,9 @@ static ssize_t ipmi_write(struct file *file,
 	return len;
 }
 
-static ssize_t ipmi_read(struct file *file,
-			 char        __user *buf,
-			 size_t      count,
-			 loff_t      *ppos)
+static ssize_t ipmi_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	int          rv = 0;
 	wait_queue_entry_t wait;
 
@@ -757,7 +754,7 @@ static ssize_t ipmi_read(struct file *file,
 	 */
 	mutex_lock(&ipmi_read_mutex);
 	if (!data_to_read) {
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			rv = -EAGAIN;
 			goto out;
 		}
@@ -783,7 +780,7 @@ static ssize_t ipmi_read(struct file *file,
 	mutex_unlock(&ipmi_read_mutex);
 
 	if (rv == 0) {
-		if (copy_to_user(buf, &data_to_read, 1))
+		if (!copy_to_iter_full(&data_to_read, 1, to))
 			rv = -EFAULT;
 		else
 			rv = 1;
@@ -857,9 +854,9 @@ static int ipmi_close(struct inode *ino, struct file *filep)
 
 static const struct file_operations ipmi_wdog_fops = {
 	.owner   = THIS_MODULE,
-	.read    = ipmi_read,
+	.read_iter    = ipmi_read,
 	.poll    = ipmi_poll,
-	.write   = ipmi_write,
+	.write_iter   = ipmi_write,
 	.unlocked_ioctl = ipmi_unlocked_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open    = ipmi_open,
