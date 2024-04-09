@@ -1606,10 +1606,11 @@ next:
 
 	return written;
 }
+FOPS_READ_ITER_HELPER(read_block_state);
 
 static const struct file_operations proc_zram_block_state_op = {
 	.open = simple_open,
-	.read = read_block_state,
+	.read_iter = read_block_state_iter,
 	.llseek = default_llseek,
 };
 
