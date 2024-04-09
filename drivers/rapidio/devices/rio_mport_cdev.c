@@ -2245,10 +2245,10 @@ static __poll_t mport_cdev_poll(struct file *filp, poll_table *wait)
 	return 0;
 }
 
-static ssize_t mport_read(struct file *filp, char __user *buf, size_t count,
-			loff_t *ppos)
+static ssize_t mport_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mport_cdev_priv *priv = filp->private_data;
+	struct mport_cdev_priv *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	int copied;
 	ssize_t ret;
 
@@ -2256,7 +2256,7 @@ static ssize_t mport_read(struct file *filp, char __user *buf, size_t count,
 		return 0;
 
 	if (kfifo_is_empty(&priv->event_fifo) &&
-	    (filp->f_flags & O_NONBLOCK))
+	    (iocb->ki_filp->f_flags & O_NONBLOCK))
 		return -EAGAIN;
 
 	if (count % sizeof(struct rio_event))
@@ -2268,21 +2268,20 @@ static ssize_t mport_read(struct file *filp, char __user *buf, size_t count,
 		return ret;
 
 	while (ret < count) {
-		if (kfifo_to_user(&priv->event_fifo, buf,
+		if (kfifo_to_iter(&priv->event_fifo, to,
 		      sizeof(struct rio_event), &copied))
 			return -EFAULT;
 		ret += copied;
-		buf += copied;
 	}
 
 	return ret;
 }
 
-static ssize_t mport_write(struct file *filp, const char __user *buf,
-			 size_t count, loff_t *ppos)
+static ssize_t mport_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mport_cdev_priv *priv = filp->private_data;
+	struct mport_cdev_priv *priv = iocb->ki_filp->private_data;
 	struct rio_mport *mport = priv->md->mport;
+	size_t count = iov_iter_count(from);
 	struct rio_event event;
 	int len, ret;
 
@@ -2294,7 +2293,7 @@ static ssize_t mport_write(struct file *filp, const char __user *buf,
 
 	len = 0;
 	while ((count - len) >= (int)sizeof(event)) {
-		if (copy_from_user(&event, buf, sizeof(event)))
+		if (!copy_from_iter_full(&event,sizeof(event), from))
 			return -EFAULT;
 
 		if (event.header != RIO_DOORBELL)
@@ -2307,7 +2306,6 @@ static ssize_t mport_write(struct file *filp, const char __user *buf,
 			return ret;
 
 		len += sizeof(event);
-		buf += sizeof(event);
 	}
 
 	return len;
@@ -2318,8 +2316,8 @@ static const struct file_operations mport_fops = {
 	.open		= mport_cdev_open,
 	.release	= mport_cdev_release,
 	.poll		= mport_cdev_poll,
-	.read		= mport_read,
-	.write		= mport_write,
+	.read_iter	= mport_read,
+	.write_iter	= mport_write,
 	.mmap		= mport_cdev_mmap,
 	.fasync		= mport_cdev_fasync,
 	.unlocked_ioctl = mport_cdev_ioctl
