@@ -781,16 +781,16 @@ static void xddr_inject_data_ce_store(struct mem_ctl_info *mci, u8 ce_bitpos)
  *
  * Upon doing a read to the address the errors are injected.
  */
-static ssize_t inject_data_ce_store(struct file *file, const char __user *data,
-				    size_t count, loff_t *ppos)
+static ssize_t inject_data_ce_store(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct device *dev = file->private_data;
+	struct device *dev = iocb->ki_filp->private_data;
 	struct mem_ctl_info *mci = to_mci(dev);
 	struct edac_priv *priv = mci->pvt_info;
+	size_t count = iov_iter_count(from);
 	u8 ce_bitpos;
 	int ret;
 
-	ret = kstrtou8_from_user(data, count, 0, &ce_bitpos);
+	ret = kstrtou8_from_iter(from, count, 0, &ce_bitpos);
 	if (ret)
 		return ret;
 
@@ -812,7 +812,7 @@ static ssize_t inject_data_ce_store(struct file *file, const char __user *data,
 
 static const struct file_operations xddr_inject_ce_fops = {
 	.open = simple_open,
-	.write = inject_data_ce_store,
+	.write_iter = inject_data_ce_store,
 	.llseek = generic_file_llseek,
 };
 
@@ -845,19 +845,19 @@ static void xddr_inject_data_ue_store(struct mem_ctl_info *mci, u32 val0, u32 va
  *
  * Upon doing a read to the address the errors are injected.
  */
-static ssize_t inject_data_ue_store(struct file *file, const char __user *data,
-				    size_t count, loff_t *ppos)
+static ssize_t inject_data_ue_store(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct device *dev = file->private_data;
+	struct device *dev = iocb->ki_filp->private_data;
 	struct mem_ctl_info *mci = to_mci(dev);
 	struct edac_priv *priv = mci->pvt_info;
+	size_t count = iov_iter_count(from);
 	char buf[6], *pbuf, *token[2];
 	u32 val0 = 0, val1 = 0;
 	u8 len, ue0, ue1;
 	int i, ret;
 
 	len = min_t(size_t, count, sizeof(buf));
-	if (copy_from_user(buf, data, len))
+	if (!copy_from_iter_full(from, len, from))
 		return -EFAULT;
 
 	buf[len] = '\0';
@@ -906,7 +906,7 @@ static ssize_t inject_data_ue_store(struct file *file, const char __user *data,
 
 static const struct file_operations xddr_inject_ue_fops = {
 	.open = simple_open,
-	.write = inject_data_ue_store,
+	.write_iter = inject_data_ue_store,
 	.llseek = generic_file_llseek,
 };
 
