@@ -259,14 +259,15 @@ static int hpet_open(struct inode *inode, struct file *file)
 }
 
 static ssize_t
-hpet_read(struct file *file, char __user *buf, size_t count, loff_t * ppos)
+hpet_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	DECLARE_WAITQUEUE(wait, current);
+	size_t count = iov_iter_count(to);
 	unsigned long data;
 	ssize_t retval;
 	struct hpet_dev *devp;
 
-	devp = file->private_data;
+	devp = iocb->ki_filp->private_data;
 	if (!devp->hd_ireqfreq)
 		return -EIO;
 
@@ -290,7 +291,7 @@ hpet_read(struct file *file, char __user *buf, size_t count, loff_t * ppos)
 
 		if (data) {
 			break;
-		} else if (file->f_flags & O_NONBLOCK) {
+		} else if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			retval = -EAGAIN;
 			goto out;
 		} else if (signal_pending(current)) {
@@ -301,11 +302,13 @@ hpet_read(struct file *file, char __user *buf, size_t count, loff_t * ppos)
 	}
 
 	if (in_compat_syscall()) {
-		retval = put_user(data, (compat_ulong_t __user *)buf);
+		compat_ulong_t compat_data = data;
+
+		retval = put_iter(compat_data, to);
 		if (!retval)
 			retval = sizeof(compat_ulong_t);
 	} else {
-		retval = put_user(data, (unsigned long __user *)buf);
+		retval = put_iter(data, to);
 		if (!retval)
 			retval = sizeof(unsigned long);
 	}
@@ -701,7 +704,7 @@ hpet_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 static const struct file_operations hpet_fops = {
 	.owner = THIS_MODULE,
-	.read = hpet_read,
+	.read_iter = hpet_read,
 	.poll = hpet_poll,
 	.unlocked_ioctl = hpet_ioctl,
 #ifdef CONFIG_COMPAT
