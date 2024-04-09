@@ -85,10 +85,10 @@ unlock:
 	return 0;
 }
 
-static ssize_t gnss_read(struct file *file, char __user *buf,
-				size_t count, loff_t *pos)
+static ssize_t gnss_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct gnss_device *gdev = file->private_data;
+	struct gnss_device *gdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	unsigned int copied;
 	int ret;
 
@@ -99,7 +99,7 @@ static ssize_t gnss_read(struct file *file, char __user *buf,
 		if (gdev->disconnected)
 			return 0;
 
-		if (file->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 
 		ret = wait_event_interruptible(gdev->read_queue,
@@ -111,7 +111,7 @@ static ssize_t gnss_read(struct file *file, char __user *buf,
 		mutex_lock(&gdev->read_mutex);
 	}
 
-	ret = kfifo_to_user(&gdev->read_fifo, buf, count, &copied);
+	ret = kfifo_to_iter(&gdev->read_fifo, to, count, &copied);
 	if (ret == 0)
 		ret = copied;
 
@@ -120,10 +120,10 @@ static ssize_t gnss_read(struct file *file, char __user *buf,
 	return ret;
 }
 
-static ssize_t gnss_write(struct file *file, const char __user *buf,
-				size_t count, loff_t *pos)
+static ssize_t gnss_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct gnss_device *gdev = file->private_data;
+	struct gnss_device *gdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	size_t written = 0;
 	int ret;
 
@@ -148,7 +148,7 @@ static ssize_t gnss_write(struct file *file, const char __user *buf,
 		if (n > GNSS_WRITE_BUF_SIZE)
 			n = GNSS_WRITE_BUF_SIZE;
 
-		if (copy_from_user(gdev->write_buf, buf, n)) {
+		if (!copy_from_iter_full(gdev->write_buf, n, from)) {
 			ret = -EFAULT;
 			goto out_unlock;
 		}
@@ -170,7 +170,6 @@ static ssize_t gnss_write(struct file *file, const char __user *buf,
 			break;
 
 		written += ret;
-		buf += ret;
 
 		if (written == count)
 			break;
@@ -203,8 +202,8 @@ static const struct file_operations gnss_fops = {
 	.owner		= THIS_MODULE,
 	.open		= gnss_open,
 	.release	= gnss_release,
-	.read		= gnss_read,
-	.write		= gnss_write,
+	.read_iter	= gnss_read,
+	.write_iter	= gnss_write,
 	.poll		= gnss_poll,
 };
 
