@@ -90,7 +90,7 @@ static loff_t ps3flash_llseek(struct file *file, loff_t offset, int origin)
 			dev->regions[dev->region_idx].size*dev->blk_size);
 }
 
-static ssize_t ps3flash_read(char __user *userbuf, void *kernelbuf,
+static ssize_t ps3flash_read(struct iov_iter *iter, void *kernelbuf,
 			     size_t count, loff_t *pos)
 {
 	struct ps3_storage_device *dev = ps3flash_dev;
@@ -101,8 +101,8 @@ static ssize_t ps3flash_read(char __user *userbuf, void *kernelbuf,
 	const void *src;
 
 	dev_dbg(&dev->sbd.core,
-		"%s:%u: Reading %zu bytes at position %lld to U0x%p/K0x%p\n",
-		__func__, __LINE__, count, *pos, userbuf, kernelbuf);
+		"%s:%u: Reading %zu bytes at position %lld to I0x%p/K0x%p\n",
+		__func__, __LINE__, count, *pos, iter, kernelbuf);
 
 	size = dev->regions[dev->region_idx].size*dev->blk_size;
 	if (*pos >= size || !count)
@@ -130,14 +130,13 @@ static ssize_t ps3flash_read(char __user *userbuf, void *kernelbuf,
 			goto fail;
 
 		dev_dbg(&dev->sbd.core,
-			"%s:%u: copy %lu bytes from 0x%p to U0x%p/K0x%p\n",
-			__func__, __LINE__, n, src, userbuf, kernelbuf);
-		if (userbuf) {
-			if (copy_to_user(userbuf, src, n)) {
+			"%s:%u: copy %lu bytes from 0x%p to I0x%p/K0x%p\n",
+			__func__, __LINE__, n, src, iter, kernelbuf);
+		if (iter) {
+			if (!copy_to_iter_full(src, n, iter)) {
 				res = -EFAULT;
 				goto fail;
 			}
-			userbuf += n;
 		}
 		if (kernelbuf) {
 			memcpy(kernelbuf, src, n);
@@ -159,7 +158,7 @@ fail:
 	return res;
 }
 
-static ssize_t ps3flash_write(const char __user *userbuf,
+static ssize_t ps3flash_write(struct iov_iter *iter,
 			      const void *kernelbuf, size_t count, loff_t *pos)
 {
 	struct ps3_storage_device *dev = ps3flash_dev;
@@ -170,8 +169,8 @@ static ssize_t ps3flash_write(const char __user *userbuf,
 	void *dst;
 
 	dev_dbg(&dev->sbd.core,
-		"%s:%u: Writing %zu bytes at position %lld from U0x%p/K0x%p\n",
-		__func__, __LINE__, count, *pos, userbuf, kernelbuf);
+		"%s:%u: Writing %zu bytes at position %lld from I0x%p/K0x%p\n",
+		__func__, __LINE__, count, *pos, iter, kernelbuf);
 
 	size = dev->regions[dev->region_idx].size*dev->blk_size;
 	if (*pos >= size || !count)
@@ -202,14 +201,13 @@ static ssize_t ps3flash_write(const char __user *userbuf,
 			goto fail;
 
 		dev_dbg(&dev->sbd.core,
-			"%s:%u: copy %lu bytes from U0x%p/K0x%p to 0x%p\n",
-			__func__, __LINE__, n, userbuf, kernelbuf, dst);
-		if (userbuf) {
-			if (copy_from_user(dst, userbuf, n)) {
+			"%s:%u: copy %lu bytes from I0x%p/K0x%p to 0x%p\n",
+			__func__, __LINE__, n, iter, kernelbuf, dst);
+		if (iter) {
+			if (!copy_from_iter_full(dst, n, iter)) {
 				res = -EFAULT;
 				goto fail;
 			}
-			userbuf += n;
 		}
 		if (kernelbuf) {
 			memcpy(dst, kernelbuf, n);
@@ -234,16 +232,18 @@ fail:
 	return res;
 }
 
-static ssize_t ps3flash_user_read(struct file *file, char __user *buf,
-				  size_t count, loff_t *pos)
+static ssize_t ps3flash_user_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return ps3flash_read(buf, NULL, count, pos);
+	size_t count = iov_iter_count(to);
+
+	return ps3flash_read(to, NULL, count, &iocb->ki_pos);
 }
 
-static ssize_t ps3flash_user_write(struct file *file, const char __user *buf,
-				   size_t count, loff_t *pos)
+static ssize_t ps3flash_user_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return ps3flash_write(buf, NULL, count, pos);
+	size_t count = iov_iter_count(from);
+
+	return ps3flash_write(from, NULL, count, &iocb->ki_pos);
 }
 
 static ssize_t ps3flash_kernel_read(void *buf, size_t count, loff_t pos)
@@ -310,8 +310,8 @@ static irqreturn_t ps3flash_interrupt(int irq, void *data)
 static const struct file_operations ps3flash_fops = {
 	.owner	= THIS_MODULE,
 	.llseek	= ps3flash_llseek,
-	.read	= ps3flash_user_read,
-	.write	= ps3flash_user_write,
+	.read_iter	= ps3flash_user_read,
+	.write_iter	= ps3flash_user_write,
 	.flush	= ps3flash_flush,
 	.fsync	= ps3flash_fsync,
 };
