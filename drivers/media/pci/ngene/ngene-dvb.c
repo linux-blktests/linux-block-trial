@@ -49,6 +49,7 @@ static ssize_t ts_write(struct file *file, const char __user *buf,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(ts_write);
 
 static ssize_t ts_read(struct file *file, char __user *buf,
 		       size_t count, loff_t *ppos)
@@ -73,6 +74,7 @@ static ssize_t ts_read(struct file *file, char __user *buf,
 	}
 	return count;
 }
+FOPS_READ_ITER_HELPER(ts_read);
 
 static __poll_t ts_poll(struct file *file, poll_table *wait)
 {
@@ -96,8 +98,8 @@ static __poll_t ts_poll(struct file *file, poll_table *wait)
 
 static const struct file_operations ci_fops = {
 	.owner   = THIS_MODULE,
-	.read    = ts_read,
-	.write   = ts_write,
+	.read_iter = ts_read_iter,
+	.write_iter = ts_write_iter,
 	.open    = dvb_generic_open,
 	.release = dvb_generic_release,
 	.poll    = ts_poll,
