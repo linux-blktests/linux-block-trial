@@ -165,14 +165,13 @@ static irqreturn_t button_handler (int irq, void *dev_id)
  * device at any one time.
  */
 
-static int button_read (struct file *filp, char __user *buffer,
-			size_t count, loff_t *ppos)
+static int button_read (struct kiocb *iocb, struct iov_iter *to)
 {
 	DEFINE_WAIT(wait);
 	prepare_to_wait(&button_wait_queue, &wait, TASK_INTERRUPTIBLE);
 	schedule();
 	finish_wait(&button_wait_queue, &wait);
-	return (copy_to_user (buffer, &button_output_buffer, bcount))
+	return (!copy_to_iter_full(&button_output_buffer, bcount, to))
 		 ? -EFAULT : bcount;
 }
 
@@ -184,7 +183,7 @@ static int button_read (struct file *filp, char __user *buffer,
 
 static const struct file_operations button_fops = {
 	.owner		= THIS_MODULE,
-	.read		= button_read,
+	.read_iter	= button_read,
 	.llseek		= noop_llseek,
 };
 
