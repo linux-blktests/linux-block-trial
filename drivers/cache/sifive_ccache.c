@@ -73,12 +73,12 @@ enum {
 #ifdef CONFIG_DEBUG_FS
 static struct dentry *sifive_test;
 
-static ssize_t ccache_write(struct file *file, const char __user *data,
-			    size_t count, loff_t *ppos)
+static ssize_t ccache_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	unsigned int val;
 
-	if (kstrtouint_from_user(data, count, 0, &val))
+	if (kstrtouint_from_iter(from, count, 0, &val))
 		return -EINVAL;
 	if ((val < 0xFF) || (val >= 0x10000 && val < 0x100FF))
 		writel(val, ccache_base + SIFIVE_CCACHE_ECCINJECTERR);
@@ -90,7 +90,7 @@ static ssize_t ccache_write(struct file *file, const char __user *data,
 static const struct file_operations ccache_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.write = ccache_write
+	.write_iter = ccache_write
 };
 
 static void setup_sifive_debug(void)
