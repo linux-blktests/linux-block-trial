@@ -172,16 +172,16 @@ static void cec_devnode_unregister(struct cec_adapter *adap)
 }
 
 #ifdef CONFIG_DEBUG_FS
-static ssize_t cec_error_inj_write(struct file *file,
-	const char __user *ubuf, size_t count, loff_t *ppos)
+static ssize_t cec_error_inj_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *sf = file->private_data;
+	struct seq_file *sf = iocb->ki_filp->private_data;
 	struct cec_adapter *adap = sf->private;
+	size_t count = iov_iter_count(from);
 	char *buf;
 	char *line;
 	char *p;
 
-	buf = memdup_user_nul(ubuf, min_t(size_t, PAGE_SIZE, count));
+	buf = iterdup_nul(from, min_t(size_t, PAGE_SIZE, count));
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 	p = buf;
@@ -213,8 +213,8 @@ static int cec_error_inj_open(struct inode *inode, struct file *file)
 
 static const struct file_operations cec_error_inj_fops = {
 	.open = cec_error_inj_open,
-	.write = cec_error_inj_write,
-	.read = seq_read,
+	.write_iter = cec_error_inj_write,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
