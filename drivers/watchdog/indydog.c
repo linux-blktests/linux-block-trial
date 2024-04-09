@@ -86,9 +86,9 @@ static int indydog_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t indydog_write(struct file *file, const char *data,
-						size_t len, loff_t *ppos)
+static ssize_t indydog_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	/* Refresh the timer. */
 	if (len)
 		indydog_ping();
@@ -149,7 +149,7 @@ static int indydog_notify_sys(struct notifier_block *this,
 
 static const struct file_operations indydog_fops = {
 	.owner		= THIS_MODULE,
-	.write		= indydog_write,
+	.write_iter	= indydog_write,
 	.unlocked_ioctl	= indydog_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= indydog_open,
