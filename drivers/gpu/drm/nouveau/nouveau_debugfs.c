@@ -139,14 +139,14 @@ nouveau_debugfs_pstate_get(struct seq_file *m, void *data)
 }
 
 static ssize_t
-nouveau_debugfs_pstate_set(struct file *file, const char __user *ubuf,
-			   size_t len, loff_t *offp)
+nouveau_debugfs_pstate_set(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct drm_device *drm = m->private;
 	struct nouveau_debugfs *debugfs = nouveau_debugfs(drm);
 	struct nvif_control_pstate_user_v0 args = { .pwrsrc = -EINVAL };
 	char buf[32] = {}, *tmp, *cur = buf;
+	size_t len = iov_iter_count(from);
 	long value, ret;
 
 	if (!debugfs)
@@ -155,7 +155,7 @@ nouveau_debugfs_pstate_set(struct file *file, const char __user *ubuf,
 	if (len >= sizeof(buf))
 		return -EINVAL;
 
-	if (copy_from_user(buf, ubuf, len))
+	if (!copy_from_iter_full(buf, len, from))
 		return -EFAULT;
 
 	if ((tmp = strchr(buf, '\n')))
@@ -244,8 +244,8 @@ nouveau_debugfs_gpuva(struct seq_file *m, void *data)
 static const struct file_operations nouveau_pstate_fops = {
 	.owner = THIS_MODULE,
 	.open = nouveau_debugfs_pstate_open,
-	.read = seq_read,
-	.write = nouveau_debugfs_pstate_set,
+	.read_iter = seq_read_iter,
+	.write_iter = nouveau_debugfs_pstate_set,
 	.release = single_release,
 };
 

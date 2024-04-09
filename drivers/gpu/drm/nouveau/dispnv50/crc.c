@@ -654,11 +654,9 @@ nv50_crc_debugfs_flip_threshold_open(struct inode *inode, struct file *file)
 }
 
 static ssize_t
-nv50_crc_debugfs_flip_threshold_set(struct file *file,
-				    const char __user *ubuf, size_t len,
-				    loff_t *offp)
+nv50_crc_debugfs_flip_threshold_set(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct nv50_head *head = m->private;
 	struct nv50_head_atom *armh;
 	struct drm_crtc *crtc = &head->base.base;
@@ -666,9 +664,10 @@ nv50_crc_debugfs_flip_threshold_set(struct file *file,
 	struct nv50_crc *crc = &head->crc;
 	const struct nv50_crc_func *func =
 		nv50_disp(crtc->dev)->core->func->crc;
+	size_t len = iov_iter_count(from);
 	int value, ret;
 
-	ret = kstrtoint_from_user(ubuf, len, 10, &value);
+	ret = kstrtoint_from_iter(from, len, 10, &value);
 	if (ret)
 		return ret;
 
@@ -703,8 +702,8 @@ out:
 static const struct file_operations nv50_crc_flip_threshold_fops = {
 	.owner = THIS_MODULE,
 	.open = nv50_crc_debugfs_flip_threshold_open,
-	.read = seq_read,
-	.write = nv50_crc_debugfs_flip_threshold_set,
+	.read_iter = seq_read_iter,
+	.write_iter = nv50_crc_debugfs_flip_threshold_set,
 	.release = single_release,
 };
 
