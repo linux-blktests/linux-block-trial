@@ -31,11 +31,7 @@ struct nsc_gpio_ops {
 	struct device*	dev;	/* for dev_dbg() support, set in init  */
 };
 
-extern ssize_t nsc_gpio_write(struct file *file, const char __user *data,
-			      size_t len, loff_t *ppos);
-
-extern ssize_t nsc_gpio_read(struct file *file, char __user *buf,
-			     size_t len, loff_t *ppos);
-
+ssize_t nsc_gpio_write_iter(struct kiocb *iocb, struct iov_iter *from);
+ssize_t nsc_gpio_read_iter(struct kiocb *iocb, struct iov_iter *to);
 extern void nsc_gpio_dump(struct nsc_gpio_ops *amp, unsigned index);
 

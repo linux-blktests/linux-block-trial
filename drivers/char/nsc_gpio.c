@@ -39,8 +39,8 @@ void nsc_gpio_dump(struct nsc_gpio_ops *amp, unsigned index)
 		 amp->gpio_get(index), amp->gpio_current(index));
 }
 
-ssize_t nsc_gpio_write(struct file *file, const char __user *data,
-		       size_t len, loff_t *ppos)
+static ssize_t nsc_gpio_write(struct file *file, const char __user *data,
+			      size_t len, loff_t *ppos)
 {
 	unsigned m = iminor(file_inode(file));
 	struct nsc_gpio_ops *amp = file->private_data;
@@ -102,8 +102,8 @@ ssize_t nsc_gpio_write(struct file *file, const char __user *data,
 	return len;
 }
 
-ssize_t nsc_gpio_read(struct file *file, char __user * buf,
-		      size_t len, loff_t * ppos)
+static ssize_t nsc_gpio_read(struct file *file, char __user * buf, size_t len,
+			     loff_t * ppos)
 {
 	unsigned m = iminor(file_inode(file));
 	int value;
@@ -116,9 +116,19 @@ ssize_t nsc_gpio_read(struct file *file, char __user * buf,
 	return 1;
 }
 
+ssize_t nsc_gpio_read_iter(struct kiocb *iocb, struct iov_iter *to)
+{
+	return vfs_read_iter(iocb, to, nsc_gpio_read);
+}
+EXPORT_SYMBOL(nsc_gpio_read_iter);
+
+ssize_t nsc_gpio_write_iter(struct kiocb *iocb, struct iov_iter *from)
+{
+	return vfs_write_iter(iocb, from, nsc_gpio_write);
+}
+EXPORT_SYMBOL(nsc_gpio_write_iter);
+
 /* common file-ops routines for both scx200_gpio and pc87360_gpio */
-EXPORT_SYMBOL(nsc_gpio_write);
-EXPORT_SYMBOL(nsc_gpio_read);
 EXPORT_SYMBOL(nsc_gpio_dump);
 
 static int __init nsc_gpio_init(void)
