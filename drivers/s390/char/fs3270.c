@@ -275,6 +275,7 @@ static ssize_t fs3270_read(struct file *filp, char __user *data,
 	idal_buffer_free(ib);
 	return rc;
 }
+FOPS_READ_ITER_HELPER(fs3270_read);
 
 /*
  * Process writes to fullscreen 3270.
@@ -315,6 +316,7 @@ static ssize_t fs3270_write(struct file *filp, const char __user *data,
 	idal_buffer_free(ib);
 	return rc;
 }
+FOPS_WRITE_ITER_HELPER(fs3270_write);
 
 /*
  * process ioctl commands for the tube driver
@@ -505,8 +507,8 @@ static int fs3270_close(struct inode *inode, struct file *filp)
 
 static const struct file_operations fs3270_fops = {
 	.owner		 = THIS_MODULE,		/* owner */
-	.read		 = fs3270_read,		/* read */
-	.write		 = fs3270_write,	/* write */
+	.read_iter	 = fs3270_read_iter,	/* read */
+	.write_iter	 = fs3270_write_iter,	/* write */
 	.unlocked_ioctl	 = fs3270_ioctl,	/* ioctl */
 	.open		 = fs3270_open,		/* open */
 	.release	 = fs3270_close,	/* release */
