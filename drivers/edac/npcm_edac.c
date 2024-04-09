@@ -195,13 +195,13 @@ static irqreturn_t edac_ecc_isr(int irq, void *dev_id)
 	return IRQ_NONE;
 }
 
-static ssize_t force_ecc_error(struct file *file, const char __user *data,
-			       size_t count, loff_t *ppos)
+static ssize_t force_ecc_error(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct device *dev = file->private_data;
+	struct device *dev = iocb->ki_filp->private_data;
 	struct mem_ctl_info *mci = to_mci(dev);
 	struct priv_data *priv = mci->pvt_info;
 	const struct npcm_platform_data *pdata;
+	size_t count = iov_iter_count(from);
 	u32 val, syndrome;
 	int ret;
 
@@ -261,7 +261,7 @@ static ssize_t force_ecc_error(struct file *file, const char __user *data,
 
 static const struct file_operations force_ecc_error_fops = {
 	.open = simple_open,
-	.write = force_ecc_error,
+	.write_iter = force_ecc_error,
 	.llseek = generic_file_llseek,
 };
 
