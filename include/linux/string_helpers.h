@@ -11,6 +11,7 @@
 struct device;
 struct file;
 struct task_struct;
+struct iov_iter;
 
 static inline bool string_is_terminated(const char *s, int len)
 {
@@ -33,6 +34,7 @@ int string_get_size(u64 size, u64 blk_size, const enum string_size_units units,
 
 int parse_int_array(const char *buf, size_t count, int **array);
 int parse_int_array_user(const char __user *from, size_t count, int **array);
+int parse_int_array_iter(struct iov_iter *from, int **array);
 
 #define UNESCAPE_SPACE		BIT(0)
 #define UNESCAPE_OCTAL		BIT(1)

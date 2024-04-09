@@ -221,6 +221,25 @@ int parse_int_array_user(const char __user *from, size_t count, int **array)
 }
 EXPORT_SYMBOL(parse_int_array_user);
 
+/**
+ * parse_int_array_iter - Split string into a sequence of integers
+ * @from:	The iov_iter buffer to read from
+ * @array:	Returned pointer to sequence of integers
+ *
+ * See @parse_int_array_user, this is just the iov_iter variant.
+ */
+int parse_int_array_iter(struct iov_iter *from, int **array)
+{
+	char *buf;
+
+	buf = iterdup_nul(from, iov_iter_count(from));
+	if (IS_ERR(buf))
+		return PTR_ERR(buf);
+
+	return __parse_int_array(buf, array);
+}
+EXPORT_SYMBOL(parse_int_array_iter);
+
 static bool unescape_space(char **src, char **dst)
 {
 	char *p = *dst, *q = *src;
