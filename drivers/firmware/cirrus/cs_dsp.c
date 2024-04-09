@@ -440,6 +440,7 @@ static ssize_t cs_dsp_debugfs_wmfw_read(struct file *file,
 	return cs_dsp_debugfs_string_read(dsp, user_buf, count, ppos,
 					  &dsp->wmfw_file_name);
 }
+FOPS_READ_ITER_HELPER(cs_dsp_debugfs_wmfw_read);
 
 static ssize_t cs_dsp_debugfs_bin_read(struct file *file,
 				       char __user *user_buf,
@@ -450,6 +451,7 @@ static ssize_t cs_dsp_debugfs_bin_read(struct file *file,
 	return cs_dsp_debugfs_string_read(dsp, user_buf, count, ppos,
 					  &dsp->bin_file_name);
 }
+FOPS_READ_ITER_HELPER(cs_dsp_debugfs_bin_read);
 
 static const struct {
 	const char *name;
@@ -459,14 +461,14 @@ static const struct {
 		.name = "wmfw_file_name",
 		.fops = {
 			.open = simple_open,
-			.read = cs_dsp_debugfs_wmfw_read,
+			.read_iter = cs_dsp_debugfs_wmfw_read_iter,
 		},
 	},
 	{
 		.name = "bin_file_name",
 		.fops = {
 			.open = simple_open,
-			.read = cs_dsp_debugfs_bin_read,
+			.read_iter = cs_dsp_debugfs_bin_read_iter,
 		},
 	},
 };
