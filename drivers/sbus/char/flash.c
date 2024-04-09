@@ -98,11 +98,10 @@ flash_llseek(struct file *file, long long offset, int origin)
 	return file->f_pos;
 }
 
-static ssize_t
-flash_read(struct file * file, char __user * buf,
-	   size_t count, loff_t *ppos)
+static ssize_t flash_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	loff_t p = *ppos;
+	size_t count = iov_iter_count(to);
+	loff_t p = iocb->ki_pos;
 	int i;
 
 	if (count > flash.read_size - p)
@@ -110,12 +109,11 @@ flash_read(struct file * file, char __user * buf,
 
 	for (i = 0; i < count; i++) {
 		u8 data = upa_readb(flash.read_base + p + i);
-		if (put_user(data, buf))
+		if (put_iter(data, to))
 			return -EFAULT;
-		buf++;
 	}
 
-	*ppos += count;
+	iocb->ki_pos += count;
 	return count;
 }
 
@@ -148,7 +146,7 @@ static const struct file_operations flash_fops = {
 	 */
 	.owner =	THIS_MODULE,
 	.llseek =	flash_llseek,
-	.read =		flash_read,
+	.read_iter =	flash_read,
 	.mmap =		flash_mmap,
 	.open =		flash_open,
 	.release =	flash_release,
