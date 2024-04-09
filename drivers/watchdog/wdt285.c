@@ -114,9 +114,10 @@ static int watchdog_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t watchdog_write(struct file *file, const char __user *data,
-			      size_t len, loff_t *ppos)
+static ssize_t watchdog_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
+
 	/*
 	 *	Refresh the timer.
 	 */
@@ -178,7 +179,7 @@ static long watchdog_ioctl(struct file *file, unsigned int cmd,
 
 static const struct file_operations watchdog_fops = {
 	.owner		= THIS_MODULE,
-	.write		= watchdog_write,
+	.write_iter	= watchdog_write,
 	.unlocked_ioctl	= watchdog_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= watchdog_open,
