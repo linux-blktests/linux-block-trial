@@ -372,15 +372,13 @@ static int pxa3xx_gcu_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t
-pxa3xx_gcu_write(struct file *file, const char *buff,
-		 size_t count, loff_t *offp)
+static ssize_t pxa3xx_gcu_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int ret;
 	unsigned long flags;
 	struct pxa3xx_gcu_batch	*buffer;
-	struct pxa3xx_gcu_priv *priv = to_pxa3xx_gcu_priv(file);
-
+	struct pxa3xx_gcu_priv *priv = to_pxa3xx_gcu_priv(iocb->ki_filp);
+	size_t count = iov_iter_count(from);
 	size_t words = count / 4;
 
 	/* Does not need to be atomic. There's a lock in user space,
@@ -409,7 +407,7 @@ pxa3xx_gcu_write(struct file *file, const char *buff,
 
 
 	/* Copy data from user into buffer */
-	ret = copy_from_user(buffer->ptr, buff, words * 4);
+	ret = !copy_from_iter_full(buffer->ptr, words * 4, from);
 	if (ret) {
 		spin_lock_irqsave(&priv->spinlock, flags);
 		buffer->next = priv->free;
@@ -569,7 +567,7 @@ pxa3xx_gcu_free_buffers(struct device *dev,
 static const struct file_operations pxa3xx_gcu_miscdev_fops = {
 	.owner =		THIS_MODULE,
 	.open =			pxa3xx_gcu_open,
-	.write =		pxa3xx_gcu_write,
+	.write_iter =		pxa3xx_gcu_write,
 	.unlocked_ioctl =	pxa3xx_gcu_ioctl,
 	.mmap =			pxa3xx_gcu_mmap,
 };
