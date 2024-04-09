@@ -622,14 +622,14 @@ static int dst_ca_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t dst_ca_read(struct file *file, char __user *buffer, size_t length, loff_t *offset)
+static ssize_t dst_ca_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	dprintk(verbose, DST_CA_DEBUG, 1, " Device read.");
 
 	return 0;
 }
 
-static ssize_t dst_ca_write(struct file *file, const char __user *buffer, size_t length, loff_t *offset)
+static ssize_t dst_ca_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	dprintk(verbose, DST_CA_DEBUG, 1, " Device write.");
 
@@ -641,8 +641,8 @@ static const struct file_operations dst_ca_fops = {
 	.unlocked_ioctl = dst_ca_ioctl,
 	.open = dst_ca_open,
 	.release = dst_ca_release,
-	.read = dst_ca_read,
-	.write = dst_ca_write,
+	.read_iter = dst_ca_read,
+	.write_iter = dst_ca_write,
 	.llseek = noop_llseek,
 };
 
