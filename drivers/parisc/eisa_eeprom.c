@@ -20,23 +20,23 @@ static loff_t eisa_eeprom_llseek(struct file *file, loff_t offset, int origin)
 	return fixed_size_llseek(file, offset, origin, HPEE_MAX_LENGTH);
 }
 
-static ssize_t eisa_eeprom_read(struct file * file,
-			      char __user *buf, size_t count, loff_t *ppos )
+static ssize_t eisa_eeprom_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	unsigned char *tmp;
 	ssize_t ret;
 	int i;
 	
-	if (*ppos < 0 || *ppos >= HPEE_MAX_LENGTH)
+	if (iocb->ki_pos < 0 || iocb->ki_pos >= HPEE_MAX_LENGTH)
 		return 0;
 	
-	count = *ppos + count < HPEE_MAX_LENGTH ? count : HPEE_MAX_LENGTH - *ppos;
+	count = iocb->ki_pos + count < HPEE_MAX_LENGTH ? count : HPEE_MAX_LENGTH - iocb->ki_pos;
 	tmp = kmalloc(count, GFP_KERNEL);
 	if (tmp) {
 		for (i = 0; i < count; i++)
-			tmp[i] = readb(eisa_eeprom_addr+(*ppos)++);
+			tmp[i] = readb(eisa_eeprom_addr+iocb->ki_pos++);
 
-		if (copy_to_user (buf, tmp, count))
+		if (!copy_to_iter_full(tmp, count, to))
 			ret = -EFAULT;
 		else
 			ret = count;
@@ -66,7 +66,7 @@ static int eisa_eeprom_release(struct inode *inode, struct file *file)
 static const struct file_operations eisa_eeprom_fops = {
 	.owner =	THIS_MODULE,
 	.llseek =	eisa_eeprom_llseek,
-	.read =		eisa_eeprom_read,
+	.read_iter =	eisa_eeprom_read,
 	.open =		eisa_eeprom_open,
 	.release =	eisa_eeprom_release,
 };
