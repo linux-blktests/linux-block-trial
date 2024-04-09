@@ -139,6 +139,19 @@ int string_get_size(u64 size, u64 blk_size, const enum string_size_units units,
 }
 EXPORT_SYMBOL(string_get_size);
 
+/**
+ * parse_int_array - Split string into a sequence of integers
+ * @buf:	The kernel string to read from
+ * @count:	Length of string
+ * @array:	Returned pointer to sequence of integers
+ *
+ * On success @array is allocated and initialized with a sequence of
+ * integers extracted from the @buf plus an additional element that
+ * begins the sequence and specifies the integers count.
+ *
+ * Caller takes responsibility for freeing @array when it is no longer
+ * needed.
+ */
 int parse_int_array(const char *buf, size_t count, int **array)
 {
 	int *ints, nints;
@@ -147,7 +160,7 @@ int parse_int_array(const char *buf, size_t count, int **array)
 	if (!nints)
 		return -ENOENT;
 
-	ints = kzalloc_objs(*ints, nints + 1);
+	ints = kcalloc(nints + 1, sizeof(*ints), GFP_KERNEL);
 	if (!ints)
 		return -ENOMEM;
 
@@ -157,6 +170,31 @@ int parse_int_array(const char *buf, size_t count, int **array)
 	return 0;
 }
 EXPORT_SYMBOL(parse_int_array);
+
+static int __parse_int_array(char *buf, int **array)
+{
+	int *ints, nints;
+	int ret = 0;
+
+	get_options(buf, 0, &nints);
+	if (!nints) {
+		ret = -ENOENT;
+		goto free_buf;
+	}
+
+	ints = kzalloc_objs(*ints, nints + 1);
+	if (!ints) {
+		ret = -ENOMEM;
+		goto free_buf;
+	}
+
+	get_options(buf, nints + 1, ints);
+	*array = ints;
+
+free_buf:
+	kfree(buf);
+	return ret;
+}
 
 /**
  * parse_int_array_user - Split string into a sequence of integers
@@ -174,15 +212,12 @@ EXPORT_SYMBOL(parse_int_array);
 int parse_int_array_user(const char __user *from, size_t count, int **array)
 {
 	char *buf;
-	int ret;
 
 	buf = memdup_user_nul(from, count);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
-	ret = parse_int_array(buf, count, array);
-	kfree(buf);
-	return ret;
+	return __parse_int_array(buf, array);
 }
 EXPORT_SYMBOL(parse_int_array_user);
 
