@@ -460,6 +460,7 @@ static ssize_t ur_write(struct file *file, const char __user *udata,
 
 	return do_write(urf->urd, udata, count, urf->dev_reclen, ppos);
 }
+FOPS_WRITE_ITER_HELPER(ur_write);
 
 /*
  * diagnose code 0x14 subcode 0x0028 - position spool file to designated
@@ -579,6 +580,7 @@ static ssize_t ur_read(struct file *file, char __user *ubuf, size_t count,
 	mutex_unlock(&urd->io_mutex);
 	return rc;
 }
+FOPS_READ_ITER_HELPER(ur_read);
 
 /*
  * diagnose code 0x14 subcode 0x0fff - retrieve next file descriptor
@@ -798,8 +800,8 @@ static const struct file_operations ur_fops = {
 	.owner	 = THIS_MODULE,
 	.open	 = ur_open,
 	.release = ur_release,
-	.read	 = ur_read,
-	.write	 = ur_write,
+	.read_iter	 = ur_read_iter,
+	.write_iter	 = ur_write_iter,
 	.llseek  = ur_llseek,
 };
 
