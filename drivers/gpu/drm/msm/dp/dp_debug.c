@@ -122,23 +122,22 @@ static int msm_dp_test_type_show(struct seq_file *m, void *data)
 }
 DEFINE_SHOW_ATTRIBUTE(msm_dp_test_type);
 
-static ssize_t msm_dp_test_active_write(struct file *file,
-		const char __user *ubuf,
-		size_t len, loff_t *offp)
+static ssize_t msm_dp_test_active_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char *input_buffer;
 	int status = 0;
 	const struct msm_dp_debug_private *debug;
 	const struct drm_connector *connector;
+	size_t len = iov_iter_count(from);
 	int val = 0;
 
-	debug = ((struct seq_file *)file->private_data)->private;
+	debug = ((struct seq_file *)iocb->ki_filp->private_data)->private;
 	connector = debug->connector;
 
 	if (len == 0)
 		return 0;
 
-	input_buffer = memdup_user_nul(ubuf, len);
+	input_buffer = iterdup_nul(from, len);
 	if (IS_ERR(input_buffer))
 		return PTR_ERR(input_buffer);
 
@@ -161,7 +160,7 @@ static ssize_t msm_dp_test_active_write(struct file *file,
 	}
 	kfree(input_buffer);
 
-	*offp += len;
+	iocb->ki_pos += len;
 	return len;
 }
 
@@ -192,10 +191,10 @@ static int msm_dp_test_active_open(struct inode *inode,
 static const struct file_operations test_active_fops = {
 	.owner = THIS_MODULE,
 	.open = msm_dp_test_active_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = msm_dp_test_active_write
+	.write_iter = msm_dp_test_active_write,
 };
 
 int msm_dp_debug_init(struct device *dev, struct msm_dp_panel *panel,

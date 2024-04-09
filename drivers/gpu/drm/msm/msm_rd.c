@@ -130,12 +130,12 @@ static void rd_write_section(struct msm_rd_state *rd,
 	rd_write(rd, buf, sz);
 }
 
-static ssize_t rd_read(struct file *file, char __user *buf,
-		size_t sz, loff_t *ppos)
+static ssize_t rd_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct msm_rd_state *rd = file->private_data;
+	struct msm_rd_state *rd = iocb->ki_filp->private_data;
 	struct circ_buf *fifo = &rd->fifo;
 	const char *fptr = &fifo->buf[fifo->tail];
+	size_t sz = iov_iter_count(to);
 	int n = 0, ret = 0;
 
 	mutex_lock(&rd->read_lock);
@@ -150,13 +150,13 @@ static ssize_t rd_read(struct file *file, char __user *buf,
 	 * once.
 	 */
 	n = min_t(int, sz, circ_count_to_end(&rd->fifo));
-	if (copy_to_user(buf, fptr, n)) {
+	if (!copy_to_iter_full(fptr, n, to)) {
 		ret = -EFAULT;
 		goto out;
 	}
 
 	smp_store_release(&fifo->tail, (fifo->tail + n) & (BUF_SZ - 1));
-	*ppos += n;
+	iocb->ki_pos += n;
 
 	wake_up_all(&rd->fifo_event);
 
@@ -226,7 +226,7 @@ static int rd_release(struct inode *inode, struct file *file)
 static const struct file_operations rd_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = rd_open,
-	.read = rd_read,
+	.read_iter = rd_read,
 	.release = rd_release,
 };
 

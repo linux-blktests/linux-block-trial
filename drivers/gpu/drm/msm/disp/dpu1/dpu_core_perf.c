@@ -409,14 +409,15 @@ int dpu_core_perf_crtc_update(struct drm_crtc *crtc,
 
 #ifdef CONFIG_DEBUG_FS
 
-static ssize_t _dpu_core_perf_mode_write(struct file *file,
-		    const char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t _dpu_core_perf_mode_write(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct dpu_core_perf *perf = file->private_data;
+	struct dpu_core_perf *perf = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	u32 perf_mode = 0;
 	int ret;
 
-	ret = kstrtouint_from_user(user_buf, count, 0, &perf_mode);
+	ret = kstrtouint_from_iter(from, count, 0, &perf_mode);
 	if (ret)
 		return ret;
 
@@ -437,10 +438,9 @@ static ssize_t _dpu_core_perf_mode_write(struct file *file,
 	return count;
 }
 
-static ssize_t _dpu_core_perf_mode_read(struct file *file,
-			char __user *buff, size_t count, loff_t *ppos)
+static ssize_t _dpu_core_perf_mode_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dpu_core_perf *perf = file->private_data;
+	struct dpu_core_perf *perf = iocb->ki_filp->private_data;
 	int len;
 	char buf[128];
 
@@ -448,13 +448,13 @@ static ssize_t _dpu_core_perf_mode_read(struct file *file,
 			"mode %d\n",
 			perf->perf_tune.mode);
 
-	return simple_read_from_buffer(buff, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations dpu_core_perf_mode_fops = {
 	.open = simple_open,
-	.read = _dpu_core_perf_mode_read,
-	.write = _dpu_core_perf_mode_write,
+	.read_iter = _dpu_core_perf_mode_read,
+	.write_iter = _dpu_core_perf_mode_write,
 };
 
 /**

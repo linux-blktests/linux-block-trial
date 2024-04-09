@@ -112,7 +112,7 @@ free_priv:
 static const struct file_operations msm_gpu_fops = {
 	.owner = THIS_MODULE,
 	.open = msm_gpu_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = msm_gpu_release,
 };
@@ -205,7 +205,7 @@ static int msm_kms_open(struct inode *inode, struct file *file)
 static const struct file_operations msm_kms_fops = {
 	.owner = THIS_MODULE,
 	.open = msm_kms_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = msm_kms_release,
 };

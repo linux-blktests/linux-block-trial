@@ -109,16 +109,15 @@ static int dpu_debugfs_safe_stats_show(struct seq_file *s, void *v)
 }
 DEFINE_SHOW_ATTRIBUTE(dpu_debugfs_safe_stats);
 
-static ssize_t _dpu_plane_danger_read(struct file *file,
-			char __user *buff, size_t count, loff_t *ppos)
+static ssize_t _dpu_plane_danger_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dpu_kms *kms = file->private_data;
+	struct dpu_kms *kms = iocb->ki_filp->private_data;
 	int len;
 	char buf[40];
 
 	len = scnprintf(buf, sizeof(buf), "%d\n", !kms->has_danger_ctrl);
 
-	return simple_read_from_buffer(buff, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static void _dpu_plane_set_danger_state(struct dpu_kms *kms, bool enable)
@@ -144,14 +143,15 @@ static void _dpu_plane_set_danger_state(struct dpu_kms *kms, bool enable)
 	}
 }
 
-static ssize_t _dpu_plane_danger_write(struct file *file,
-		    const char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t _dpu_plane_danger_write(struct kiocb *iocb,
+				       struct iov_iter *from)
 {
-	struct dpu_kms *kms = file->private_data;
+	struct dpu_kms *kms = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int disable_panic;
 	int ret;
 
-	ret = kstrtouint_from_user(user_buf, count, 0, &disable_panic);
+	ret = kstrtouint_from_iter(from, count, 0, &disable_panic);
 	if (ret)
 		return ret;
 
@@ -172,8 +172,8 @@ static ssize_t _dpu_plane_danger_write(struct file *file,
 
 static const struct file_operations dpu_plane_danger_enable = {
 	.open = simple_open,
-	.read = _dpu_plane_danger_read,
-	.write = _dpu_plane_danger_write,
+	.read_iter = _dpu_plane_danger_read,
+	.write_iter = _dpu_plane_danger_write,
 };
 
 static void dpu_debugfs_danger_init(struct dpu_kms *dpu_kms,

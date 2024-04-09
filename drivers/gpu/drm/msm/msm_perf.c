@@ -117,10 +117,10 @@ static int refill_buf(struct msm_perf_state *perf)
 	return 0;
 }
 
-static ssize_t perf_read(struct file *file, char __user *buf,
-		size_t sz, loff_t *ppos)
+static ssize_t perf_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct msm_perf_state *perf = file->private_data;
+	struct msm_perf_state *perf = iocb->ki_filp->private_data;
+	size_t sz = iov_iter_count(to);
 	int n = 0, ret = 0;
 
 	mutex_lock(&perf->read_lock);
@@ -132,13 +132,13 @@ static ssize_t perf_read(struct file *file, char __user *buf,
 	}
 
 	n = min((int)sz, perf->buftot - perf->bufpos);
-	if (copy_to_user(buf, &perf->buf[perf->bufpos], n)) {
+	if (!copy_to_iter_full(&perf->buf[perf->bufpos], n, to)) {
 		ret = -EFAULT;
 		goto out;
 	}
 
 	perf->bufpos += n;
-	*ppos += n;
+	iocb->ki_pos += n;
 
 out:
 	mutex_unlock(&perf->read_lock);
@@ -191,7 +191,7 @@ static int perf_release(struct inode *inode, struct file *file)
 static const struct file_operations perf_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = perf_open,
-	.read = perf_read,
+	.read_iter = perf_read,
 	.release = perf_release,
 };
 
