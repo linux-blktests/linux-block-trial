@@ -213,33 +213,32 @@ static struct debugfs_entry debugfs_##_name = {				    \
 	.mode = VERIFY_OCTAL_PERMISSIONS(_mode),			    \
 	.fops = {							    \
 		.open = simple_open,					    \
-		.write = _write,					    \
-		.read  = _read,						    \
+		.write_iter = _write,					    \
+		.read_iter  = _read,					    \
 		.llseek = generic_file_llseek,				    \
 	},								    \
 }
 
 #define DEBUGFS_FIELD_ATTR(_type, _field)				    \
-static ssize_t thunderx_##_type##_##_field##_read(struct file *file,	    \
-					    char __user *data,		    \
-					    size_t count, loff_t *ppos)	    \
+static ssize_t thunderx_##_type##_##_field##_read(struct kiocb *iocb,	    \
+					    struct iov_iter *to)	    \
 {									    \
-	struct thunderx_##_type *pdata = file->private_data;		    \
+	struct thunderx_##_type *pdata = iocb->ki_filp->private_data;	    \
+	size_t count = iov_iter_count(to);				    \
 	char buf[20];							    \
 									    \
 	snprintf(buf, count, "0x%016llx", pdata->_field);		    \
-	return simple_read_from_buffer(data, count, ppos,		    \
-				       buf, sizeof(buf));		    \
+	return simple_copy_to_iter(buf, &iocb->ki_pos, sizeof(buf), to);    \
 }									    \
 									    \
-static ssize_t thunderx_##_type##_##_field##_write(struct file *file,	    \
-					     const char __user *data,	    \
-					     size_t count, loff_t *ppos)    \
+static ssize_t thunderx_##_type##_##_field##_write(struct kiocb *iocb,	    \
+					     struct iov_iter *from)	    \
 {									    \
-	struct thunderx_##_type *pdata = file->private_data;		    \
+	struct thunderx_##_type *pdata = iocb->ki_filp->private_data;	    \
+	size_t count = iov_iter_count(from);				    \
 	int res;							    \
 									    \
-	res = kstrtoull_from_user(data, count, 0, &pdata->_field);	    \
+	res = kstrtoull_from_iter(from, count, 0, &pdata->_field);	    \
 									    \
 	return res ? res : count;					    \
 }									    \
@@ -249,27 +248,25 @@ DEBUGFS_STRUCT(_field, 0600,						    \
 		   thunderx_##_type##_##_field##_read)			    \
 
 #define DEBUGFS_REG_ATTR(_type, _name, _reg)				    \
-static ssize_t thunderx_##_type##_##_name##_read(struct file *file,	    \
-					   char __user *data,		    \
-					   size_t count, loff_t *ppos)      \
+static ssize_t thunderx_##_type##_##_name##_read(struct kiocb *iocb,	    \
+					   struct iov_iter *to)		    \
 {									    \
-	struct thunderx_##_type *pdata = file->private_data;		    \
+	struct thunderx_##_type *pdata = iocb->ki_filp->private_data;	    \
 	char buf[20];							    \
 									    \
 	sprintf(buf, "0x%016llx", readq(pdata->regs + _reg));		    \
-	return simple_read_from_buffer(data, count, ppos,		    \
-				       buf, sizeof(buf));		    \
+	return simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf), to);  \
 }									    \
 									    \
-static ssize_t thunderx_##_type##_##_name##_write(struct file *file,	    \
-					    const char __user *data,	    \
-					    size_t count, loff_t *ppos)     \
+static ssize_t thunderx_##_type##_##_name##_write(struct kiocb *iocb,	    \
+					    struct iov_iter *from)	    \
 {									    \
-	struct thunderx_##_type *pdata = file->private_data;		    \
+	struct thunderx_##_type *pdata = iocb->ki_filp->private_data;	    \
+	size_t count = iov_iter_count(from);				    \
 	u64 val;							    \
 	int res;							    \
 									    \
-	res = kstrtoull_from_user(data, count, 0, &val);		    \
+	res = kstrtoull_from_iter(from, count, 0, &val);		    \
 									    \
 	if (!res) {							    \
 		writeq(val, pdata->regs + _reg);			    \
@@ -294,15 +291,15 @@ DEBUGFS_STRUCT(_name, 0600,						    \
  * - Do the actual injection:
  *	echo 1 > /sys/kernel/debug/<device number>/inject_ecc
  */
-static ssize_t thunderx_lmc_inject_int_write(struct file *file,
-					     const char __user *data,
-					     size_t count, loff_t *ppos)
+static ssize_t thunderx_lmc_inject_int_write(struct kiocb *iocb,
+					     struct iov_iter *from)
 {
-	struct thunderx_lmc *lmc = file->private_data;
+	struct thunderx_lmc *lmc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	u64 val;
 	int res;
 
-	res = kstrtoull_from_user(data, count, 0, &val);
+	res = kstrtoull_from_iter(from, count, 0, &val);
 
 	if (!res) {
 		/* Trigger the interrupt */
@@ -313,16 +310,14 @@ static ssize_t thunderx_lmc_inject_int_write(struct file *file,
 	return res;
 }
 
-static ssize_t thunderx_lmc_int_read(struct file *file,
-				     char __user *data,
-				     size_t count, loff_t *ppos)
+static ssize_t thunderx_lmc_int_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct thunderx_lmc *lmc = file->private_data;
+	struct thunderx_lmc *lmc = iocb->ki_filp->private_data;
 	char buf[20];
 	u64 lmc_int = readq(lmc->regs + LMC_INT);
 
 	snprintf(buf, sizeof(buf), "0x%016llx", lmc_int);
-	return simple_read_from_buffer(data, count, ppos, buf, sizeof(buf));
+	return simple_copy_to_iter(buf, &iocb->ki_pos, sizeof(buf), to);
 }
 
 #define TEST_PATTERN 0xa5
@@ -397,12 +392,12 @@ static int inject_ecc_fn(void *arg)
 	return 0;
 }
 
-static ssize_t thunderx_lmc_inject_ecc_write(struct file *file,
-					     const char __user *data,
-					     size_t count, loff_t *ppos)
+static ssize_t thunderx_lmc_inject_ecc_write(struct kiocb *iocb,
+					     struct iov_iter *from)
 {
-	struct thunderx_lmc *lmc = file->private_data;
+	struct thunderx_lmc *lmc = iocb->ki_filp->private_data;
 	unsigned int cline_size = cache_line_size();
+	size_t count = iov_iter_count(from);
 	u8 *tmp;
 	void __iomem *addr;
 	unsigned int offs, timeout = 100000;
