@@ -120,21 +120,22 @@ static long flash_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 	return 0;
 }
 
-static ssize_t flash_read(struct file *file, char __user *buf, size_t size,
-			  loff_t *ppos)
+static ssize_t flash_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t size = iov_iter_count(to);
 	ssize_t ret;
 
 	if (flashdebug)
 		printk(KERN_DEBUG "flash_read: flash_read: offset=0x%llx, "
-		       "buffer=%p, count=0x%zx.\n", *ppos, buf, size);
+		       "count=0x%zx.\n", iocb->ki_pos, size);
 	/*
 	 * We now lock against reads and writes. --rmk
 	 */
 	if (mutex_lock_interruptible(&nwflash_mutex))
 		return -ERESTARTSYS;
 
-	ret = simple_read_from_buffer(buf, size, ppos, (void *)FLASH_BASE, gbFlashSize);
+	ret = simple_copy_to_iter((void *)FLASH_BASE, &iocb->ki_pos,
+					gbFlashSize, to);
 	mutex_unlock(&nwflash_mutex);
 
 	return ret;
@@ -259,7 +260,7 @@ static ssize_t flash_write(struct file *file, const char __user *buf,
 
 	return written;
 }
-
+FOPS_WRITE_ITER_HELPER(flash_write);
 
 /*
  * The memory devices use the full 32/64 bits of the offset, and so we cannot
@@ -569,8 +570,8 @@ static const struct file_operations flash_fops =
 {
 	.owner		= THIS_MODULE,
 	.llseek		= flash_llseek,
-	.read		= flash_read,
-	.write		= flash_write,
+	.read_iter	= flash_read,
+	.write_iter	= flash_write_iter,
 	.unlocked_ioctl	= flash_ioctl,
 };
 
