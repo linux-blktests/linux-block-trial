@@ -233,8 +233,8 @@ static int pc8736x_gpio_open(struct inode *inode, struct file *file)
 static const struct file_operations pc8736x_gpio_fileops = {
 	.owner	= THIS_MODULE,
 	.open	= pc8736x_gpio_open,
-	.write	= nsc_gpio_write,
-	.read	= nsc_gpio_read,
+	.write_iter	= nsc_gpio_write_iter,
+	.read_iter	= nsc_gpio_read_iter,
 };
 
 static void __init pc8736x_init_shadow(void)
