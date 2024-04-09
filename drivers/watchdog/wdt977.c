@@ -301,9 +301,10 @@ static int wdt977_release(struct inode *inode, struct file *file)
  *      write of data will do, as we we don't define content meaning.
  */
 
-static ssize_t wdt977_write(struct file *file, const char __user *buf,
-			    size_t count, loff_t *ppos)
+static ssize_t wdt977_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
+
 	if (count) {
 		if (!nowayout) {
 			size_t i;
@@ -313,7 +314,7 @@ static ssize_t wdt977_write(struct file *file, const char __user *buf,
 
 			for (i = 0; i != count; i++) {
 				char c;
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_close = 42;
@@ -419,7 +420,7 @@ static int wdt977_notify_sys(struct notifier_block *this, unsigned long code,
 
 static const struct file_operations wdt977_fops = {
 	.owner		= THIS_MODULE,
-	.write		= wdt977_write,
+	.write_iter	= wdt977_write,
 	.unlocked_ioctl	= wdt977_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= wdt977_open,
