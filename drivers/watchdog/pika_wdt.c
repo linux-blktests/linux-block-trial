@@ -139,9 +139,10 @@ static int pikawdt_release(struct inode *inode, struct file *file)
 /*
  * Pat the watchdog whenever device is written to.
  */
-static ssize_t pikawdt_write(struct file *file, const char __user *data,
-			     size_t len, loff_t *ppos)
+static ssize_t pikawdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
+
 	if (!len)
 		return 0;
 
@@ -153,7 +154,7 @@ static ssize_t pikawdt_write(struct file *file, const char __user *data,
 
 		for (i = 0; i < len; i++) {
 			char c;
-			if (get_user(c, data + i))
+			if (get_iter(c, from))
 				return -EFAULT;
 			if (c == 'V') {
 				pikawdt_private.expect_close = 42;
@@ -211,7 +212,7 @@ static const struct file_operations pikawdt_fops = {
 	.owner		= THIS_MODULE,
 	.open		= pikawdt_open,
 	.release	= pikawdt_release,
-	.write		= pikawdt_write,
+	.write_iter	= pikawdt_write,
 	.unlocked_ioctl	= pikawdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 };
