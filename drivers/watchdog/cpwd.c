@@ -478,10 +478,10 @@ static long cpwd_compat_ioctl(struct file *file, unsigned int cmd, unsigned long
 	return cpwd_ioctl(file, cmd, (unsigned long)compat_ptr(arg));
 }
 
-static ssize_t cpwd_write(struct file *file, const char __user *buf,
-			  size_t count, loff_t *ppos)
+static ssize_t cpwd_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct inode *inode = file_inode(file);
+	struct inode *inode = file_inode(iocb->ki_filp);
+	size_t count = iov_iter_count(from);
 	struct cpwd *p = cpwd_device;
 	int index = iminor(inode);
 
@@ -493,8 +493,7 @@ static ssize_t cpwd_write(struct file *file, const char __user *buf,
 	return 0;
 }
 
-static ssize_t cpwd_read(struct file *file, char __user *buffer,
-			 size_t count, loff_t *ppos)
+static ssize_t cpwd_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return -EINVAL;
 }
@@ -504,8 +503,8 @@ static const struct file_operations cpwd_fops = {
 	.unlocked_ioctl =	cpwd_ioctl,
 	.compat_ioctl =		cpwd_compat_ioctl,
 	.open =			cpwd_open,
-	.write =		cpwd_write,
-	.read =			cpwd_read,
+	.write_iter =		cpwd_write,
+	.read_iter =		cpwd_read,
 	.release =		cpwd_release,
 };
 
