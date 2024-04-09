@@ -615,11 +615,11 @@ stm_write(struct stm_device *stm, struct stm_output *output,
 	return err;
 }
 
-static ssize_t stm_char_write(struct file *file, const char __user *buf,
-			      size_t count, loff_t *ppos)
+static ssize_t stm_char_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct stm_file *stmf = file->private_data;
+	struct stm_file *stmf = iocb->ki_filp->private_data;
 	struct stm_device *stm = stmf->stm;
+	size_t count = iov_iter_count(from);
 	char *kbuf;
 	int err;
 
@@ -649,7 +649,7 @@ static ssize_t stm_char_write(struct file *file, const char __user *buf,
 	if (!kbuf)
 		return -ENOMEM;
 
-	err = copy_from_user(kbuf, buf, count);
+	err = !copy_from_iter_full(kbuf, count, from);
 	if (err) {
 		kfree(kbuf);
 		return -EFAULT;
@@ -835,7 +835,7 @@ stm_char_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 static const struct file_operations stm_fops = {
 	.open		= stm_char_open,
 	.release	= stm_char_release,
-	.write		= stm_char_write,
+	.write_iter	= stm_char_write,
 	.mmap		= stm_char_mmap,
 	.unlocked_ioctl	= stm_char_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
