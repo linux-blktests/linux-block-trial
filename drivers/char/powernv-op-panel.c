@@ -40,11 +40,9 @@ static loff_t oppanel_llseek(struct file *filp, loff_t offset, int whence)
 	return fixed_size_llseek(filp, offset, whence, oppanel_size);
 }
 
-static ssize_t oppanel_read(struct file *filp, char __user *userbuf, size_t len,
-			    loff_t *f_pos)
+static ssize_t oppanel_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return simple_read_from_buffer(userbuf, len, f_pos, oppanel_data,
-			oppanel_size);
+	return simple_copy_to_iter(oppanel_data, &iocb->ki_pos, oppanel_size, to);
 }
 
 static int __op_panel_update_display(void)
@@ -86,26 +84,25 @@ static int __op_panel_update_display(void)
 	return rc;
 }
 
-static ssize_t oppanel_write(struct file *filp, const char __user *userbuf,
-			     size_t len, loff_t *f_pos)
+static ssize_t oppanel_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	loff_t f_pos_prev = *f_pos;
+	loff_t f_pos_prev = iocb->ki_pos;
+	size_t len = iov_iter_count(from);
 	ssize_t ret;
 	int rc;
 
-	if (!*f_pos)
+	if (!iocb->ki_pos)
 		memset(oppanel_data, ' ', oppanel_size);
-	else if (*f_pos >= oppanel_size)
+	else if (iocb->ki_pos >= oppanel_size)
 		return -EFBIG;
 
-	ret = simple_write_to_buffer(oppanel_data, oppanel_size, f_pos, userbuf,
-			len);
+	ret = simple_copy_from_iter(oppanel_data, &iocb->ki_pos, len, from);
 	if (ret > 0) {
 		rc = __op_panel_update_display();
 		if (rc != OPAL_SUCCESS) {
 			pr_err_ratelimited("OPAL call failed to write to op panel display [rc=%d]\n",
 				rc);
-			*f_pos = f_pos_prev;
+			iocb->ki_pos = f_pos_prev;
 			return -EIO;
 		}
 	}
@@ -130,8 +127,8 @@ static int oppanel_release(struct inode *inode, struct file *filp)
 static const struct file_operations oppanel_fops = {
 	.owner		= THIS_MODULE,
 	.llseek		= oppanel_llseek,
-	.read		= oppanel_read,
-	.write		= oppanel_write,
+	.read_iter	= oppanel_read,
+	.write_iter	= oppanel_write,
 	.open		= oppanel_open,
 	.release	= oppanel_release
 };
