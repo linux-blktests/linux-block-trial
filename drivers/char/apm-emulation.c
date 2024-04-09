@@ -31,6 +31,7 @@
 #include <linux/completion.h>
 #include <linux/kthread.h>
 #include <linux/delay.h>
+#include <linux/uio.h>
 
 /*
  * One option can be changed at boot time as follows:
@@ -189,9 +190,11 @@ static void queue_event(apm_event_t event)
 	wake_up_interruptible(&apm_waitqueue);
 }
 
-static ssize_t apm_read(struct file *fp, char __user *buf, size_t count, loff_t *ppos)
+static ssize_t apm_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	struct file *fp = iocb->ki_filp;
 	struct apm_user *as = fp->private_data;
+	size_t count = iov_iter_count(to);
 	apm_event_t event;
 	int i = count, ret = 0;
 
@@ -207,7 +210,7 @@ static ssize_t apm_read(struct file *fp, char __user *buf, size_t count, loff_t 
 		event = queue_get_event(&as->queue);
 
 		ret = -EFAULT;
-		if (copy_to_user(buf, &event, sizeof(event)))
+		if (!copy_to_iter_full(&event, sizeof(event), to))
 			break;
 
 		mutex_lock(&state_lock);
@@ -216,7 +219,6 @@ static ssize_t apm_read(struct file *fp, char __user *buf, size_t count, loff_t 
 			as->suspend_state = SUSPEND_READ;
 		mutex_unlock(&state_lock);
 
-		buf += sizeof(event);
 		i -= sizeof(event);
 	}
 
@@ -368,7 +370,7 @@ static int apm_open(struct inode * inode, struct file * filp)
 
 static const struct file_operations apm_bios_fops = {
 	.owner		= THIS_MODULE,
-	.read		= apm_read,
+	.read_iter	= apm_read,
 	.poll		= apm_poll,
 	.unlocked_ioctl	= apm_ioctl,
 	.open		= apm_open,
