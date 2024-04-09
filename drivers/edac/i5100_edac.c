@@ -924,20 +924,19 @@ static void i5100_do_inject(struct mem_ctl_info *mci)
 }
 
 #define to_mci(k) container_of(k, struct mem_ctl_info, dev)
-static ssize_t inject_enable_write(struct file *file, const char __user *data,
-		size_t count, loff_t *ppos)
+static ssize_t inject_enable_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct device *dev = file->private_data;
+	struct device *dev = iocb->ki_filp->private_data;
 	struct mem_ctl_info *mci = to_mci(dev);
 
 	i5100_do_inject(mci);
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations i5100_inject_enable_fops = {
 	.open = simple_open,
-	.write = inject_enable_write,
+	.write_iter = inject_enable_write,
 	.llseek = generic_file_llseek,
 };
 
