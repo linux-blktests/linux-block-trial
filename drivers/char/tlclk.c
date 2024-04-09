@@ -241,9 +241,10 @@ static int tlclk_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t tlclk_read(struct file *filp, char __user *buf, size_t count,
-		loff_t *f_pos)
+static ssize_t tlclk_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
+
 	if (count < sizeof(struct tlclk_alarms))
 		return -EIO;
 	if (mutex_lock_interruptible(&tlclk_mutex))
@@ -251,7 +252,7 @@ static ssize_t tlclk_read(struct file *filp, char __user *buf, size_t count,
 
 
 	wait_event_interruptible(wq, got_event);
-	if (copy_to_user(buf, alarm_events, sizeof(struct tlclk_alarms))) {
+	if (!copy_to_iter_full(alarm_events, sizeof(struct tlclk_alarms), to)) {
 		mutex_unlock(&tlclk_mutex);
 		return -EFAULT;
 	}
@@ -264,7 +265,7 @@ static ssize_t tlclk_read(struct file *filp, char __user *buf, size_t count,
 }
 
 static const struct file_operations tlclk_fops = {
-	.read = tlclk_read,
+	.read_iter = tlclk_read,
 	.open = tlclk_open,
 	.release = tlclk_release,
 	.llseek = noop_llseek,
