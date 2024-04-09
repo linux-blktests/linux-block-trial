@@ -204,24 +204,22 @@ struct dax_ctx {
 
 /* driver public entry points */
 static int dax_open(struct inode *inode, struct file *file);
-static ssize_t dax_read(struct file *filp, char __user *buf,
-			size_t count, loff_t *ppos);
-static ssize_t dax_write(struct file *filp, const char __user *buf,
-			 size_t count, loff_t *ppos);
+static ssize_t dax_read(struct kiocb *iocb, struct iov_iter *to);
+static ssize_t dax_write_iter(struct kiocb *iocb, struct iov_iter *from);
 static int dax_devmap(struct file *f, struct vm_area_struct *vma);
 static int dax_close(struct inode *i, struct file *f);
 
 static const struct file_operations dax_fops = {
 	.owner	=	THIS_MODULE,
 	.open	=	dax_open,
-	.read	=	dax_read,
-	.write	=	dax_write,
+	.read_iter	=	dax_read,
+	.write_iter	=	dax_write_iter,
 	.mmap	=	dax_devmap,
 	.release =	dax_close,
 };
 
-static int dax_ccb_exec(struct dax_ctx *ctx, const char __user *buf,
-			size_t count, loff_t *ppos);
+static int dax_ccb_exec(struct dax_ctx *ctx, struct iov_iter *from,
+			size_t count, loff_t pos);
 static int dax_ccb_info(u64 ca, struct ccb_info_result *info);
 static int dax_ccb_kill(u64 ca, u16 *kill_res);
 
@@ -541,10 +539,10 @@ static int dax_close(struct inode *ino, struct file *f)
 	return 0;
 }
 
-static ssize_t dax_read(struct file *f, char __user *buf,
-			size_t count, loff_t *ppos)
+static ssize_t dax_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dax_ctx *ctx = f->private_data;
+	struct dax_ctx *ctx = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 
 	if (ctx->client != current)
 		return -EUSERS;
@@ -553,15 +551,15 @@ static ssize_t dax_read(struct file *f, char __user *buf,
 
 	if (count != sizeof(union ccb_result))
 		return -EINVAL;
-	if (copy_to_user(buf, &ctx->result, sizeof(union ccb_result)))
+	if (!copy_to_iter_full(&ctx->result, sizeof(union ccb_result), to))
 		return -EFAULT;
 	return count;
 }
 
-static ssize_t dax_write(struct file *f, const char __user *buf,
-			 size_t count, loff_t *ppos)
+static ssize_t dax_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct dax_ctx *ctx = f->private_data;
+	struct dax_ctx *ctx = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct dax_command hdr;
 	unsigned long ca;
 	int i, idx, ret;
@@ -573,7 +571,7 @@ static ssize_t dax_write(struct file *f, const char __user *buf,
 		return -EINVAL;
 
 	if (count % sizeof(struct dax_ccb) == 0)
-		return dax_ccb_exec(ctx, buf, count, ppos); /* CCB EXEC */
+		return dax_ccb_exec(ctx, from, count, iocb->ki_pos);
 
 	if (count != sizeof(struct dax_command))
 		return -EINVAL;
@@ -582,7 +580,7 @@ static ssize_t dax_write(struct file *f, const char __user *buf,
 	if (ctx->owner != current)
 		return -EUSERS;
 
-	if (copy_from_user(&hdr, buf, sizeof(hdr)))
+	if (!copy_from_iter_full(&hdr, sizeof(hdr), from))
 		return -EFAULT;
 
 	ca = ctx->ca_buf_ra + hdr.ca_offset;
@@ -845,14 +843,14 @@ static int dax_preprocess_usr_ccbs(struct dax_ctx *ctx, int idx, int nelem)
 	return DAX_SUBMIT_OK;
 }
 
-static int dax_ccb_exec(struct dax_ctx *ctx, const char __user *buf,
-			size_t count, loff_t *ppos)
+static int dax_ccb_exec(struct dax_ctx *ctx, struct iov_iter *from,
+			size_t count, loff_t pos)
 {
 	unsigned long accepted_len, hv_rv;
 	int i, idx, nccbs, naccepted;
 
 	ctx->client = current;
-	idx = *ppos;
+	idx = pos;
 	nccbs = count / sizeof(struct dax_ccb);
 
 	if (ctx->owner != current) {
@@ -872,7 +870,7 @@ static int dax_ccb_exec(struct dax_ctx *ctx, const char __user *buf,
 	 * Copy CCBs into kernel buffer to prevent modification by the
 	 * user in between validation and submission.
 	 */
-	if (copy_from_user(ctx->ccb_buf, buf, count)) {
+	if (!copy_from_iter_full(ctx->ccb_buf, count, from)) {
 		dax_dbg("copyin of user CCB buffer failed");
 		ctx->result.exec.status = DAX_SUBMIT_ERR_CCB_ARR_MMU_MISS;
 		return 0;
