@@ -280,15 +280,14 @@ static __poll_t smsdvb_stats_poll(struct file *file, poll_table *wait)
 	return rc > 0 ? EPOLLIN | EPOLLRDNORM : 0;
 }
 
-static ssize_t smsdvb_stats_read(struct file *file, char __user *user_buf,
-				      size_t nbytes, loff_t *ppos)
+static ssize_t smsdvb_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int rc = 0, len;
-	struct smsdvb_debugfs *debug_data = file->private_data;
+	struct smsdvb_debugfs *debug_data = iocb->ki_filp->private_data;
 
 	kref_get(&debug_data->refcount);
 
-	if (file->f_flags & O_NONBLOCK) {
+	if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 		rc = smsdvb_stats_wait_read(debug_data);
 		if (!rc) {
 			rc = -EWOULDBLOCK;
@@ -306,14 +305,14 @@ static ssize_t smsdvb_stats_read(struct file *file, char __user *user_buf,
 		goto ret;
 	}
 
-	len = debug_data->stats_count - *ppos;
+	len = debug_data->stats_count - iocb->ki_pos;
 	if (len >= 0)
-		rc = simple_read_from_buffer(user_buf, nbytes, ppos,
-					     debug_data->stats_data, len);
+		rc = simple_copy_to_iter(debug_data->stats_data, &iocb->ki_pos,
+					 len, to);
 	else
 		rc = 0;
 
-	if (*ppos >= debug_data->stats_count) {
+	if (iocb->ki_pos >= debug_data->stats_count) {
 		spin_lock(&debug_data->lock);
 		debug_data->stats_was_read = true;
 		spin_unlock(&debug_data->lock);
@@ -341,7 +340,7 @@ static int smsdvb_stats_release(struct inode *inode, struct file *file)
 static const struct file_operations debugfs_stats_ops = {
 	.open = smsdvb_stats_open,
 	.poll = smsdvb_stats_poll,
-	.read = smsdvb_stats_read,
+	.read_iter = smsdvb_stats_read,
 	.release = smsdvb_stats_release,
 	.llseek = generic_file_llseek,
 };
