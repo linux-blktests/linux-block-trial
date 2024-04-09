@@ -1216,10 +1216,11 @@ infoframe_read_##type(struct file *filp,				\
 				   ubuf, count, ppos);			\
 }									\
 									\
+FOPS_READ_ITER_HELPER(infoframe_read_##type);				\
 static const struct file_operations infoframe_##type##_fops = {		\
 	.owner   = THIS_MODULE,						\
 	.open    = simple_open,						\
-	.read    = infoframe_read_##type,				\
+	.read_iter = infoframe_read_##type##_iter,			\
 }
 
 DEBUGFS_FOPS(avi, V4L2_DEBUGFS_IF_AVI);
