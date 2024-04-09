@@ -229,16 +229,15 @@ bnad_debugfs_lseek(struct file *file, loff_t offset, int orig)
 }
 
 static ssize_t
-bnad_debugfs_read(struct file *file, char __user *buf,
-		  size_t nbytes, loff_t *pos)
+bnad_debugfs_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct bnad_debug_info *debug = file->private_data;
+	struct bnad_debug_info *debug = iocb->ki_filp->private_data;
 
 	if (!debug || !debug->debug_buffer)
 		return 0;
 
-	return simple_read_from_buffer(buf, nbytes, pos,
-				debug->debug_buffer, debug->buffer_len);
+	return simple_copy_to_iter(debug->debug_buffer, &iocb->ki_pos,
+				   debug->buffer_len, to);
 }
 
 #define BFA_REG_CT_ADDRSZ	(0x40000)
@@ -275,18 +274,18 @@ bna_reg_offset_check(struct bfa_ioc *ioc, u32 offset, u32 len)
 }
 
 static ssize_t
-bnad_debugfs_read_regrd(struct file *file, char __user *buf,
-			size_t nbytes, loff_t *pos)
+bnad_debugfs_read_regrd_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct bnad_debug_info *regrd_debug = file->private_data;
+	struct bnad_debug_info *regrd_debug = iocb->ki_filp->private_data;
 	struct bnad *bnad = (struct bnad *)regrd_debug->i_private;
 	ssize_t rc;
+	loff_t *pos = &iocb->ki_pos;
+	size_t nbytes = iov_iter_count(to);
 
 	if (!bnad->regdata)
 		return 0;
 
-	rc = simple_read_from_buffer(buf, nbytes, pos,
-			bnad->regdata, bnad->reglen);
+	rc = simple_copy_to_iter(bnad->regdata, pos, bnad->reglen, to);
 
 	if ((*pos + nbytes) >= bnad->reglen) {
 		kfree(bnad->regdata);
@@ -298,10 +297,9 @@ bnad_debugfs_read_regrd(struct file *file, char __user *buf,
 }
 
 static ssize_t
-bnad_debugfs_write_regrd(struct file *file, const char __user *buf,
-		size_t nbytes, loff_t *ppos)
+bnad_debugfs_write_regrd_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct bnad_debug_info *regrd_debug = file->private_data;
+	struct bnad_debug_info *regrd_debug = iocb->ki_filp->private_data;
 	struct bnad *bnad = (struct bnad *)regrd_debug->i_private;
 	struct bfa_ioc *ioc = &bnad->bna.ioceth.ioc;
 	int rc, i;
@@ -310,9 +308,10 @@ bnad_debugfs_write_regrd(struct file *file, const char __user *buf,
 	void __iomem *rb, *reg_addr;
 	unsigned long flags;
 	void *kern_buf;
+	size_t nbytes = iov_iter_count(from);
 
 	/* Copy the user space buf */
-	kern_buf = memdup_user_nul(buf, nbytes);
+	kern_buf = iterdup_nul(from, nbytes);
 	if (IS_ERR(kern_buf))
 		return PTR_ERR(kern_buf);
 
@@ -359,10 +358,9 @@ bnad_debugfs_write_regrd(struct file *file, const char __user *buf,
 }
 
 static ssize_t
-bnad_debugfs_write_regwr(struct file *file, const char __user *buf,
-		size_t nbytes, loff_t *ppos)
+bnad_debugfs_write_regwr_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct bnad_debug_info *debug = file->private_data;
+	struct bnad_debug_info *debug = iocb->ki_filp->private_data;
 	struct bnad *bnad = (struct bnad *)debug->i_private;
 	struct bfa_ioc *ioc = &bnad->bna.ioceth.ioc;
 	int rc;
@@ -370,9 +368,10 @@ bnad_debugfs_write_regwr(struct file *file, const char __user *buf,
 	void __iomem *reg_addr;
 	unsigned long flags;
 	void *kern_buf;
+	size_t nbytes = iov_iter_count(from);
 
 	/* Copy the user space buf */
-	kern_buf = memdup_user_nul(buf, nbytes);
+	kern_buf = iterdup_nul(from, nbytes);
 	if (IS_ERR(kern_buf))
 		return PTR_ERR(kern_buf);
 
@@ -434,7 +433,7 @@ static const struct file_operations bnad_debugfs_op_fwtrc = {
 	.owner		=	THIS_MODULE,
 	.open		=	bnad_debugfs_open_fwtrc,
 	.llseek		=	bnad_debugfs_lseek,
-	.read		=	bnad_debugfs_read,
+	.read_iter	=	bnad_debugfs_read_iter,
 	.release	=	bnad_debugfs_buffer_release,
 };
 
@@ -442,7 +441,7 @@ static const struct file_operations bnad_debugfs_op_fwsave = {
 	.owner		=	THIS_MODULE,
 	.open		=	bnad_debugfs_open_fwsave,
 	.llseek		=	bnad_debugfs_lseek,
-	.read		=	bnad_debugfs_read,
+	.read_iter	=	bnad_debugfs_read_iter,
 	.release	=	bnad_debugfs_buffer_release,
 };
 
@@ -450,8 +449,8 @@ static const struct file_operations bnad_debugfs_op_regrd = {
 	.owner		=       THIS_MODULE,
 	.open		=	bnad_debugfs_open_reg,
 	.llseek		=	bnad_debugfs_lseek,
-	.read		=	bnad_debugfs_read_regrd,
-	.write		=	bnad_debugfs_write_regrd,
+	.read_iter	=	bnad_debugfs_read_regrd_iter,
+	.write_iter	=	bnad_debugfs_write_regrd_iter,
 	.release	=	bnad_debugfs_release,
 };
 
@@ -459,7 +458,7 @@ static const struct file_operations bnad_debugfs_op_regwr = {
 	.owner		=	THIS_MODULE,
 	.open		=	bnad_debugfs_open_reg,
 	.llseek		=	bnad_debugfs_lseek,
-	.write		=	bnad_debugfs_write_regwr,
+	.write_iter	=	bnad_debugfs_write_regwr_iter,
 	.release	=	bnad_debugfs_release,
 };
 
@@ -467,7 +466,7 @@ static const struct file_operations bnad_debugfs_op_drvinfo = {
 	.owner		=	THIS_MODULE,
 	.open		=	bnad_debugfs_open_drvinfo,
 	.llseek		=	bnad_debugfs_lseek,
-	.read		=	bnad_debugfs_read,
+	.read_iter	=	bnad_debugfs_read_iter,
 	.release	=	bnad_debugfs_buffer_release,
 };
 
