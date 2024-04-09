@@ -6,14 +6,13 @@
 
 static struct dentry *edac_debugfs;
 
-static ssize_t edac_fake_inject_write(struct file *file,
-				      const char __user *data,
-				      size_t count, loff_t *ppos)
+static ssize_t edac_fake_inject_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct device *dev = file->private_data;
+	struct device *dev = iocb->ki_filp->private_data;
 	struct mem_ctl_info *mci = to_mci(dev);
 	static enum hw_event_mc_err_type type;
 	u16 errcount = mci->fake_inject_count;
+	size_t count = iov_iter_count(from);
 
 	if (!errcount)
 		errcount = 1;
@@ -41,7 +40,7 @@ static ssize_t edac_fake_inject_write(struct file *file,
 
 static const struct file_operations debug_fake_inject_fops = {
 	.open = simple_open,
-	.write = edac_fake_inject_write,
+	.write_iter = edac_fake_inject_write,
 	.llseek = generic_file_llseek,
 };
 

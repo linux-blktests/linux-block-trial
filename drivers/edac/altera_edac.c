@@ -570,20 +570,20 @@ static irqreturn_t altr_edac_device_handler(int irq, void *dev_id)
 }
 
 static ssize_t __maybe_unused
-altr_edac_device_trig(struct file *file, const char __user *user_buf,
-		      size_t count, loff_t *ppos)
+altr_edac_device_trig(struct kiocb *iocb, struct iov_iter *from)
 
 {
 	u32 *ptemp, i, error_mask;
 	int result = 0;
 	u8 trig_type;
 	unsigned long flags;
-	struct edac_device_ctl_info *edac_dci = file->private_data;
+	struct edac_device_ctl_info *edac_dci = iocb->ki_filp->private_data;
 	struct altr_edac_device_dev *drvdata = edac_dci->pvt_info;
 	const struct edac_device_prv_data *priv = drvdata->data;
+	size_t count = iov_iter_count(from);
 	void *generic_ptr = edac_dci->dev;
 
-	if (!user_buf || get_user(trig_type, user_buf))
+	if (get_iter(trig_type, from))
 		return -EFAULT;
 
 	if (!priv->alloc_mem)
@@ -639,29 +639,28 @@ altr_edac_device_trig(struct file *file, const char __user *user_buf,
 
 	return count;
 }
-FOPS_WRITE_ITER_HELPER(altr_edac_device_trig);
 
 static const struct file_operations altr_edac_device_inject_fops __maybe_unused = {
 	.open = simple_open,
-	.write_iter = altr_edac_device_trig_iter,
+	.write_iter = altr_edac_device_trig,
 	.llseek = generic_file_llseek,
 };
 
 static ssize_t __maybe_unused
-altr_edac_a10_device_trig_iter(struct kiocb *iocb, struct iov_iter *from);
+altr_edac_a10_device_trig(struct kiocb *iocb, struct iov_iter *from);
 
 static const struct file_operations altr_edac_a10_device_inject_fops __maybe_unused = {
 	.open = simple_open,
-	.write_iter = altr_edac_a10_device_trig_iter,
+	.write_iter = altr_edac_a10_device_trig,
 	.llseek = generic_file_llseek,
 };
 
 static ssize_t __maybe_unused
-altr_edac_a10_device_trig2_iter(struct kiocb *iocb, struct iov_iter *from);
+altr_edac_a10_device_trig2(struct kiocb *iocb, struct iov_iter *from);
 
 static const struct file_operations altr_edac_a10_device_inject2_fops __maybe_unused = {
 	.open = simple_open,
-	.write_iter = altr_edac_a10_device_trig2_iter,
+	.write_iter = altr_edac_a10_device_trig2,
 	.llseek = generic_file_llseek,
 };
 
@@ -1739,17 +1738,17 @@ MODULE_DEVICE_TABLE(of, altr_edac_a10_device_of_match);
  */
 
 static ssize_t __maybe_unused
-altr_edac_a10_device_trig(struct file *file, const char __user *user_buf,
-			  size_t count, loff_t *ppos)
+altr_edac_a10_device_trig(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct edac_device_ctl_info *edac_dci = file->private_data;
+	struct edac_device_ctl_info *edac_dci = iocb->ki_filp->private_data;
 	struct altr_edac_device_dev *drvdata = edac_dci->pvt_info;
 	const struct edac_device_prv_data *priv = drvdata->data;
 	void __iomem *set_addr = (drvdata->base + priv->set_err_ofst);
+	size_t count = iov_iter_count(from);
 	unsigned long flags;
 	u8 trig_type;
 
-	if (!user_buf || get_user(trig_type, user_buf))
+	if (get_iter(trig_type, from))
 		return -EFAULT;
 
 	local_irq_save(flags);
@@ -1764,7 +1763,6 @@ altr_edac_a10_device_trig(struct file *file, const char __user *user_buf,
 
 	return count;
 }
-FOPS_WRITE_ITER_HELPER(altr_edac_a10_device_trig);
 
 /*
  * The Stratix10 EDAC Error Injection Functions differ from Arria10
@@ -1772,17 +1770,17 @@ FOPS_WRITE_ITER_HELPER(altr_edac_a10_device_trig);
  * Inject the error into the memory and then readback to trigger the IRQ.
  */
 static ssize_t __maybe_unused
-altr_edac_a10_device_trig2(struct file *file, const char __user *user_buf,
-			   size_t count, loff_t *ppos)
+altr_edac_a10_device_trig2(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct edac_device_ctl_info *edac_dci = file->private_data;
+	struct edac_device_ctl_info *edac_dci = iocb->ki_filp->private_data;
 	struct altr_edac_device_dev *drvdata = edac_dci->pvt_info;
 	const struct edac_device_prv_data *priv = drvdata->data;
 	void __iomem *set_addr = (drvdata->base + priv->set_err_ofst);
+	size_t count = iov_iter_count(from);
 	unsigned long flags;
 	u8 trig_type;
 
-	if (!user_buf || get_user(trig_type, user_buf))
+	if (get_iter(trig_type, from))
 		return -EFAULT;
 
 	local_irq_save(flags);
@@ -1828,7 +1826,6 @@ altr_edac_a10_device_trig2(struct file *file, const char __user *user_buf,
 
 	return count;
 }
-FOPS_WRITE_ITER_HELPER(altr_edac_a10_device_trig2);
 
 static void altr_edac_a10_irq_handler(struct irq_desc *desc)
 {
