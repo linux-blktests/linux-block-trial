@@ -1163,11 +1163,12 @@ static ssize_t smu_write(struct file *file, const char __user *buf,
 		return rc;
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(smu_write);
 
-
-static ssize_t smu_read_command(struct file *file, struct smu_private *pp,
-				char __user *buf, size_t count)
+static ssize_t smu_read_command(struct smu_private *pp, struct kiocb *iocb,
+				struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	DECLARE_WAITQUEUE(wait, current);
 	struct smu_user_reply_hdr hdr;
 	unsigned long flags;
@@ -1179,7 +1180,7 @@ static ssize_t smu_read_command(struct file *file, struct smu_private *pp,
 		return -EOVERFLOW;
 	spin_lock_irqsave(&pp->lock, flags);
 	if (pp->cmd.status == 1) {
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			spin_unlock_irqrestore(&pp->lock, flags);
 			return -EAGAIN;
 		}
@@ -1210,35 +1211,31 @@ static ssize_t smu_read_command(struct file *file, struct smu_private *pp,
 	rc = size;
 	hdr.status = pp->cmd.status;
 	hdr.reply_len = pp->cmd.reply_len;
-	if (copy_to_user(buf, &hdr, sizeof(hdr)))
+	if (!copy_to_iter_full(&hdr, sizeof(hdr), to))
 		return -EFAULT;
 	size -= sizeof(hdr);
-	if (size && copy_to_user(buf + sizeof(hdr), pp->buffer, size))
+	if (size && !copy_to_iter_full(pp->buffer, size, to))
 		return -EFAULT;
 	pp->busy = 0;
 
 	return rc;
 }
 
-
-static ssize_t smu_read_events(struct file *file, struct smu_private *pp,
-			       char __user *buf, size_t count)
+static ssize_t smu_read_events(void)
 {
 	/* Not implemented */
 	msleep_interruptible(1000);
 	return 0;
 }
 
-
-static ssize_t smu_read(struct file *file, char __user *buf,
-			size_t count, loff_t *ppos)
+static ssize_t smu_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct smu_private *pp = file->private_data;
+	struct smu_private *pp = iocb->ki_filp->private_data;
 
 	if (pp->mode == smu_file_commands)
-		return smu_read_command(file, pp, buf, count);
+		return smu_read_command(pp, iocb, to);
 	if (pp->mode == smu_file_events)
-		return smu_read_events(file, pp, buf, count);
+		return smu_read_events();
 
 	return -EBADFD;
 }
@@ -1310,8 +1307,8 @@ static int smu_release(struct inode *inode, struct file *file)
 
 
 static const struct file_operations smu_device_fops = {
-	.read		= smu_read,
-	.write		= smu_write,
+	.read_iter	= smu_read,
+	.write_iter	= smu_write_iter,
 	.poll		= smu_fpoll,
 	.open		= smu_open,
 	.release	= smu_release,
