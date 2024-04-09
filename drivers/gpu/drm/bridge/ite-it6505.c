@@ -3392,14 +3392,14 @@ static void it6505_parse_dt(struct it6505 *it6505)
 			     it6505->max_dpi_pixel_clock);
 }
 
-static ssize_t receive_timing_debugfs_show(struct file *file, char __user *buf,
-					   size_t len, loff_t *ppos)
+static ssize_t receive_timing_debugfs_show(struct kiocb *iocb,
+					   struct iov_iter *to)
 {
-	struct it6505 *it6505 = file->private_data;
+	struct it6505 *it6505 = iocb->ki_filp->private_data;
 	struct drm_display_mode *vid;
 	u8 read_buf[READ_BUFFER_SIZE];
 	u8 *str = read_buf, *end = read_buf + READ_BUFFER_SIZE;
-	ssize_t ret, count;
+	ssize_t count;
 
 	if (!it6505)
 		return -ENODEV;
@@ -3427,9 +3427,7 @@ static ssize_t receive_timing_debugfs_show(struct file *file, char __user *buf,
 			 vid->vtotal - vid->vsync_end);
 
 	count = str - read_buf;
-	ret = simple_read_from_buffer(buf, len, ppos, read_buf, count);
-
-	return ret;
+	return simple_copy_to_iter(read_buf, &iocb->ki_pos, count, to);
 }
 
 static int force_power_on_off_debugfs_write(void *data, u64 value)
@@ -3491,7 +3489,7 @@ static int enable_drv_hold_debugfs_write(void *data, u64 drv_hold)
 static const struct file_operations receive_timing_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = receive_timing_debugfs_show,
+	.read_iter = receive_timing_debugfs_show,
 	.llseek = default_llseek,
 };
 
