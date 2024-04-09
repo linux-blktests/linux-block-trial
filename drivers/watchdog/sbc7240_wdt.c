@@ -91,9 +91,9 @@ static inline void wdt_keepalive(void)
 /*
  * /dev/watchdog handling
  */
-static ssize_t fop_write(struct file *file, const char __user *buf,
-			 size_t count, loff_t *ppos)
+static ssize_t fop_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	size_t i;
 	char c;
 
@@ -104,7 +104,7 @@ static ssize_t fop_write(struct file *file, const char __user *buf,
 
 			/* is there a magic char ? */
 			for (i = 0; i != count; i++) {
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == SBC7240_MAGIC_CHAR) {
 					set_bit(SBC7240_EXPECT_CLOSE_STATUS_BIT,
@@ -205,7 +205,7 @@ static long fop_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 static const struct file_operations wdt_fops = {
 	.owner = THIS_MODULE,
-	.write = fop_write,
+	.write_iter = fop_write,
 	.open = fop_open,
 	.release = fop_close,
 	.unlocked_ioctl = fop_ioctl,
