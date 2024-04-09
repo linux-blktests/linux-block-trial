@@ -115,13 +115,13 @@ static irqreturn_t altr_sdram_mc_err_handler(int irq, void *dev_id)
 	return IRQ_NONE;
 }
 
-static ssize_t altr_sdr_mc_err_inject_write(struct file *file,
-					    const char __user *data,
-					    size_t count, loff_t *ppos)
+static ssize_t altr_sdr_mc_err_inject_write(struct kiocb *iocb,
+					    struct iov_iter *from)
 {
-	struct mem_ctl_info *mci = file->private_data;
+	struct mem_ctl_info *mci = iocb->ki_filp->private_data;
 	struct altr_sdram_mc_data *drvdata = mci->pvt_info;
 	const struct altr_sdram_prv_data *priv = drvdata->data;
+	size_t count = iov_iter_count(from);
 	u32 *ptemp;
 	dma_addr_t dma_handle;
 	u32 reg, read_reg;
@@ -186,7 +186,7 @@ static ssize_t altr_sdr_mc_err_inject_write(struct file *file,
 
 static const struct file_operations altr_sdr_mc_debug_inject_fops = {
 	.open = simple_open,
-	.write = altr_sdr_mc_err_inject_write,
+	.write_iter = altr_sdr_mc_err_inject_write,
 	.llseek = generic_file_llseek,
 };
 
@@ -639,30 +639,29 @@ altr_edac_device_trig(struct file *file, const char __user *user_buf,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(altr_edac_device_trig);
 
 static const struct file_operations altr_edac_device_inject_fops __maybe_unused = {
 	.open = simple_open,
-	.write = altr_edac_device_trig,
+	.write_iter = altr_edac_device_trig_iter,
 	.llseek = generic_file_llseek,
 };
 
 static ssize_t __maybe_unused
-altr_edac_a10_device_trig(struct file *file, const char __user *user_buf,
-			  size_t count, loff_t *ppos);
+altr_edac_a10_device_trig_iter(struct kiocb *iocb, struct iov_iter *from);
 
 static const struct file_operations altr_edac_a10_device_inject_fops __maybe_unused = {
 	.open = simple_open,
-	.write = altr_edac_a10_device_trig,
+	.write_iter = altr_edac_a10_device_trig_iter,
 	.llseek = generic_file_llseek,
 };
 
 static ssize_t __maybe_unused
-altr_edac_a10_device_trig2(struct file *file, const char __user *user_buf,
-			   size_t count, loff_t *ppos);
+altr_edac_a10_device_trig2_iter(struct kiocb *iocb, struct iov_iter *from);
 
 static const struct file_operations altr_edac_a10_device_inject2_fops __maybe_unused = {
 	.open = simple_open,
-	.write = altr_edac_a10_device_trig2,
+	.write_iter = altr_edac_a10_device_trig2_iter,
 	.llseek = generic_file_llseek,
 };
 
@@ -1765,6 +1764,7 @@ altr_edac_a10_device_trig(struct file *file, const char __user *user_buf,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(altr_edac_a10_device_trig);
 
 /*
  * The Stratix10 EDAC Error Injection Functions differ from Arria10
@@ -1828,6 +1828,7 @@ altr_edac_a10_device_trig2(struct file *file, const char __user *user_buf,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(altr_edac_a10_device_trig2);
 
 static void altr_edac_a10_irq_handler(struct irq_desc *desc)
 {
