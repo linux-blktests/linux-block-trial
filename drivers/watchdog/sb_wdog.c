@@ -141,9 +141,9 @@ static int sbwdog_release(struct inode *inode, struct file *file)
 /*
  * 42 - the answer
  */
-static ssize_t sbwdog_write(struct file *file, const char __user *data,
-			size_t len, loff_t *ppos)
+static ssize_t sbwdog_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	int i;
 
 	if (len) {
@@ -155,7 +155,7 @@ static ssize_t sbwdog_write(struct file *file, const char __user *data,
 		for (i = 0; i != len; i++) {
 			char c;
 
-			if (get_user(c, data + i))
+			if (get_iter(c, from))
 				return -EFAULT;
 			if (c == 'V')
 				expect_close = 42;
@@ -234,7 +234,7 @@ static int sbwdog_notify_sys(struct notifier_block *this, unsigned long code,
 
 static const struct file_operations sbwdog_fops = {
 	.owner		= THIS_MODULE,
-	.write		= sbwdog_write,
+	.write_iter	= sbwdog_write,
 	.unlocked_ioctl	= sbwdog_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= sbwdog_open,
