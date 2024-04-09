@@ -11,6 +11,7 @@
 #include <linux/io.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <linux/pm_runtime.h>
 #include <linux/debugfs.h>
 #include <linux/platform_data/iommu-omap.h>
@@ -80,10 +81,10 @@ static ssize_t omap_iommu_dump_ctx(struct omap_iommu *obj, char *buf,
 	return bytes;
 }
 
-static ssize_t debug_read_regs(struct file *file, char __user *userbuf,
-			       size_t count, loff_t *ppos)
+static ssize_t debug_read_regs(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct omap_iommu *obj = file->private_data;
+	struct omap_iommu *obj = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	char *p, *buf;
 	ssize_t bytes;
 
@@ -100,7 +101,7 @@ static ssize_t debug_read_regs(struct file *file, char __user *userbuf,
 	bytes = omap_iommu_dump_ctx(obj, p, count);
 	if (bytes < 0)
 		goto err;
-	bytes = simple_read_from_buffer(userbuf, count, ppos, buf, bytes);
+	bytes = simple_copy_to_iter(buf, &iocb->ki_pos, bytes, to);
 
 err:
 	mutex_unlock(&iommu_debug_lock);
@@ -231,7 +232,7 @@ static int pagetable_show(struct seq_file *s, void *data)
 #define DEBUG_FOPS_RO(name)						\
 	static const struct file_operations name##_fops = {	        \
 		.open = simple_open,					\
-		.read = debug_read_##name,				\
+		.read_iter = debug_read_##name,				\
 		.llseek = generic_file_llseek,				\
 	}
 
