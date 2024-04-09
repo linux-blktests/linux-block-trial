@@ -630,20 +630,18 @@ static int lsdc_crtc_man_op_open(struct inode *inode, struct file *file)
 	return single_open(file, lsdc_crtc_man_op_show, crtc);
 }
 
-static ssize_t lsdc_crtc_man_op_write(struct file *file,
-				      const char __user *ubuf,
-				      size_t len,
-				      loff_t *offp)
+static ssize_t lsdc_crtc_man_op_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct lsdc_crtc *lcrtc = m->private;
 	const struct lsdc_crtc_hw_ops *ops = lcrtc->hw_ops;
+	size_t len = iov_iter_count(from);
 	char buf[16];
 
 	if (len > sizeof(buf) - 1)
 		return -EINVAL;
 
-	if (copy_from_user(buf, ubuf, len))
+	if (!copy_from_iter_full(buf, len, from))
 		return -EFAULT;
 
 	buf[len] = '\0';
@@ -665,10 +663,10 @@ static ssize_t lsdc_crtc_man_op_write(struct file *file,
 static const struct file_operations lsdc_crtc_man_op_fops = {
 	.owner = THIS_MODULE,
 	.open = lsdc_crtc_man_op_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = lsdc_crtc_man_op_write,
+	.write_iter = lsdc_crtc_man_op_write,
 };
 
 static int lsdc_crtc_late_register(struct drm_crtc *crtc)
