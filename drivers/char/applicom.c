@@ -104,15 +104,15 @@ static unsigned int WriteErrorCount;	/* number of write error      */
 static unsigned int ReadErrorCount;	/* number of read error       */
 static unsigned int DeviceErrorCount;	/* number of device error     */
 
-static ssize_t ac_read (struct file *, char __user *, size_t, loff_t *);
-static ssize_t ac_write (struct file *, const char __user *, size_t, loff_t *);
+static ssize_t ac_read(struct kiocb *, struct iov_iter *);
+static ssize_t ac_write(struct kiocb *, struct iov_iter *);
 static long ac_ioctl(struct file *, unsigned int, unsigned long);
 static irqreturn_t ac_interrupt(int, void *);
 
 static const struct file_operations ac_fops = {
 	.owner = THIS_MODULE,
-	.read = ac_read,
-	.write = ac_write,
+	.read_iter = ac_read,
+	.write_iter = ac_write,
 	.unlocked_ioctl = ac_ioctl,
 };
 
@@ -352,8 +352,9 @@ module_init(applicom_init);
 module_exit(applicom_exit);
 
 
-static ssize_t ac_write(struct file *file, const char __user *buf, size_t count, loff_t * ppos)
+static ssize_t ac_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	unsigned int NumCard;	/* Board number 1 -> 8           */
 	unsigned int IndexCard;	/* Index board number 0 -> 7     */
 	unsigned char TicCard;	/* Board TIC to send             */
@@ -375,11 +376,10 @@ static ssize_t ac_write(struct file *file, const char __user *buf, size_t count,
 		return -EINVAL;
 	}
 
-	if(copy_from_user(&st_loc, buf, sizeof(struct st_ram_io))) 
+	if (!copy_from_iter_full(&st_loc, sizeof(struct st_ram_io), from))
 		return -EFAULT;
-	
-	if(copy_from_user(&tmpmailbox, &buf[sizeof(struct st_ram_io)],
-			  sizeof(struct mailbox))) 
+
+	if (!copy_from_iter_full(&tmpmailbox, sizeof(struct mailbox), from))
 		return -EFAULT;
 
 	NumCard = st_loc.num_card;	/* board number to send          */
@@ -534,8 +534,9 @@ static int do_ac_read(int IndexCard, char __user *buf,
 	return (sizeof(struct st_ram_io) + sizeof(struct mailbox));
 }
 
-static ssize_t ac_read (struct file *filp, char __user *buf, size_t count, loff_t *ptr)
+static ssize_t ac_read (struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	unsigned long flags;
 	unsigned int i;
 	unsigned char tmp;
@@ -570,14 +571,14 @@ static ssize_t ac_read (struct file *filp, char __user *buf, size_t count, loff_
 
 				/* Got a packet for us */
 				memset(&st_loc, 0, sizeof(st_loc));
-				ret = do_ac_read(i, buf, &st_loc, &mailbox);
+				ret = do_ac_read(i, NULL, &st_loc, &mailbox);
 				spin_unlock_irqrestore(&apbs[i].mutex, flags);
 				set_current_state(TASK_RUNNING);
 				remove_wait_queue(&FlagSleepRec, &wait);
 
-				if (copy_to_user(buf, &st_loc, sizeof(st_loc)))
+				if (!copy_to_iter_full(&st_loc, sizeof(st_loc), to))
 					return -EFAULT;
-				if (copy_to_user(buf + sizeof(st_loc), &mailbox, sizeof(mailbox)))
+				if (!copy_to_iter_full(&mailbox, sizeof(mailbox), to))
 					return -EFAULT;
 				return tmp;
 			}
