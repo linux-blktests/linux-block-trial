@@ -231,9 +231,9 @@ static int wdrtas_get_boot_status(void)
  * character 'V'. This character allows the watchdog device to be closed
  * properly.
  */
-static ssize_t wdrtas_write(struct file *file, const char __user *buf,
-	     size_t len, loff_t *ppos)
+static ssize_t wdrtas_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	int i;
 	char c;
 
@@ -244,7 +244,7 @@ static ssize_t wdrtas_write(struct file *file, const char __user *buf,
 		wdrtas_expect_close = 0;
 		/* look for 'V' */
 		for (i = 0; i < len; i++) {
-			if (get_user(c, buf + i))
+			if (get_iter(c, from))
 				return -EFAULT;
 			/* allow to close device */
 			if (c == 'V')
@@ -392,10 +392,8 @@ static int wdrtas_close(struct inode *inode, struct file *file)
 
 /**
  * wdrtas_temp_read - gives back the temperature in fahrenheit
- * @file: file structure
- * @buf: user buffer
- * @count: number of bytes to be read
- * @ppos: position in file
+ * @iocb: metadata for IO
+ * @to: user buffer
  *
  * returns always 1 or -EFAULT in case of user space copy failures, <0 on
  * other failures
@@ -403,8 +401,7 @@ static int wdrtas_close(struct inode *inode, struct file *file)
  * wdrtas_temp_read gives the temperature to the users by copying this
  * value as one byte into the user space buffer. The unit is Fahrenheit...
  */
-static ssize_t wdrtas_temp_read(struct file *file, char __user *buf,
-		 size_t count, loff_t *ppos)
+static ssize_t wdrtas_temp_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int temperature = 0;
 
@@ -412,7 +409,7 @@ static ssize_t wdrtas_temp_read(struct file *file, char __user *buf,
 	if (temperature < 0)
 		return temperature;
 
-	if (copy_to_user(buf, &temperature, 1))
+	if (!copy_to_iter_full(&temperature, 1, to))
 		return -EFAULT;
 
 	return 1;
@@ -469,7 +466,7 @@ static int wdrtas_reboot(struct notifier_block *this,
 
 static const struct file_operations wdrtas_fops = {
 	.owner		= THIS_MODULE,
-	.write		= wdrtas_write,
+	.write_iter	= wdrtas_write,
 	.unlocked_ioctl	= wdrtas_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= wdrtas_open,
@@ -484,7 +481,7 @@ static struct miscdevice wdrtas_miscdev = {
 
 static const struct file_operations wdrtas_temp_fops = {
 	.owner		= THIS_MODULE,
-	.read		= wdrtas_temp_read,
+	.read_iter	= wdrtas_temp_read,
 	.open		= wdrtas_temp_open,
 	.release	= wdrtas_temp_close,
 };
