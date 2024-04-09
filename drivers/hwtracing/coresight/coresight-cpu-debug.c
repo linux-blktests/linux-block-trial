@@ -470,13 +470,13 @@ static void debug_disable_func(void)
 	}
 }
 
-static ssize_t debug_func_knob_write(struct file *f,
-		const char __user *buf, size_t count, loff_t *ppos)
+static ssize_t debug_func_knob_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	u8 val;
 	int ret;
 
-	ret = kstrtou8_from_user(buf, count, 2, &val);
+	ret = kstrtou8_from_iter(from, count, 2, &val);
 	if (ret)
 		return ret;
 
@@ -504,8 +504,7 @@ err:
 	return ret;
 }
 
-static ssize_t debug_func_knob_read(struct file *f,
-		char __user *ubuf, size_t count, loff_t *ppos)
+static ssize_t debug_func_knob_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	ssize_t ret;
 	char buf[3];
@@ -514,14 +513,14 @@ static ssize_t debug_func_knob_read(struct file *f,
 	snprintf(buf, sizeof(buf), "%d\n", debug_enable);
 	mutex_unlock(&debug_lock);
 
-	ret = simple_read_from_buffer(ubuf, count, ppos, buf, sizeof(buf));
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, sizeof(buf), to);
 	return ret;
 }
 
 static const struct file_operations debug_func_knob_fops = {
 	.open	= simple_open,
-	.read	= debug_func_knob_read,
-	.write	= debug_func_knob_write,
+	.read_iter	= debug_func_knob_read,
+	.write_iter	= debug_func_knob_write,
 };
 
 static int debug_func_init(void)

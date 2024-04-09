@@ -112,13 +112,13 @@ static int smb_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t smb_read(struct file *file, char __user *data, size_t len,
-			loff_t *ppos)
+static ssize_t smb_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct smb_drv_data *drvdata = container_of(file->private_data,
+	struct smb_drv_data *drvdata = container_of(iocb->ki_filp->private_data,
 					struct smb_drv_data, miscdev);
 	struct smb_data_buffer *sdb = &drvdata->sdb;
 	struct device *dev = &drvdata->csdev->dev;
+	size_t len = iov_iter_count(to);
 	ssize_t to_copy = 0;
 
 	if (!len)
@@ -133,12 +133,12 @@ static ssize_t smb_read(struct file *file, char __user *data, size_t len,
 	if (sdb->buf_rdptr + to_copy > sdb->buf_size)
 		to_copy = sdb->buf_size - sdb->buf_rdptr;
 
-	if (copy_to_user(data, sdb->buf_base + sdb->buf_rdptr, to_copy)) {
+	if (!copy_to_iter_full(sdb->buf_base + sdb->buf_rdptr, to_copy, to)) {
 		dev_dbg(dev, "Failed to copy data to user\n");
 		return -EFAULT;
 	}
 
-	*ppos += to_copy;
+	iocb->ki_pos += to_copy;
 	smb_update_read_ptr(drvdata, to_copy);
 	if (!sdb->data_size)
 		smb_reset_buffer(drvdata);
@@ -161,7 +161,7 @@ static int smb_release(struct inode *inode, struct file *file)
 static const struct file_operations smb_fops = {
 	.owner		= THIS_MODULE,
 	.open		= smb_open,
-	.read		= smb_read,
+	.read_iter	= smb_read,
 	.release	= smb_release,
 };
 

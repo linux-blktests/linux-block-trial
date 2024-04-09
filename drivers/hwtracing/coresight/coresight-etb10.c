@@ -610,30 +610,30 @@ static int etb_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t etb_read(struct file *file, char __user *data,
-				size_t len, loff_t *ppos)
+static ssize_t etb_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t len = iov_iter_count(to);
 	u32 depth;
-	struct etb_drvdata *drvdata = container_of(file->private_data,
+	struct etb_drvdata *drvdata = container_of(iocb->ki_filp->private_data,
 						   struct etb_drvdata, miscdev);
 	struct device *dev = &drvdata->csdev->dev;
 
 	etb_dump(drvdata);
 
 	depth = drvdata->buffer_depth;
-	if (*ppos + len > depth * 4)
-		len = depth * 4 - *ppos;
+	if (iocb->ki_pos + len > depth * 4)
+		len = depth * 4 - iocb->ki_pos;
 
-	if (copy_to_user(data, drvdata->buf + *ppos, len)) {
+	if (!copy_to_iter_full(drvdata->buf + iocb->ki_pos, len, to)) {
 		dev_dbg(dev,
 			"%s: copy_to_user failed\n", __func__);
 		return -EFAULT;
 	}
 
-	*ppos += len;
+	iocb->ki_pos += len;
 
 	dev_dbg(dev, "%s: %zu bytes copied, %d bytes left\n",
-		__func__, len, (int)(depth * 4 - *ppos));
+		__func__, len, (int)(depth * 4 - iocb->ki_pos));
 	return len;
 }
 
@@ -650,7 +650,7 @@ static int etb_release(struct inode *inode, struct file *file)
 static const struct file_operations etb_fops = {
 	.owner		= THIS_MODULE,
 	.open		= etb_open,
-	.read		= etb_read,
+	.read_iter	= etb_read,
 	.release	= etb_release,
 };
 
