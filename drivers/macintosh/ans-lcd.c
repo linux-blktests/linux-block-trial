@@ -53,30 +53,31 @@ anslcd_write_byte_data ( unsigned char c )
 	udelay(anslcd_short_delay);
 }
 
-static ssize_t
-anslcd_write( struct file * file, const char __user * buf, 
-				size_t count, loff_t *ppos )
+static ssize_t anslcd_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	const char __user *p = buf;
-	int i;
+	size_t count = iov_iter_count(from);
+	int i, err = 0;
 
 #ifdef DEBUG
 	printk(KERN_DEBUG "LCD: write\n");
 #endif
 
-	if (!access_ok(buf, count))
-		return -EFAULT;
-
 	mutex_lock(&anslcd_mutex);
-	for ( i = *ppos; count > 0; ++i, ++p, --count ) 
+	for ( i = iocb->ki_pos; count > 0; ++i, --count ) 
 	{
 		char c;
-		__get_user(c, p);
-		anslcd_write_byte_data( c );
+		if (get_iter(c, from)) {
+			err = -EFAULT;
+			break;
+		}
+		anslcd_write_byte_data(c);
 	}
 	mutex_unlock(&anslcd_mutex);
-	*ppos = i;
-	return p - buf;
+	if (i - iocb->ki_pos) {
+		err = i - iocb->ki_pos;
+		iocb->ki_pos = i;
+	}
+	return err;
 }
 
 static long
@@ -135,7 +136,7 @@ anslcd_open( struct inode * inode, struct file * file )
 }
 
 const struct file_operations anslcd_fops = {
-	.write		= anslcd_write,
+	.write_iter	= anslcd_write,
 	.unlocked_ioctl	= anslcd_ioctl,
 	.open		= anslcd_open,
 	.llseek		= default_llseek,
