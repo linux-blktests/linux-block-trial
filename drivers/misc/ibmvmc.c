@@ -900,21 +900,20 @@ static int ibmvmc_close(struct inode *inode, struct file *file)
  *	0 - Success
  *	Non-zero - Failure
  */
-static ssize_t ibmvmc_read(struct file *file, char *buf, size_t nbytes,
-			   loff_t *ppos)
+static ssize_t ibmvmc_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct ibmvmc_file_session *session;
 	struct ibmvmc_hmc *hmc;
 	struct crq_server_adapter *adapter;
 	struct ibmvmc_buffer *buffer;
+	size_t nbytes = iov_iter_count(to);
 	ssize_t n;
 	ssize_t retval = 0;
 	unsigned long flags;
 	DEFINE_WAIT(wait);
 
-	pr_debug("ibmvmc: read: file = 0x%lx, buf = 0x%lx, nbytes = 0x%lx\n",
-		 (unsigned long)file, (unsigned long)buf,
-		 (unsigned long)nbytes);
+	pr_debug("ibmvmc: read: file = 0x%lx, nbytes = 0x%lx\n",
+		 (unsigned long)iocb->ki_filp, (unsigned long)nbytes);
 
 	if (nbytes == 0)
 		return 0;
@@ -925,7 +924,7 @@ static ssize_t ibmvmc_read(struct file *file, char *buf, size_t nbytes,
 		return -EINVAL;
 	}
 
-	session = file->private_data;
+	session = iocb->ki_filp->private_data;
 	if (!session) {
 		pr_warn("ibmvmc: read: no session\n");
 		return -EIO;
@@ -957,7 +956,7 @@ static ssize_t ibmvmc_read(struct file *file, char *buf, size_t nbytes,
 			retval = -EBADFD;
 			goto out;
 		}
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			retval = -EAGAIN;
 			goto out;
 		}
@@ -977,7 +976,7 @@ static ssize_t ibmvmc_read(struct file *file, char *buf, size_t nbytes,
 	spin_unlock_irqrestore(&hmc->lock, flags);
 
 	nbytes = min_t(size_t, nbytes, buffer->msg_len);
-	n = copy_to_user((void *)buf, buffer->real_addr_local, nbytes);
+	n = !copy_to_iter_full(buffer->real_addr_local, nbytes, to);
 	dev_dbg(adapter->dev, "read: copy to user nbytes = 0x%lx.\n", nbytes);
 	ibmvmc_free_hmc_buffer(hmc, buffer);
 	retval = nbytes;
@@ -1027,27 +1026,25 @@ static unsigned int ibmvmc_poll(struct file *file, poll_table *wait)
 /**
  * ibmvmc_write - Write
  *
- * @file:	file struct
- * @buffer:	Character buffer
- * @count:	Count field
- * @ppos:	Offset
+ * @iocb:	metadata for IO
+ * @from:	Character buffer
  *
  * Return:
  *	0 - Success
  *	Non-zero - Failure
  */
-static ssize_t ibmvmc_write(struct file *file, const char *buffer,
-			    size_t count, loff_t *ppos)
+static ssize_t ibmvmc_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	struct file *file = iocb->ki_filp;
 	struct inode *inode;
 	struct ibmvmc_buffer *vmc_buffer;
 	struct ibmvmc_file_session *session;
 	struct crq_server_adapter *adapter;
+	size_t count = iov_iter_count(from);
 	struct ibmvmc_hmc *hmc;
 	unsigned char *buf;
 	unsigned long flags;
 	size_t bytes;
-	const char *p = buffer;
 	size_t c = count;
 	int ret = 0;
 
@@ -1109,19 +1106,17 @@ static ssize_t ibmvmc_write(struct file *file, const char *buffer,
 	}
 	buf = vmc_buffer->real_addr_local;
 
+	ret = 0;
 	while (c > 0) {
 		bytes = min_t(size_t, c, vmc_buffer->size);
 
-		bytes -= copy_from_user(buf, p, bytes);
-		if (!bytes) {
+		if (!copy_from_iter_full(buf, bytes, from)) {
 			ret = -EFAULT;
 			goto out;
 		}
 		c -= bytes;
-		p += bytes;
+		ret += bytes;
 	}
-	if (p == buffer)
-		goto out;
 
 	inode = file_inode(file);
 	inode_set_mtime_to_ts(inode, inode_set_ctime_current(inode));
@@ -1131,7 +1126,6 @@ static ssize_t ibmvmc_write(struct file *file, const char *buffer,
 		(unsigned long)file, (unsigned long)count);
 
 	ibmvmc_send_msg(adapter, vmc_buffer, hmc, count);
-	ret = p - buffer;
  out:
 	spin_unlock_irqrestore(&hmc->lock, flags);
 	return (ssize_t)(ret);
@@ -1387,8 +1381,8 @@ static long ibmvmc_ioctl(struct file *file,
 
 static const struct file_operations ibmvmc_fops = {
 	.owner		= THIS_MODULE,
-	.read		= ibmvmc_read,
-	.write		= ibmvmc_write,
+	.read_iter	= ibmvmc_read,
+	.write_iter	= ibmvmc_write,
 	.poll		= ibmvmc_poll,
 	.unlocked_ioctl	= ibmvmc_ioctl,
 	.open           = ibmvmc_open,
