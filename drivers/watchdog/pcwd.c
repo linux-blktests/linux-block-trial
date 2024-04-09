@@ -663,9 +663,9 @@ static long pcwd_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	return 0;
 }
 
-static ssize_t pcwd_write(struct file *file, const char __user *buf, size_t len,
-			  loff_t *ppos)
+static ssize_t pcwd_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	if (len) {
 		if (!nowayout) {
 			size_t i;
@@ -676,7 +676,7 @@ static ssize_t pcwd_write(struct file *file, const char __user *buf, size_t len,
 			for (i = 0; i != len; i++) {
 				char c;
 
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_close = 42;
@@ -716,15 +716,14 @@ static int pcwd_close(struct inode *inode, struct file *file)
  *	/dev/temperature handling
  */
 
-static ssize_t pcwd_temp_read(struct file *file, char __user *buf, size_t count,
-			 loff_t *ppos)
+static ssize_t pcwd_temp_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int temperature;
 
 	if (pcwd_get_temperature(&temperature))
 		return -EFAULT;
 
-	if (copy_to_user(buf, &temperature, 1))
+	if (!copy_to_iter_full(&temperature, 1, to))
 		return -EFAULT;
 
 	return 1;
@@ -749,7 +748,7 @@ static int pcwd_temp_close(struct inode *inode, struct file *file)
 
 static const struct file_operations pcwd_fops = {
 	.owner		= THIS_MODULE,
-	.write		= pcwd_write,
+	.write_iter	= pcwd_write,
 	.unlocked_ioctl	= pcwd_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= pcwd_open,
@@ -764,7 +763,7 @@ static struct miscdevice pcwd_miscdev = {
 
 static const struct file_operations pcwd_temp_fops = {
 	.owner		= THIS_MODULE,
-	.read		= pcwd_temp_read,
+	.read_iter	= pcwd_temp_read,
 	.open		= pcwd_temp_open,
 	.release	= pcwd_temp_close,
 };
