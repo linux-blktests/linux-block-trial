@@ -118,12 +118,12 @@ static int crc_control_open(struct inode *inode, struct file *file)
 	return single_open(file, crc_control_show, crtc);
 }
 
-static ssize_t crc_control_write(struct file *file, const char __user *ubuf,
-				 size_t len, loff_t *offp)
+static ssize_t crc_control_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct drm_crtc *crtc = m->private;
 	struct drm_crtc_crc *crc = &crtc->crc;
+	size_t len = iov_iter_count(from);
 	char *source;
 	size_t values_cnt;
 	int ret;
@@ -137,7 +137,7 @@ static ssize_t crc_control_write(struct file *file, const char __user *ubuf,
 		return -E2BIG;
 	}
 
-	source = memdup_user_nul(ubuf, len);
+	source = iterdup_nul(from, len);
 	if (IS_ERR(source))
 		return PTR_ERR(source);
 
@@ -163,17 +163,17 @@ static ssize_t crc_control_write(struct file *file, const char __user *ubuf,
 
 	spin_unlock_irq(&crc->lock);
 
-	*offp += len;
+	iocb->ki_pos += len;
 	return len;
 }
 
 static const struct file_operations drm_crtc_crc_control_fops = {
 	.owner = THIS_MODULE,
 	.open = crc_control_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = crc_control_write
+	.write_iter = crc_control_write,
 };
 
 static int crtc_crc_data_count(struct drm_crtc_crc *crc)
@@ -282,11 +282,11 @@ static int crtc_crc_release(struct inode *inode, struct file *filep)
 #define LINE_LEN(values_cnt)	(10 + 11 * values_cnt + 1 + 1)
 #define MAX_LINE_LEN		(LINE_LEN(DRM_MAX_CRC_NR))
 
-static ssize_t crtc_crc_read(struct file *filep, char __user *user_buf,
-			     size_t count, loff_t *pos)
+static ssize_t crtc_crc_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct drm_crtc *crtc = filep->f_inode->i_private;
+	struct drm_crtc *crtc = iocb->ki_filp->f_inode->i_private;
 	struct drm_crtc_crc *crc = &crtc->crc;
+	size_t count = iov_iter_count(to);
 	struct drm_crtc_crc_entry *entry;
 	char buf[MAX_LINE_LEN];
 	int ret, i;
@@ -300,7 +300,7 @@ static ssize_t crtc_crc_read(struct file *filep, char __user *user_buf,
 
 	/* Nothing to read? */
 	while (crtc_crc_data_count(crc) == 0) {
-		if (filep->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			spin_unlock_irq(&crc->lock);
 			return -EAGAIN;
 		}
@@ -336,7 +336,7 @@ static ssize_t crtc_crc_read(struct file *filep, char __user *user_buf,
 		sprintf(buf + 10 + i * 11, " 0x%08x", entry->crcs[i]);
 	sprintf(buf + 10 + crc->values_cnt * 11, "\n");
 
-	if (copy_to_user(user_buf, buf, LINE_LEN(crc->values_cnt)))
+	if (!copy_to_iter_full(buf, LINE_LEN(crc->values_cnt), to))
 		return -EFAULT;
 
 	return LINE_LEN(crc->values_cnt);
@@ -361,7 +361,7 @@ static __poll_t crtc_crc_poll(struct file *file, poll_table *wait)
 static const struct file_operations drm_crtc_crc_data_fops = {
 	.owner = THIS_MODULE,
 	.open = crtc_crc_open,
-	.read = crtc_crc_read,
+	.read_iter = crtc_crc_read,
 	.poll = crtc_crc_poll,
 	.release = crtc_crc_release,
 };

@@ -181,7 +181,7 @@ static int drm_debugfs_entry_open(struct inode *inode, struct file *file)
 static const struct file_operations drm_debugfs_entry_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_debugfs_entry_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
@@ -189,7 +189,7 @@ static const struct file_operations drm_debugfs_entry_fops = {
 static const struct file_operations drm_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_debugfs_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
@@ -516,17 +516,17 @@ static int connector_open(struct inode *inode, struct file *file)
 	return single_open(file, connector_show, dev);
 }
 
-static ssize_t connector_write(struct file *file, const char __user *ubuf,
-			       size_t len, loff_t *offp)
+static ssize_t connector_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct drm_connector *connector = m->private;
+	size_t len = iov_iter_count(from);
 	char buf[12];
 
 	if (len > sizeof(buf) - 1)
 		return -EINVAL;
 
-	if (copy_from_user(buf, ubuf, len))
+	if (!copy_from_iter_full(buf, len, from))
 		return -EFAULT;
 
 	buf[len] = '\0';
@@ -557,15 +557,15 @@ static int edid_open(struct inode *inode, struct file *file)
 	return single_open(file, edid_show, dev);
 }
 
-static ssize_t edid_write(struct file *file, const char __user *ubuf,
-			  size_t len, loff_t *offp)
+static ssize_t edid_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct drm_connector *connector = m->private;
+	size_t len = iov_iter_count(from);
 	char *buf;
 	int ret;
 
-	buf = memdup_user(ubuf, len);
+	buf = iterdup(from, len);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -617,24 +617,23 @@ DEFINE_SHOW_ATTRIBUTE(output_bpc);
 static const struct file_operations drm_edid_fops = {
 	.owner = THIS_MODULE,
 	.open = edid_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = edid_write
+	.write_iter = edid_write
 };
 
 
 static const struct file_operations drm_connector_fops = {
 	.owner = THIS_MODULE,
 	.open = connector_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = connector_write
+	.write_iter = connector_write
 };
 
-static ssize_t
-audio_infoframe_read(struct file *filp, char __user *ubuf, size_t count, loff_t *ppos)
+static ssize_t audio_infoframe_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct drm_connector_hdmi_infoframe *infoframe;
 	struct drm_connector *connector;
@@ -642,7 +641,7 @@ audio_infoframe_read(struct file *filp, char __user *ubuf, size_t count, loff_t 
 	u8 buf[HDMI_INFOFRAME_SIZE(AUDIO)];
 	ssize_t len = 0;
 
-	connector = filp->private_data;
+	connector = iocb->ki_filp->private_data;
 	mutex_lock(&connector->hdmi.infoframes.lock);
 
 	infoframe = &connector->hdmi.infoframes.audio;
@@ -654,7 +653,7 @@ audio_infoframe_read(struct file *filp, char __user *ubuf, size_t count, loff_t 
 	if (len < 0)
 		goto out;
 
-	len = simple_read_from_buffer(ubuf, count, ppos, buf, len);
+	len = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 
 out:
 	mutex_unlock(&connector->hdmi.infoframes.lock);
@@ -664,7 +663,7 @@ out:
 static const struct file_operations audio_infoframe_fops = {
 	.owner   = THIS_MODULE,
 	.open    = simple_open,
-	.read    = audio_infoframe_read,
+	.read_iter    = audio_infoframe_read,
 };
 
 static int create_hdmi_audio_infoframe_file(struct drm_connector *connector,
@@ -684,10 +683,7 @@ static int create_hdmi_audio_infoframe_file(struct drm_connector *connector,
 }
 
 #define DEFINE_INFOFRAME_FILE(_f) \
-static ssize_t _f##_read_infoframe(struct file *filp, \
-				   char __user *ubuf, \
-				   size_t count,      \
-				   loff_t *ppos)      \
+static ssize_t _f##_read_infoframe(struct kiocb *iocb, struct iov_iter *to) \
 { \
 	struct drm_connector_hdmi_infoframe *infoframe; \
 	struct drm_connector_state *conn_state; \
@@ -697,7 +693,7 @@ static ssize_t _f##_read_infoframe(struct file *filp, \
 	u8 buf[HDMI_INFOFRAME_SIZE(MAX)]; \
 	ssize_t len = 0; \
 	\
-	connector = filp->private_data; \
+	connector = iocb->ki_filp->private_data; \
 	dev = connector->dev; \
 	\
 	drm_modeset_lock(&dev->mode_config.connection_mutex, NULL); \
@@ -712,7 +708,7 @@ static ssize_t _f##_read_infoframe(struct file *filp, \
 	if (len < 0) \
 		goto out; \
 	\
-	len = simple_read_from_buffer(ubuf, count, ppos, buf, len); \
+	len = simple_copy_to_iter(buf, &iocb->ki_pos, len, to); \
 	\
 out: \
 	drm_modeset_unlock(&dev->mode_config.connection_mutex); \
@@ -722,7 +718,7 @@ out: \
 static const struct file_operations _f##_infoframe_fops = { \
 	.owner = THIS_MODULE, \
 	.open = simple_open, \
-	.read = _f##_read_infoframe, \
+	.read_iter = _f##_read_infoframe, \
 }; \
 \
 static int create_hdmi_## _f ## _infoframe_file(struct drm_connector *connector, \
