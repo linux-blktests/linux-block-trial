@@ -2167,13 +2167,13 @@ static const struct attribute_group *mtip_disk_attr_groups[] = {
 	NULL,
 };
 
-static ssize_t mtip_hw_read_registers(struct file *f, char __user *ubuf,
-				  size_t len, loff_t *offset)
+static ssize_t mtip_hw_read_registers(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct driver_data *dd =  (struct driver_data *)f->private_data;
+	struct driver_data *dd =  iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	char *buf;
 	u32 group_allocated;
-	int size = *offset;
+	int size = iocb->ki_pos;
 	int n, rv = 0;
 
 	if (!len || size)
@@ -2222,21 +2222,21 @@ static ssize_t mtip_hw_read_registers(struct file *f, char __user *ubuf,
 	}
 	size += sprintf(&buf[size], "]\n");
 
-	*offset = size <= len ? size : len;
-	size = copy_to_user(ubuf, buf, *offset);
-	if (size)
+	iocb->ki_pos = size <= len ? size : len;
+	size = copy_to_iter(buf, iocb->ki_pos, to);
+	if (!size)
 		rv = -EFAULT;
 
 	kfree(buf);
-	return rv ? rv : *offset;
+	return rv ? rv : iocb->ki_pos;
 }
 
-static ssize_t mtip_hw_read_flags(struct file *f, char __user *ubuf,
-				  size_t len, loff_t *offset)
+static ssize_t mtip_hw_read_flags(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct driver_data *dd =  (struct driver_data *)f->private_data;
+	struct driver_data *dd =  iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	char *buf;
-	int size = *offset;
+	int size = iocb->ki_pos;
 	int rv = 0;
 
 	if (!len || size)
@@ -2251,25 +2251,25 @@ static ssize_t mtip_hw_read_flags(struct file *f, char __user *ubuf,
 	size += sprintf(&buf[size], "Flag-dd   : [ %08lX ]\n",
 							dd->dd_flag);
 
-	*offset = size <= len ? size : len;
-	size = copy_to_user(ubuf, buf, *offset);
-	if (size)
+	iocb->ki_pos = size <= len ? size : len;
+	size = copy_to_iter(buf, iocb->ki_pos, to);
+	if (!size)
 		rv = -EFAULT;
 
 	kfree(buf);
-	return rv ? rv : *offset;
+	return rv ? rv : iocb->ki_pos;
 }
 
 static const struct file_operations mtip_regs_fops = {
 	.owner  = THIS_MODULE,
 	.open   = simple_open,
-	.read   = mtip_hw_read_registers,
+	.read_iter   = mtip_hw_read_registers,
 };
 
 static const struct file_operations mtip_flags_fops = {
 	.owner  = THIS_MODULE,
 	.open   = simple_open,
-	.read   = mtip_hw_read_flags,
+	.read_iter   = mtip_hw_read_flags,
 };
 
 static void mtip_hw_debugfs_init(struct driver_data *dd)
