@@ -352,7 +352,7 @@ static unsigned int afu_poll(struct file *file, struct poll_table_struct *wait)
  */
 static ssize_t append_xsl_error(struct ocxl_context *ctx,
 				struct ocxl_kernel_event_header *header,
-				char __user *buf)
+				struct iov_iter *to)
 {
 	struct ocxl_kernel_event_xsl_fault_error body;
 
@@ -376,7 +376,7 @@ static ssize_t append_xsl_error(struct ocxl_context *ctx,
 
 	header->type = OCXL_AFU_EVENT_XSL_FAULT_ERROR;
 
-	if (copy_to_user(buf, &body, sizeof(body)))
+	if (!copy_to_iter(&body, sizeof(body), to))
 		return -EFAULT;
 
 	return sizeof(body);
@@ -391,11 +391,11 @@ static ssize_t append_xsl_error(struct ocxl_context *ctx,
  *	Body (struct ocxl_kernel_event_*)
  *	Header...
  */
-static ssize_t afu_read(struct file *file, char __user *buf, size_t count,
-			loff_t *off)
+static ssize_t afu_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ocxl_context *ctx = file->private_data;
+	struct ocxl_context *ctx = iocb->ki_filp->private_data;
 	struct ocxl_kernel_event_header header;
+	size_t count = iov_iter_count(to);
 	ssize_t rc;
 	ssize_t used = 0;
 	DEFINE_WAIT(event_wait);
@@ -403,7 +403,7 @@ static ssize_t afu_read(struct file *file, char __user *buf, size_t count,
 	memset(&header, 0, sizeof(header));
 
 	/* Require offset to be 0 */
-	if (*off != 0)
+	if (iocb->ki_pos != 0)
 		return -EINVAL;
 
 	if (count < (sizeof(struct ocxl_kernel_event_header) +
@@ -420,7 +420,7 @@ static ssize_t afu_read(struct file *file, char __user *buf, size_t count,
 		if (ctx->status == CLOSED)
 			break;
 
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			finish_wait(&ctx->events_wq, &event_wait);
 			return -EAGAIN;
 		}
@@ -436,7 +436,7 @@ static ssize_t afu_read(struct file *file, char __user *buf, size_t count,
 	finish_wait(&ctx->events_wq, &event_wait);
 
 	if (has_xsl_error(ctx)) {
-		used = append_xsl_error(ctx, &header, buf + sizeof(header));
+		used = append_xsl_error(ctx, &header, to);
 		if (used < 0)
 			return used;
 	}
@@ -444,7 +444,7 @@ static ssize_t afu_read(struct file *file, char __user *buf, size_t count,
 	if (!afu_events_pending(ctx))
 		header.flags |= OCXL_KERNEL_EVENT_FLAG_LAST;
 
-	if (copy_to_user(buf, &header, sizeof(header)))
+	if (!copy_to_iter_full(&header, sizeof(header), to))
 		return -EFAULT;
 
 	used += sizeof(header);
@@ -476,7 +476,7 @@ static const struct file_operations ocxl_afu_fops = {
 	.compat_ioctl   = afu_compat_ioctl,
 	.mmap           = afu_mmap,
 	.poll           = afu_poll,
-	.read           = afu_read,
+	.read_iter      = afu_read,
 	.release        = afu_release,
 };
 
