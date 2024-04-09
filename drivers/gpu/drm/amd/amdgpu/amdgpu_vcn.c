@@ -1213,10 +1213,11 @@ static ssize_t amdgpu_debugfs_vcn_fwlog_read(struct file *f, char __user *buf,
 	*pos += read_bytes;
 	return read_bytes;
 }
+FOPS_READ_ITER_HELPER(amdgpu_debugfs_vcn_fwlog_read);
 
 static const struct file_operations amdgpu_debugfs_vcnfwlog_fops = {
 	.owner = THIS_MODULE,
-	.read = amdgpu_debugfs_vcn_fwlog_read,
+	.read_iter = amdgpu_debugfs_vcn_fwlog_read_iter,
 	.llseek = default_llseek
 };
 #endif

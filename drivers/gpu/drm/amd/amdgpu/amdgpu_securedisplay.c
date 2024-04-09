@@ -88,23 +88,24 @@ void psp_prep_securedisplay_cmd_buf(struct psp_context *psp, struct ta_securedis
 
 #if defined(CONFIG_DEBUG_FS)
 
-static ssize_t amdgpu_securedisplay_debugfs_write(struct file *f, const char __user *buf,
-		size_t size, loff_t *pos)
+static ssize_t amdgpu_securedisplay_debugfs_write(struct kiocb *iocb,
+						  struct iov_iter *from)
 {
-	struct amdgpu_device *adev = (struct amdgpu_device *)file_inode(f)->i_private;
+	struct amdgpu_device *adev = file_inode(iocb->ki_filp)->i_private;
 	struct psp_context *psp = &adev->psp;
 	struct ta_securedisplay_cmd *securedisplay_cmd;
 	struct drm_device *dev = adev_to_drm(adev);
+	size_t size = iov_iter_count(from);
 	uint32_t phy_id;
 	uint32_t op;
 	char str[64];
 	int ret;
 
-	if (*pos || size > sizeof(str) - 1)
+	if (iocb->ki_pos || size > sizeof(str) - 1)
 		return -EINVAL;
 
 	memset(str,  0, sizeof(str));
-	ret = copy_from_user(str, buf, size);
+	ret = !copy_from_iter_full(str, size, from);
 	if (ret)
 		return -EFAULT;
 
@@ -166,8 +167,7 @@ static ssize_t amdgpu_securedisplay_debugfs_write(struct file *f, const char __u
 
 static const struct file_operations amdgpu_securedisplay_debugfs_ops = {
 	.owner = THIS_MODULE,
-	.read = NULL,
-	.write = amdgpu_securedisplay_debugfs_write,
+	.write_iter = amdgpu_securedisplay_debugfs_write,
 	.llseek = default_llseek
 };
 

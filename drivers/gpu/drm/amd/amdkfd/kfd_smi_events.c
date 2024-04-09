@@ -47,9 +47,8 @@ struct kfd_smi_client {
 #define KFD_MAX_KFIFO_SIZE	8192
 
 static __poll_t kfd_smi_ev_poll(struct file *, struct poll_table_struct *);
-static ssize_t kfd_smi_ev_read(struct file *, char __user *, size_t, loff_t *);
-static ssize_t kfd_smi_ev_write(struct file *, const char __user *, size_t,
-				loff_t *);
+static ssize_t kfd_smi_ev_read(struct kiocb *, struct iov_iter *);
+static ssize_t kfd_smi_ev_write(struct kiocb *, struct iov_iter *);
 static int kfd_smi_ev_release(struct inode *, struct file *);
 
 static const char kfd_smi_name[] = "kfd_smi_ev";
@@ -57,8 +56,8 @@ static const char kfd_smi_name[] = "kfd_smi_ev";
 static const struct file_operations kfd_smi_ev_fops = {
 	.owner = THIS_MODULE,
 	.poll = kfd_smi_ev_poll,
-	.read = kfd_smi_ev_read,
-	.write = kfd_smi_ev_write,
+	.read_iter = kfd_smi_ev_read,
+	.write_iter = kfd_smi_ev_write,
 	.release = kfd_smi_ev_release
 };
 
@@ -78,12 +77,12 @@ static __poll_t kfd_smi_ev_poll(struct file *filep,
 	return mask;
 }
 
-static ssize_t kfd_smi_ev_read(struct file *filep, char __user *user,
-			       size_t size, loff_t *offset)
+static ssize_t kfd_smi_ev_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int ret;
 	size_t to_copy;
-	struct kfd_smi_client *client = filep->private_data;
+	size_t size = iov_iter_count(to);
+	struct kfd_smi_client *client = iocb->ki_filp->private_data;
 	unsigned char *buf;
 
 	size = min_t(size_t, size, KFD_MAX_KFIFO_SIZE);
@@ -109,8 +108,8 @@ static ssize_t kfd_smi_ev_read(struct file *filep, char __user *user,
 		goto ret_err;
 	}
 
-	ret = copy_to_user(user, buf, to_copy);
-	if (ret) {
+	ret = copy_to_iter(buf, to_copy, to);
+	if (!ret) {
 		ret = -EFAULT;
 		goto ret_err;
 	}
@@ -123,15 +122,12 @@ ret_err:
 	return ret;
 }
 
-static ssize_t kfd_smi_ev_write(struct file *filep, const char __user *user,
-				size_t size, loff_t *offset)
+static ssize_t kfd_smi_ev_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct kfd_smi_client *client = filep->private_data;
+	struct kfd_smi_client *client = iocb->ki_filp->private_data;
 	uint64_t events;
 
-	if (!access_ok(user, size) || size < sizeof(events))
-		return -EFAULT;
-	if (copy_from_user(&events, user, sizeof(events)))
+	if (!copy_from_iter_full(&events, sizeof(events), from))
 		return -EFAULT;
 
 	WRITE_ONCE(client->events, events);

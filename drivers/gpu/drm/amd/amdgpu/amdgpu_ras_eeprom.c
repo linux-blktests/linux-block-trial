@@ -1200,12 +1200,12 @@ uint32_t amdgpu_ras_eeprom_max_record_count(struct amdgpu_ras_eeprom_control *co
 }
 
 static ssize_t
-amdgpu_ras_debugfs_eeprom_size_read(struct file *f, char __user *buf,
-				    size_t size, loff_t *pos)
+amdgpu_ras_debugfs_eeprom_size_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct amdgpu_device *adev = (struct amdgpu_device *)file_inode(f)->i_private;
+	struct amdgpu_device *adev = file_inode(iocb->ki_filp)->i_private;
 	struct amdgpu_ras *ras = amdgpu_ras_get_context(adev);
 	struct amdgpu_ras_eeprom_control *control = ras ? &ras->eeprom_control : NULL;
+	size_t size = iov_iter_count(to);
 	u8 data[50];
 	int res;
 
@@ -1219,24 +1219,22 @@ amdgpu_ras_debugfs_eeprom_size_read(struct file *f, char __user *buf,
 			       RAS_TBL_SIZE_BYTES, control->ras_max_record_count);
 	}
 
-	if (*pos >= res)
+	if (iocb->ki_pos >= res)
 		return 0;
 
-	res -= *pos;
+	res -= iocb->ki_pos;
 	res = min_t(size_t, res, size);
 
-	if (copy_to_user(buf, &data[*pos], res))
+	if (!copy_to_iter_full(&data[iocb->ki_pos], res, to))
 		return -EFAULT;
 
-	*pos += res;
-
+	iocb->ki_pos += res;
 	return res;
 }
 
 const struct file_operations amdgpu_ras_debugfs_eeprom_size_ops = {
 	.owner = THIS_MODULE,
-	.read = amdgpu_ras_debugfs_eeprom_size_read,
-	.write = NULL,
+	.read_iter = amdgpu_ras_debugfs_eeprom_size_read,
 	.llseek = default_llseek,
 };
 
@@ -1418,11 +1416,11 @@ amdgpu_ras_debugfs_eeprom_table_read(struct file *f, char __user *buf,
 		return amdgpu_ras_debugfs_table_read(f, buf, size, pos);
 	}
 }
+FOPS_READ_ITER_HELPER(amdgpu_ras_debugfs_eeprom_table_read);
 
 const struct file_operations amdgpu_ras_debugfs_eeprom_table_ops = {
 	.owner = THIS_MODULE,
-	.read = amdgpu_ras_debugfs_eeprom_table_read,
-	.write = NULL,
+	.read_iter = amdgpu_ras_debugfs_eeprom_table_read_iter,
 	.llseek = default_llseek,
 };
 

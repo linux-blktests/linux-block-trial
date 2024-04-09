@@ -651,6 +651,7 @@ out:
 
 	return result;
 }
+FOPS_READ_ITER_HELPER(amdgpu_debugfs_ring_read);
 
 static ssize_t amdgpu_debugfs_virt_ring_read(struct file *f, char __user *buf,
 	size_t size, loff_t *pos)
@@ -668,7 +669,7 @@ static ssize_t amdgpu_debugfs_virt_ring_read(struct file *f, char __user *buf,
 
 static const struct file_operations amdgpu_debugfs_ring_fops = {
 	.owner = THIS_MODULE,
-	.read = amdgpu_debugfs_ring_read,
+	.read_iter = amdgpu_debugfs_ring_read_iter,
 	.llseek = default_llseek
 };
 
@@ -694,10 +695,11 @@ static ssize_t amdgpu_debugfs_mqd_read(struct file *f, char __user *buf,
 	*pos += bytes;
 	return bytes;
 }
+FOPS_READ_ITER_HELPER(amdgpu_debugfs_mqd_read);
 
 static const struct file_operations amdgpu_debugfs_mqd_fops = {
 	.owner = THIS_MODULE,
-	.read = amdgpu_debugfs_mqd_read,
+	.read_iter = amdgpu_debugfs_mqd_read_iter,
 	.llseek = default_llseek
 };
 

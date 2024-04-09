@@ -447,16 +447,17 @@ void amdgpu_umsch_fwlog_init(struct amdgpu_umsch_mm *umsch_mm)
  * debugfs for mapping umsch firmware log buffer.
  */
 #if defined(CONFIG_DEBUG_FS)
-static ssize_t amdgpu_debugfs_umsch_fwlog_read(struct file *f, char __user *buf,
-					     size_t size, loff_t *pos)
+static ssize_t amdgpu_debugfs_umsch_fwlog_read(struct kiocb *iocb,
+					       struct iov_iter *to)
 {
 	struct amdgpu_umsch_mm *umsch_mm;
 	void *log_buf;
 	volatile struct amdgpu_umsch_fwlog *plog;
 	unsigned int read_pos, write_pos, available, i, read_bytes = 0;
 	unsigned int read_num[2] = {0};
+	size_t size = iov_iter_count(to);
 
-	umsch_mm = file_inode(f)->i_private;
+	umsch_mm = file_inode(iocb->ki_filp)->i_private;
 	if (!umsch_mm)
 		return -ENODEV;
 
@@ -493,8 +494,7 @@ static ssize_t amdgpu_debugfs_umsch_fwlog_read(struct file *f, char __user *buf,
 		if (read_num[i]) {
 			if (read_pos == AMDGPU_UMSCHFW_LOG_SIZE)
 				read_pos = plog->header_size;
-			if (read_num[i] == copy_to_user((buf + read_bytes),
-							(log_buf + read_pos), read_num[i]))
+			if (read_num[i] == !copy_to_iter_full((log_buf + read_pos), read_num[i], to))
 				return -EFAULT;
 
 			read_bytes += read_num[i];
@@ -503,13 +503,13 @@ static ssize_t amdgpu_debugfs_umsch_fwlog_read(struct file *f, char __user *buf,
 	}
 
 	plog->rptr = read_pos;
-	*pos += read_bytes;
+	iocb->ki_pos += read_bytes;
 	return read_bytes;
 }
 
 static const struct file_operations amdgpu_debugfs_umschfwlog_fops = {
 	.owner = THIS_MODULE,
-	.read = amdgpu_debugfs_umsch_fwlog_read,
+	.read_iter = amdgpu_debugfs_umsch_fwlog_read,
 	.llseek = default_llseek
 };
 #endif

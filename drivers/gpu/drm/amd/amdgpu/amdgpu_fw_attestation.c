@@ -110,10 +110,11 @@ static ssize_t amdgpu_fw_attestation_debugfs_read(struct file *f,
 
 	return sizeof(struct FW_ATT_RECORD);
 }
+FOPS_READ_ITER_HELPER(amdgpu_fw_attestation_debugfs_read);
 
 static const struct file_operations amdgpu_fw_attestation_debugfs_ops = {
 	.owner = THIS_MODULE,
-	.read = amdgpu_fw_attestation_debugfs_read,
+	.read_iter = amdgpu_fw_attestation_debugfs_read_iter,
 	.write = NULL,
 	.llseek = default_llseek
 };

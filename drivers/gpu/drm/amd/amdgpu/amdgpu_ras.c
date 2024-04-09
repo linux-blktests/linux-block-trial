@@ -307,10 +307,11 @@ static ssize_t amdgpu_ras_debugfs_read(struct file *f, char __user *buf,
 
 	return s;
 }
+FOPS_READ_ITER_HELPER(amdgpu_ras_debugfs_read);
 
 static const struct file_operations amdgpu_ras_debugfs_ops = {
 	.owner = THIS_MODULE,
-	.read = amdgpu_ras_debugfs_read,
+	.read_iter = amdgpu_ras_debugfs_read_iter,
 	.write = NULL,
 	.llseek = default_llseek
 };
@@ -618,6 +619,7 @@ static ssize_t amdgpu_ras_debugfs_ctrl_write(struct file *f,
 
 	return size;
 }
+FOPS_WRITE_ITER_HELPER(amdgpu_ras_debugfs_ctrl_write);
 
 static int amdgpu_uniras_clear_badpages_info(struct amdgpu_device *adev);
 
@@ -662,18 +664,19 @@ static ssize_t amdgpu_ras_debugfs_eeprom_write(struct file *f,
 		return ret;
 	}
 }
+FOPS_WRITE_ITER_HELPER(amdgpu_ras_debugfs_eeprom_write);
 
 static const struct file_operations amdgpu_ras_debugfs_ctrl_ops = {
 	.owner = THIS_MODULE,
 	.read = NULL,
-	.write = amdgpu_ras_debugfs_ctrl_write,
+	.write_iter = amdgpu_ras_debugfs_ctrl_write_iter,
 	.llseek = default_llseek
 };
 
 static const struct file_operations amdgpu_ras_debugfs_eeprom_ops = {
 	.owner = THIS_MODULE,
 	.read = NULL,
-	.write = amdgpu_ras_debugfs_eeprom_write,
+	.write_iter = amdgpu_ras_debugfs_eeprom_write_iter,
 	.llseek = default_llseek
 };
 

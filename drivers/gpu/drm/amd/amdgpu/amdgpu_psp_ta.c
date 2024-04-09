@@ -26,12 +26,9 @@
 
 #if defined(CONFIG_DEBUG_FS)
 
-static ssize_t ta_if_load_debugfs_write(struct file *fp, const char *buf,
-					    size_t len, loff_t *off);
-static ssize_t ta_if_unload_debugfs_write(struct file *fp, const char *buf,
-					    size_t len, loff_t *off);
-static ssize_t ta_if_invoke_debugfs_write(struct file *fp, const char *buf,
-					    size_t len, loff_t *off);
+static ssize_t ta_if_load_debugfs_write_iter(struct kiocb *, struct iov_iter *);
+static ssize_t ta_if_unload_debugfs_write_iter(struct kiocb *, struct iov_iter *);
+static ssize_t ta_if_invoke_debugfs_write_iter(struct kiocb *, struct iov_iter *);
 
 static uint32_t get_bin_version(const uint8_t *bin)
 {
@@ -84,19 +81,19 @@ static void set_ta_context_funcs(struct psp_context *psp,
 }
 
 static const struct file_operations ta_load_debugfs_fops = {
-	.write  = ta_if_load_debugfs_write,
+	.write_iter  = ta_if_load_debugfs_write_iter,
 	.llseek = default_llseek,
 	.owner  = THIS_MODULE
 };
 
 static const struct file_operations ta_unload_debugfs_fops = {
-	.write  = ta_if_unload_debugfs_write,
+	.write_iter  = ta_if_unload_debugfs_write_iter,
 	.llseek = default_llseek,
 	.owner  = THIS_MODULE
 };
 
 static const struct file_operations ta_invoke_debugfs_fops = {
-	.write  = ta_if_invoke_debugfs_write,
+	.write_iter  = ta_if_invoke_debugfs_write_iter,
 	.llseek = default_llseek,
 	.owner  = THIS_MODULE
 };
@@ -239,6 +236,7 @@ err_free_bin:
 
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ta_if_load_debugfs_write);
 
 static ssize_t ta_if_unload_debugfs_write(struct file *fp, const char *buf, size_t len, loff_t *off)
 {
@@ -285,6 +283,7 @@ static ssize_t ta_if_unload_debugfs_write(struct file *fp, const char *buf, size
 
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ta_if_unload_debugfs_write);
 
 static ssize_t ta_if_invoke_debugfs_write(struct file *fp, const char *buf, size_t len, loff_t *off)
 {
@@ -369,6 +368,7 @@ free_shared_buf:
 
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ta_if_invoke_debugfs_write);
 
 void amdgpu_ta_if_debugfs_init(struct amdgpu_device *adev)
 {

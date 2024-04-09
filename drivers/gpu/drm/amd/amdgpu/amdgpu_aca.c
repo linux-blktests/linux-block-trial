@@ -946,7 +946,7 @@ static int aca_dump_ce_open(struct inode *inode, struct file *file)
 static const struct file_operations aca_ce_dump_debug_fops = {
 	.owner = THIS_MODULE,
 	.open = aca_dump_ce_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
@@ -964,7 +964,7 @@ static int aca_dump_ue_open(struct inode *inode, struct file *file)
 static const struct file_operations aca_ue_dump_debug_fops = {
 	.owner = THIS_MODULE,
 	.open = aca_dump_ue_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };

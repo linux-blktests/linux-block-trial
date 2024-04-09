@@ -50,9 +50,10 @@ static int kfd_debugfs_hang_hws_read(struct seq_file *m, void *data)
 	return 0;
 }
 
-static ssize_t kfd_debugfs_hang_hws_write(struct file *file,
-	const char __user *user_buf, size_t size, loff_t *ppos)
+static ssize_t kfd_debugfs_hang_hws_write(struct kiocb *iocb,
+					  struct iov_iter *from)
 {
+	size_t size = iov_iter_count(from);
 	struct kfd_node *dev;
 	char tmp[16];
 	uint32_t gpu_id;
@@ -63,7 +64,7 @@ static ssize_t kfd_debugfs_hang_hws_write(struct file *file,
 		pr_err("Invalid input for gpu id.\n");
 		goto out;
 	}
-	if (copy_from_user(tmp, user_buf, size)) {
+	if (!copy_from_iter_full(tmp, size, from)) {
 		ret = -EFAULT;
 		goto out;
 	}
@@ -85,7 +86,7 @@ out:
 static const struct file_operations kfd_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = kfd_debugfs_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
@@ -93,8 +94,8 @@ static const struct file_operations kfd_debugfs_fops = {
 static const struct file_operations kfd_debugfs_hang_hws_fops = {
 	.owner = THIS_MODULE,
 	.open = kfd_debugfs_open,
-	.read = seq_read,
-	.write = kfd_debugfs_hang_hws_write,
+	.read_iter = seq_read_iter,
+	.write_iter = kfd_debugfs_hang_hws_write,
 	.llseek = seq_lseek,
 	.release = single_release,
 };

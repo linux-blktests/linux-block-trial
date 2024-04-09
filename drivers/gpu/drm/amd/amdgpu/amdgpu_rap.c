@@ -40,21 +40,22 @@
  * from header file ta_rap_if.h
  *
  */
-static ssize_t amdgpu_rap_debugfs_write(struct file *f, const char __user *buf,
-		size_t size, loff_t *pos)
+static ssize_t amdgpu_rap_debugfs_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct amdgpu_device *adev = (struct amdgpu_device *)file_inode(f)->i_private;
+	struct amdgpu_device *adev = file_inode(iocb->ki_filp)->i_private;
 	struct ta_rap_shared_memory *rap_shared_mem;
 	struct ta_rap_cmd_output_data *rap_cmd_output;
 	struct drm_device *dev = adev_to_drm(adev);
+	size_t size = iov_iter_count(from);
 	uint32_t op;
 	enum ta_rap_status status;
 	int ret;
 
-	if (*pos || size != 2)
+	if (iocb->ki_pos || size != 2)
 		return -EINVAL;
 
-	ret = kstrtouint_from_user(buf, size, *pos, &op);
+	ret = kstrtouint_from_iter(from, size, iocb->ki_pos, &op);
 	if (ret)
 		return ret;
 
@@ -108,8 +109,7 @@ static ssize_t amdgpu_rap_debugfs_write(struct file *f, const char __user *buf,
 
 static const struct file_operations amdgpu_rap_debugfs_ops = {
 	.owner = THIS_MODULE,
-	.read = NULL,
-	.write = amdgpu_rap_debugfs_write,
+	.write_iter = amdgpu_rap_debugfs_write,
 	.llseek = default_llseek
 };
 

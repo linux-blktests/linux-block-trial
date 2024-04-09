@@ -5054,10 +5054,9 @@ DEFINE_SHOW_ATTRIBUTE(amdgpu_debugfs_pm_info);
  *
  * Reads debug memory region allocated to PMFW
  */
-static ssize_t amdgpu_pm_prv_buffer_read(struct file *f, char __user *buf,
-					 size_t size, loff_t *pos)
+static ssize_t amdgpu_pm_prv_buffer_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct amdgpu_device *adev = file_inode(f)->i_private;
+	struct amdgpu_device *adev = file_inode(iocb->ki_filp)->i_private;
 	size_t smu_prv_buf_size;
 	void *smu_prv_buf;
 	int ret = 0;
@@ -5073,14 +5072,14 @@ static ssize_t amdgpu_pm_prv_buffer_read(struct file *f, char __user *buf,
 	if (!smu_prv_buf || !smu_prv_buf_size)
 		return -EINVAL;
 
-	return simple_read_from_buffer(buf, size, pos, smu_prv_buf,
-				       smu_prv_buf_size);
+	return simple_copy_to_iter(smu_prv_buf, &iocb->ki_pos,
+					smu_prv_buf_size, to);
 }
 
 static const struct file_operations amdgpu_debugfs_pm_prv_buffer_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = amdgpu_pm_prv_buffer_read,
+	.read_iter = amdgpu_pm_prv_buffer_read,
 	.llseek = default_llseek,
 };
 

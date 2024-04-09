@@ -2651,30 +2651,29 @@ DEFINE_SHOW_ATTRIBUTE(amdgpu_ttm_page_pool);
  *
  * Accesses VRAM via MMIO for debugging purposes.
  */
-static ssize_t amdgpu_ttm_vram_read(struct file *f, char __user *buf,
-				    size_t size, loff_t *pos)
+static ssize_t amdgpu_ttm_vram_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct amdgpu_device *adev = file_inode(f)->i_private;
+	struct amdgpu_device *adev = file_inode(iocb->ki_filp)->i_private;
+	size_t size = iov_iter_count(to);
 	ssize_t result = 0;
 
-	if (size & 0x3 || *pos & 0x3)
+	if (size & 0x3 || iocb->ki_pos & 0x3)
 		return -EINVAL;
 
-	if (*pos >= adev->gmc.mc_vram_size)
+	if (iocb->ki_pos >= adev->gmc.mc_vram_size)
 		return -ENXIO;
 
-	size = min(size, (size_t)(adev->gmc.mc_vram_size - *pos));
+	size = min(size, (size_t)(adev->gmc.mc_vram_size - iocb->ki_pos));
 	while (size) {
 		size_t bytes = min(size, AMDGPU_TTM_VRAM_MAX_DW_READ * 4);
 		uint32_t value[AMDGPU_TTM_VRAM_MAX_DW_READ];
 
-		amdgpu_device_vram_access(adev, *pos, value, bytes, false);
-		if (copy_to_user(buf, value, bytes))
+		amdgpu_device_vram_access(adev, iocb->ki_pos, value, bytes, false);
+		if (!copy_to_iter_full(value, bytes, to))
 			return -EFAULT;
 
 		result += bytes;
-		buf += bytes;
-		*pos += bytes;
+		iocb->ki_pos += bytes;
 		size -= bytes;
 	}
 
@@ -2719,11 +2718,12 @@ static ssize_t amdgpu_ttm_vram_write(struct file *f, const char __user *buf,
 
 	return result;
 }
+FOPS_WRITE_ITER_HELPER(amdgpu_ttm_vram_write);
 
 static const struct file_operations amdgpu_ttm_vram_fops = {
 	.owner = THIS_MODULE,
-	.read = amdgpu_ttm_vram_read,
-	.write = amdgpu_ttm_vram_write,
+	.read_iter = amdgpu_ttm_vram_read,
+	.write_iter = amdgpu_ttm_vram_write_iter,
 	.llseek = default_llseek,
 };
 
@@ -2734,10 +2734,10 @@ static const struct file_operations amdgpu_ttm_vram_fops = {
  * GPU and the known addresses are not physical addresses but instead
  * bus addresses (e.g., what you'd put in an IB or ring buffer).
  */
-static ssize_t amdgpu_iomem_read(struct file *f, char __user *buf,
-				 size_t size, loff_t *pos)
+static ssize_t amdgpu_iomem_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct amdgpu_device *adev = file_inode(f)->i_private;
+	struct amdgpu_device *adev = file_inode(iocb->ki_filp)->i_private;
+	size_t size = iov_iter_count(to);
 	struct iommu_domain *dom;
 	ssize_t result = 0;
 	int r;
@@ -2746,8 +2746,8 @@ static ssize_t amdgpu_iomem_read(struct file *f, char __user *buf,
 	dom = iommu_get_domain_for_dev(adev->dev);
 
 	while (size) {
-		phys_addr_t addr = *pos & PAGE_MASK;
-		loff_t off = *pos & ~PAGE_MASK;
+		phys_addr_t addr = iocb->ki_pos & PAGE_MASK;
+		loff_t off = iocb->ki_pos & ~PAGE_MASK;
 		size_t bytes = PAGE_SIZE - off;
 		unsigned long pfn;
 		struct page *p;
@@ -2770,13 +2770,13 @@ static ssize_t amdgpu_iomem_read(struct file *f, char __user *buf,
 			return -EPERM;
 
 		ptr = kmap_local_page(p);
-		r = copy_to_user(buf, ptr + off, bytes);
+		r = !copy_to_iter_full(ptr + off, bytes, to);
 		kunmap_local(ptr);
 		if (r)
 			return -EFAULT;
 
 		size -= bytes;
-		*pos += bytes;
+		iocb->ki_pos += bytes;
 		result += bytes;
 	}
 
@@ -2790,10 +2790,10 @@ static ssize_t amdgpu_iomem_read(struct file *f, char __user *buf,
  * GPU and the known addresses are not physical addresses but instead
  * bus addresses (e.g., what you'd put in an IB or ring buffer).
  */
-static ssize_t amdgpu_iomem_write(struct file *f, const char __user *buf,
-				 size_t size, loff_t *pos)
+static ssize_t amdgpu_iomem_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct amdgpu_device *adev = file_inode(f)->i_private;
+	struct amdgpu_device *adev = file_inode(iocb->ki_filp)->i_private;
+	size_t size = iov_iter_count(from);
 	struct iommu_domain *dom;
 	ssize_t result = 0;
 	int r;
@@ -2801,8 +2801,8 @@ static ssize_t amdgpu_iomem_write(struct file *f, const char __user *buf,
 	dom = iommu_get_domain_for_dev(adev->dev);
 
 	while (size) {
-		phys_addr_t addr = *pos & PAGE_MASK;
-		loff_t off = *pos & ~PAGE_MASK;
+		phys_addr_t addr = iocb->ki_pos & PAGE_MASK;
+		loff_t off = iocb->ki_pos & ~PAGE_MASK;
 		size_t bytes = PAGE_SIZE - off;
 		unsigned long pfn;
 		struct page *p;
@@ -2821,13 +2821,13 @@ static ssize_t amdgpu_iomem_write(struct file *f, const char __user *buf,
 			return -EPERM;
 
 		ptr = kmap_local_page(p);
-		r = copy_from_user(ptr + off, buf, bytes);
+		r = !copy_from_iter_full(ptr + off, bytes, from);
 		kunmap_local(ptr);
 		if (r)
 			return -EFAULT;
 
 		size -= bytes;
-		*pos += bytes;
+		iocb->ki_pos += bytes;
 		result += bytes;
 	}
 
@@ -2836,8 +2836,8 @@ static ssize_t amdgpu_iomem_write(struct file *f, const char __user *buf,
 
 static const struct file_operations amdgpu_ttm_iomem_fops = {
 	.owner = THIS_MODULE,
-	.read = amdgpu_iomem_read,
-	.write = amdgpu_iomem_write,
+	.read_iter = amdgpu_iomem_read,
+	.write_iter = amdgpu_iomem_write,
 	.llseek = default_llseek
 };
 

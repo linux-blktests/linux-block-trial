@@ -4056,6 +4056,7 @@ static ssize_t smu_stb_debugfs_read(struct file *filp, char __user *buf, size_t 
 				       pos, filp->private_data,
 				       smu->stb_context.stb_buf_size);
 }
+FOPS_READ_ITER_HELPER(smu_stb_debugfs_read);
 
 static int smu_stb_debugfs_release(struct inode *inode, struct file *filp)
 {
@@ -4075,7 +4076,7 @@ static int smu_stb_debugfs_release(struct inode *inode, struct file *filp)
 static const struct file_operations smu_stb_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = smu_stb_debugfs_open,
-	.read = smu_stb_debugfs_read,
+	.read_iter = smu_stb_debugfs_read_iter,
 	.release = smu_stb_debugfs_release,
 	.llseek = default_llseek,
 };
