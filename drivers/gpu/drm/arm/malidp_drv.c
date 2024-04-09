@@ -524,10 +524,9 @@ static int malidp_debugfs_open(struct inode *inode, struct file *file)
 	return single_open(file, malidp_show_stats, inode->i_private);
 }
 
-static ssize_t malidp_debugfs_write(struct file *file, const char __user *ubuf,
-				    size_t len, loff_t *offp)
+static ssize_t malidp_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct drm_device *drm = m->private;
 	struct malidp_drm *malidp = drm_to_malidp(drm);
 	unsigned long irqflags;
@@ -536,14 +535,14 @@ static ssize_t malidp_debugfs_write(struct file *file, const char __user *ubuf,
 	malidp_error_stats_init(&malidp->de_errors);
 	malidp_error_stats_init(&malidp->se_errors);
 	spin_unlock_irqrestore(&malidp->errors_lock, irqflags);
-	return len;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations malidp_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = malidp_debugfs_open,
-	.read = seq_read,
-	.write = malidp_debugfs_write,
+	.read_iter = seq_read_iter,
+	.write_iter = malidp_debugfs_write,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
