@@ -39,13 +39,11 @@ static int uvc_debugfs_stats_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t uvc_debugfs_stats_read(struct file *file, char __user *user_buf,
-				      size_t nbytes, loff_t *ppos)
+static ssize_t uvc_debugfs_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct uvc_debugfs_buffer *buf = file->private_data;
+	struct uvc_debugfs_buffer *buf = iocb->ki_filp->private_data;
 
-	return simple_read_from_buffer(user_buf, nbytes, ppos, buf->data,
-				       buf->count);
+	return simple_copy_to_iter(buf->data, &iocb->ki_pos, buf->count, to);
 }
 
 static int uvc_debugfs_stats_release(struct inode *inode, struct file *file)
@@ -59,7 +57,7 @@ static int uvc_debugfs_stats_release(struct inode *inode, struct file *file)
 static const struct file_operations uvc_debugfs_stats_fops = {
 	.owner = THIS_MODULE,
 	.open = uvc_debugfs_stats_open,
-	.read = uvc_debugfs_stats_read,
+	.read_iter = uvc_debugfs_stats_read,
 	.release = uvc_debugfs_stats_release,
 };
 
