@@ -79,16 +79,16 @@ static inline bool should_stop_iteration(void)
  * This funcion reads the *physical* memory. The f_pos points directly to the
  * memory location.
  */
-static ssize_t read_mem(struct file *file, char __user *buf,
-			size_t count, loff_t *ppos)
+static ssize_t read_mem(struct kiocb *iocb, struct iov_iter *to)
 {
-	phys_addr_t p = *ppos;
+	size_t count = iov_iter_count(to);
+	phys_addr_t p = iocb->ki_pos;
 	ssize_t read, sz;
 	void *ptr;
 	char *bounce;
 	int err;
 
-	if (p != *ppos)
+	if (p != iocb->ki_pos)
 		return 0;
 
 	if (!valid_phys_addr_range(p, count))
@@ -99,9 +99,8 @@ static ssize_t read_mem(struct file *file, char __user *buf,
 	if (p < PAGE_SIZE) {
 		sz = size_inside_page(p, count);
 		if (sz > 0) {
-			if (clear_user(buf, sz))
+			if (iov_iter_zero(sz, to) != sz)
 				return -EFAULT;
-			buf += sz;
 			p += sz;
 			count -= sz;
 			read += sz;
@@ -127,7 +126,7 @@ static ssize_t read_mem(struct file *file, char __user *buf,
 		err = -EFAULT;
 		if (allowed == 2) {
 			/* Show zeros for restricted memory. */
-			remaining = clear_user(buf, sz);
+			remaining = sz - iov_iter_zero(sz, to);
 		} else {
 			/*
 			 * On ia64 if a page has been mapped somewhere as
@@ -143,13 +142,12 @@ static ssize_t read_mem(struct file *file, char __user *buf,
 			if (probe)
 				goto failed;
 
-			remaining = copy_to_user(buf, bounce, sz);
+			remaining = sz - copy_to_iter(bounce, sz, to);
 		}
 
 		if (remaining)
 			goto failed;
 
-		buf += sz;
 		p += sz;
 		count -= sz;
 		read += sz;
@@ -158,7 +156,7 @@ static ssize_t read_mem(struct file *file, char __user *buf,
 	}
 	kfree(bounce);
 
-	*ppos += read;
+	iocb->ki_pos += read;
 	return read;
 
 failed:
@@ -166,15 +164,15 @@ failed:
 	return err;
 }
 
-static ssize_t write_mem(struct file *file, const char __user *buf,
-			 size_t count, loff_t *ppos)
+static ssize_t write_mem(struct kiocb *iocb, struct iov_iter *from)
 {
-	phys_addr_t p = *ppos;
+	size_t count = iov_iter_count(from);
+	phys_addr_t p = iocb->ki_pos;
 	ssize_t written, sz;
 	unsigned long copied;
 	void *ptr;
 
-	if (p != *ppos)
+	if (p != iocb->ki_pos)
 		return -EFBIG;
 
 	if (!valid_phys_addr_range(p, count))
@@ -187,7 +185,7 @@ static ssize_t write_mem(struct file *file, const char __user *buf,
 	if (p < PAGE_SIZE) {
 		sz = size_inside_page(p, count);
 		/* Hmm. Do something? */
-		buf += sz;
+		iov_iter_advance(from, sz);
 		p += sz;
 		count -= sz;
 		written += sz;
@@ -217,7 +215,7 @@ static ssize_t write_mem(struct file *file, const char __user *buf,
 				return -EFAULT;
 			}
 
-			copied = copy_from_user(ptr, buf, sz);
+			copied = copy_from_iter(ptr, sz, from);
 			unxlate_dev_mem_ptr(p, ptr);
 			if (copied) {
 				written += sz - copied;
@@ -227,7 +225,6 @@ static ssize_t write_mem(struct file *file, const char __user *buf,
 			}
 		}
 
-		buf += sz;
 		p += sz;
 		count -= sz;
 		written += sz;
@@ -235,7 +232,7 @@ static ssize_t write_mem(struct file *file, const char __user *buf,
 			break;
 	}
 
-	*ppos += written;
+	iocb->ki_pos += written;
 	return written;
 }
 
@@ -369,60 +366,41 @@ static int mmap_mem_prepare(struct vm_area_desc *desc)
 }
 
 #ifdef CONFIG_DEVPORT
-static ssize_t read_port(struct file *file, char __user *buf,
-			 size_t count, loff_t *ppos)
+static ssize_t read_port(struct kiocb *iocb, struct iov_iter *to)
 {
-	unsigned long i = *ppos;
-	char __user *tmp = buf;
+	unsigned long i = iocb->ki_pos, org_i = i;
+	size_t count = iov_iter_count(to);
 
-	if (!access_ok(buf, count))
-		return -EFAULT;
 	while (count-- > 0 && i < 65536) {
-		if (__put_user(inb(i), tmp) < 0)
+		char val = inb(i);
+		if (put_iter(val, to))
 			return -EFAULT;
 		i++;
-		tmp++;
 	}
-	*ppos = i;
-	return tmp-buf;
+	iocb->ki_pos = i;
+	return i - org_i;
 }
 
-static ssize_t write_port(struct file *file, const char __user *buf,
-			  size_t count, loff_t *ppos)
+static ssize_t write_port(struct kiocb *iocb, struct iov_iter *from)
 {
-	unsigned long i = *ppos;
-	const char __user *tmp = buf;
+	unsigned long i = iocb->ki_pos, org_i = i;
+	size_t count = iov_iter_count(from);
 
-	if (!access_ok(buf, count))
-		return -EFAULT;
 	while (count-- > 0 && i < 65536) {
 		char c;
 
-		if (__get_user(c, tmp)) {
-			if (tmp > buf)
+		if (get_iter(c, from)) {
+			if (i != org_i)
 				break;
 			return -EFAULT;
 		}
 		outb(c, i);
 		i++;
-		tmp++;
 	}
-	*ppos = i;
-	return tmp-buf;
+	iocb->ki_pos = i;
+	return i - org_i;
 }
 #endif
-
-static ssize_t read_null(struct file *file, char __user *buf,
-			 size_t count, loff_t *ppos)
-{
-	return 0;
-}
-
-static ssize_t write_null(struct file *file, const char __user *buf,
-			  size_t count, loff_t *ppos)
-{
-	return count;
-}
 
 static ssize_t read_iter_null(struct kiocb *iocb, struct iov_iter *to)
 {
@@ -475,33 +453,6 @@ static ssize_t read_iter_zero(struct kiocb *iocb, struct iov_iter *iter)
 		cond_resched();
 	}
 	return written;
-}
-
-static ssize_t read_zero(struct file *file, char __user *buf,
-			 size_t count, loff_t *ppos)
-{
-	size_t cleared = 0;
-
-	while (count) {
-		size_t chunk = min_t(size_t, count, PAGE_SIZE);
-		size_t left;
-
-		left = clear_user(buf + cleared, chunk);
-		if (unlikely(left)) {
-			cleared += (chunk - left);
-			if (!cleared)
-				return -EFAULT;
-			break;
-		}
-		cleared += chunk;
-		count -= chunk;
-
-		if (signal_pending(current))
-			break;
-		cond_resched();
-	}
-
-	return cleared;
 }
 
 static int mmap_zero_private_success(const struct vm_area_struct *vma)
@@ -563,8 +514,7 @@ static unsigned long get_unmapped_area_zero(struct file *file,
 }
 #endif /* CONFIG_MMU */
 
-static ssize_t write_full(struct file *file, const char __user *buf,
-			  size_t count, loff_t *ppos)
+static ssize_t write_full_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	return -ENOSPC;
 }
@@ -639,15 +589,14 @@ static int open_port(struct inode *inode, struct file *filp)
 
 #define zero_lseek	null_lseek
 #define full_lseek      null_lseek
-#define write_zero	write_null
 #define write_iter_zero	write_iter_null
 #define splice_write_zero	splice_write_null
 #define open_mem	open_port
 
 static const struct file_operations __maybe_unused mem_fops = {
 	.llseek		= memory_lseek,
-	.read		= read_mem,
-	.write		= write_mem,
+	.read_iter	= read_mem,
+	.write_iter	= write_mem,
 	.mmap_prepare	= mmap_mem_prepare,
 	.open		= open_mem,
 #ifndef CONFIG_MMU
@@ -659,8 +608,6 @@ static const struct file_operations __maybe_unused mem_fops = {
 
 static const struct file_operations null_fops = {
 	.llseek		= null_lseek,
-	.read		= read_null,
-	.write		= write_null,
 	.read_iter	= read_iter_null,
 	.write_iter	= write_iter_null,
 	.splice_write	= splice_write_null,
@@ -670,17 +617,15 @@ static const struct file_operations null_fops = {
 #ifdef CONFIG_DEVPORT
 static const struct file_operations port_fops = {
 	.llseek		= memory_lseek,
-	.read		= read_port,
-	.write		= write_port,
+	.read_iter	= read_port,
+	.write_iter	= write_port,
 	.open		= open_port,
 };
 #endif
 
 static const struct file_operations zero_fops = {
 	.llseek		= zero_lseek,
-	.write		= write_zero,
 	.read_iter	= read_iter_zero,
-	.read		= read_zero,
 	.write_iter	= write_iter_zero,
 	.splice_read	= copy_splice_read,
 	.splice_write	= splice_write_zero,
@@ -694,7 +639,7 @@ static const struct file_operations zero_fops = {
 static const struct file_operations full_fops = {
 	.llseek		= full_lseek,
 	.read_iter	= read_iter_zero,
-	.write		= write_full,
+	.write_iter	= write_full_iter,
 	.splice_read	= copy_splice_read,
 };
 
