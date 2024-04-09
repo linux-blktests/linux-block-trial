@@ -139,17 +139,17 @@ static int pci_perf_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t pci_perf_seq_write(struct file *file, const char __user *ubuf,
-				  size_t count, loff_t *off)
+static ssize_t pci_perf_seq_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct zpci_dev *zdev = ((struct seq_file *) file->private_data)->private;
+	struct zpci_dev *zdev = ((struct seq_file *) iocb->ki_filp->private_data)->private;
+	size_t count = iov_iter_count(from);
 	unsigned long val;
 	int rc;
 
 	if (!zdev)
 		return 0;
 
-	rc = kstrtoul_from_user(ubuf, count, 10, &val);
+	rc = kstrtoul_from_iter(from, count, 10, &val);
 	if (rc)
 		return rc;
 
@@ -174,8 +174,8 @@ static int pci_perf_seq_open(struct inode *inode, struct file *filp)
 
 static const struct file_operations debugfs_pci_perf_fops = {
 	.open	 = pci_perf_seq_open,
-	.read	 = seq_read,
-	.write	 = pci_perf_seq_write,
+	.read_iter = seq_read_iter,
+	.write_iter = pci_perf_seq_write,
 	.llseek  = seq_lseek,
 	.release = single_release,
 };

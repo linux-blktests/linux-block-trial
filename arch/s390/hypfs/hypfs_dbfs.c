@@ -6,7 +6,6 @@
  * Author(s): Michael Holzheu <holzheu@linux.vnet.ibm.com>
  */
 
-#include <linux/security.h>
 #include <linux/slab.h>
 #include "hypfs.h"
 
@@ -16,7 +15,7 @@ static struct hypfs_dbfs_data *hypfs_dbfs_data_alloc(struct hypfs_dbfs_file *f)
 {
 	struct hypfs_dbfs_data *data;
 
-	data = kmalloc_obj(*data);
+	data = kmalloc(sizeof(*data), GFP_KERNEL);
 	if (!data)
 		return NULL;
 	data->dbfs_file = f;
@@ -29,17 +28,16 @@ static void hypfs_dbfs_data_free(struct hypfs_dbfs_data *data)
 	kfree(data);
 }
 
-static ssize_t dbfs_read(struct file *file, char __user *buf,
-			 size_t size, loff_t *ppos)
+static ssize_t dbfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct hypfs_dbfs_data *data;
 	struct hypfs_dbfs_file *df;
 	ssize_t rc;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
-	df = file_inode(file)->i_private;
+	df = file_inode(iocb->ki_filp)->i_private;
 	if (mutex_lock_interruptible(&df->lock))
 		return -ERESTARTSYS;
 
@@ -56,7 +54,7 @@ static ssize_t dbfs_read(struct file *file, char __user *buf,
 	}
 	mutex_unlock(&df->lock);
 
-	rc = simple_read_from_buffer(buf, size, ppos, data->buf, data->size);
+	rc = simple_copy_to_iter(data->buf, &iocb->ki_pos, data->size, to);
 	hypfs_dbfs_data_free(data);
 	return rc;
 }
@@ -67,27 +65,23 @@ static long dbfs_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	long rc;
 
 	mutex_lock(&df->lock);
-	rc = df->unlocked_ioctl(file, cmd, arg);
+	if (df->unlocked_ioctl)
+		rc = df->unlocked_ioctl(file, cmd, arg);
+	else
+		rc = -ENOTTY;
 	mutex_unlock(&df->lock);
 	return rc;
 }
 
-static const struct file_operations dbfs_ops_ioctl = {
-	.read		= dbfs_read,
-	.unlocked_ioctl = dbfs_ioctl,
-};
-
 static const struct file_operations dbfs_ops = {
-	.read		= dbfs_read,
+	.read_iter	= dbfs_read,
+	.unlocked_ioctl = dbfs_ioctl,
 };
 
 void hypfs_dbfs_create_file(struct hypfs_dbfs_file *df)
 {
-	const struct file_operations *fops = &dbfs_ops;
-
-	if (df->unlocked_ioctl && !security_locked_down(LOCKDOWN_DEBUGFS))
-		fops = &dbfs_ops_ioctl;
-	df->dentry = debugfs_create_file(df->name, 0400, dbfs_dir, df, fops);
+	df->dentry = debugfs_create_file(df->name, 0400, dbfs_dir, df,
+					 &dbfs_ops);
 	mutex_init(&df->lock);
 }
 

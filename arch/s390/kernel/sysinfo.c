@@ -461,7 +461,7 @@ static int stsi_open_##fc##_##s1##_##s2(struct inode *inode, struct file *file)\
 static const struct file_operations stsi_##fc##_##s1##_##s2##_fs_ops = {       \
 	.open		= stsi_open_##fc##_##s1##_##s2,			       \
 	.release	= stsi_release,					       \
-	.read		= stsi_read,					       \
+	.read_iter	= stsi_read,					       \
 };
 
 static int stsi_release(struct inode *inode, struct file *file)
@@ -470,9 +470,9 @@ static int stsi_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t stsi_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
+static ssize_t stsi_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return simple_read_from_buffer(buf, size, ppos, file->private_data, PAGE_SIZE);
+	return simple_copy_to_iter(iocb->ki_filp->private_data, &iocb->ki_pos, PAGE_SIZE, to);
 }
 
 STSI_FILE( 1, 1, 1);

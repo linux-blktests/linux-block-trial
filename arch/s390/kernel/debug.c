@@ -66,10 +66,8 @@ typedef struct {
 /* internal function prototypes */
 
 static int debug_init(void);
-static ssize_t debug_output(struct file *file, char __user *user_buf,
-			    size_t user_len, loff_t *offset);
-static ssize_t debug_input(struct file *file, const char __user *user_buf,
-			   size_t user_len, loff_t *offset);
+static ssize_t debug_output(struct kiocb *iocb, struct iov_iter *to);
+static ssize_t debug_input_iter(struct kiocb *iocb, struct iov_iter *from);
 static int debug_open(struct inode *inode, struct file *file);
 static int debug_close(struct inode *inode, struct file *file);
 static debug_info_t *debug_info_create(const char *name, int pages_per_area,
@@ -160,8 +158,8 @@ static int debug_critical;
 
 static const struct file_operations debug_file_ops = {
 	.owner	 = THIS_MODULE,
-	.read	 = debug_output,
-	.write	 = debug_input,
+	.read_iter	 = debug_output,
+	.write_iter	 = debug_input_iter,
 	.open	 = debug_open,
 	.release = debug_close,
 };
@@ -543,17 +541,15 @@ static bool debug_move_entry(file_private_info_t *p_info, bool reverse)
  * - called for user read()
  * - copies formatted debug entries to the user buffer
  */
-static ssize_t debug_output(struct file *file,		/* file descriptor */
-			    char __user *user_buf,	/* user buffer */
-			    size_t len,			/* length of buffer */
-			    loff_t *offset)		/* offset in the file */
+static ssize_t debug_output(struct kiocb *iocb, struct iov_iter *to)
 {
 	size_t count = 0;
 	size_t entry_offset;
 	file_private_info_t *p_info;
+	size_t len = iov_iter_count(to);
 
-	p_info = (file_private_info_t *) file->private_data;
-	if (*offset != p_info->offset)
+	p_info = (file_private_info_t *) iocb->ki_filp->private_data;
+	if (iocb->ki_pos != p_info->offset)
 		return -EPIPE;
 	if (p_info->act_area >= p_info->debug_info_snap->nr_areas)
 		return 0;
@@ -569,8 +565,8 @@ static ssize_t debug_output(struct file *file,		/* file descriptor */
 		user_buf_residue = len-count;
 		copy_size = min(user_buf_residue, formatted_line_residue);
 		if (copy_size) {
-			if (copy_to_user(user_buf + count, p_info->temp_buf
-					 + entry_offset, copy_size))
+			if (!copy_to_iter_full(p_info->temp_buf
+					 + entry_offset, copy_size, to))
 				return -EFAULT;
 			count += copy_size;
 			entry_offset += copy_size;
@@ -582,9 +578,9 @@ static ssize_t debug_output(struct file *file,		/* file descriptor */
 		}
 	}
 out:
-	p_info->offset		 = *offset + count;
+	p_info->offset		 = iocb->ki_pos + count;
 	p_info->act_entry_offset = entry_offset;
-	*offset = p_info->offset;
+	iocb->ki_pos = p_info->offset;
 	return count;
 }
 
@@ -611,6 +607,7 @@ static ssize_t debug_input(struct file *file, const char __user *user_buf,
 	mutex_unlock(&debug_mutex);
 	return rc; /* number of input characters */
 }
+FOPS_WRITE_ITER_HELPER(debug_input);
 
 static file_private_info_t *debug_file_private_alloc(debug_info_t *debug_info,
 						     struct debug_view *view)
