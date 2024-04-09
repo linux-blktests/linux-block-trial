@@ -55,10 +55,8 @@ struct hmcdrv_dev_node {
 static int hmcdrv_dev_open(struct inode *inode, struct file *fp);
 static int hmcdrv_dev_release(struct inode *inode, struct file *fp);
 static loff_t hmcdrv_dev_seek(struct file *fp, loff_t pos, int whence);
-static ssize_t hmcdrv_dev_read(struct file *fp, char __user *ubuf,
-			       size_t len, loff_t *pos);
-static ssize_t hmcdrv_dev_write(struct file *fp, const char __user *ubuf,
-				size_t len, loff_t *pos);
+static ssize_t hmcdrv_dev_read_iter(struct kiocb *iocb, struct iov_iter *to);
+static ssize_t hmcdrv_dev_write_iter(struct kiocb *iocb, struct iov_iter *from);
 static ssize_t hmcdrv_dev_transfer(char __kernel *cmd, loff_t offset,
 				   char __user *buf, size_t len);
 
@@ -69,8 +67,8 @@ static const struct file_operations hmcdrv_dev_fops = {
 	.open = hmcdrv_dev_open,
 	.llseek = hmcdrv_dev_seek,
 	.release = hmcdrv_dev_release,
-	.read = hmcdrv_dev_read,
-	.write = hmcdrv_dev_write,
+	.read_iter = hmcdrv_dev_read_iter,
+	.write_iter = hmcdrv_dev_write_iter,
 };
 
 static struct hmcdrv_dev_node hmcdrv_dev; /* HMC device struct (static) */
@@ -235,6 +233,7 @@ static ssize_t hmcdrv_dev_read(struct file *fp, char __user *ubuf,
 
 	return retlen;
 }
+FOPS_READ_ITER_HELPER(hmcdrv_dev_read);
 
 /*
  * write()
@@ -265,6 +264,7 @@ static ssize_t hmcdrv_dev_write(struct file *fp, const char __user *ubuf,
 
 	return retlen;
 }
+FOPS_WRITE_ITER_HELPER(hmcdrv_dev_write);
 
 /**
  * hmcdrv_dev_init() - creates a HMC drive CD/DVD device
