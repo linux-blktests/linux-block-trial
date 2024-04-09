@@ -70,15 +70,15 @@ static void mtk_vdec_dbgfs_get_help(char *buf, int *used, int total)
 	*used += curr_len;
 }
 
-static ssize_t mtk_vdec_dbgfs_write(struct file *filp, const char __user *ubuf,
-				    size_t count, loff_t *ppos)
+static ssize_t mtk_vdec_dbgfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mtk_vcodec_dec_dev *vcodec_dev = filp->private_data;
+	struct mtk_vcodec_dec_dev *vcodec_dev = iocb->ki_filp->private_data;
 	struct mtk_vcodec_dbgfs *dbgfs = &vcodec_dev->dbgfs;
+	size_t count = iov_iter_count(from);
 
 	mutex_lock(&dbgfs->dbgfs_lock);
-	dbgfs->buf_size = simple_write_to_buffer(dbgfs->dbgfs_buf, sizeof(dbgfs->dbgfs_buf),
-						 ppos, ubuf, count);
+	dbgfs->buf_size = simple_copy_to_iter(dbgfs->dbgfs_buf, &iocb->ki_pos,
+						sizeof(dbgfs->dbgfs_buf), from);
 	mutex_unlock(&dbgfs->dbgfs_lock);
 	if (dbgfs->buf_size > 0)
 		return count;
@@ -86,10 +86,9 @@ static ssize_t mtk_vdec_dbgfs_write(struct file *filp, const char __user *ubuf,
 	return dbgfs->buf_size;
 }
 
-static ssize_t mtk_vdec_dbgfs_read(struct file *filp, char __user *ubuf,
-				   size_t count, loff_t *ppos)
+static ssize_t mtk_vdec_dbgfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mtk_vcodec_dec_dev *vcodec_dev = filp->private_data;
+	struct mtk_vcodec_dec_dev *vcodec_dev = iocb->ki_filp->private_data;
 	struct mtk_vcodec_dbgfs *dbgfs = &vcodec_dev->dbgfs;
 	struct mtk_vcodec_dbgfs_inst *dbgfs_inst;
 	struct mtk_vcodec_dec_ctx *ctx;
@@ -133,15 +132,15 @@ static ssize_t mtk_vdec_dbgfs_read(struct file *filp, char __user *ubuf,
 	}
 	mutex_unlock(&dbgfs->dbgfs_lock);
 read_buffer:
-	ret = simple_read_from_buffer(ubuf, count, ppos, buf, used_len);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, used_len, to);
 	kfree(buf);
 	return ret;
 }
 
 static const struct file_operations vdec_fops = {
 	.open = simple_open,
-	.write = mtk_vdec_dbgfs_write,
-	.read = mtk_vdec_dbgfs_read,
+	.write_iter = mtk_vdec_dbgfs_write,
+	.read_iter = mtk_vdec_dbgfs_read,
 };
 
 void mtk_vcodec_dbgfs_create(struct mtk_vcodec_dec_ctx *ctx)
