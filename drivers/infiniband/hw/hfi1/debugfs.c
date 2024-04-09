@@ -22,6 +22,33 @@
 
 static struct dentry *hfi1_dbg_root;
 
+/* wrappers to enforce srcu in seq file */
+ssize_t hfi1_seq_read(struct kiocb *iocb, struct iov_iter *to)
+{
+	struct dentry *d = iocb->ki_filp->f_path.dentry;
+	ssize_t r;
+
+	r = debugfs_file_get(d);
+	if (unlikely(r))
+		return r;
+	r = seq_read_iter(iocb, to);
+	debugfs_file_put(d);
+	return r;
+}
+
+loff_t hfi1_seq_lseek(struct file *file, loff_t offset, int whence)
+{
+	struct dentry *d = file->f_path.dentry;
+	loff_t r;
+
+	r = debugfs_file_get(d);
+	if (unlikely(r))
+		return r;
+	r = seq_lseek(file, offset, whence);
+	debugfs_file_put(d);
+	return r;
+}
+
 #define private2dd(file) (file_inode(file)->i_private)
 #define private2ppd(file) (file_inode(file)->i_private)
 
@@ -386,33 +413,27 @@ DEBUGFS_SEQ_FILE_OPEN(pios)
 DEBUGFS_FILE_OPS(pios);
 
 /* read the per-device counters */
-static ssize_t dev_counters_read(struct file *file, char __user *buf,
-				 size_t count, loff_t *ppos)
+static ssize_t dev_counters_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	u64 *counters;
 	size_t avail;
 	struct hfi1_devdata *dd;
-	ssize_t rval;
 
-	dd = private2dd(file);
+	dd = private2dd(iocb->ki_filp);
 	avail = hfi1_read_cntrs(dd, NULL, &counters);
-	rval =  simple_read_from_buffer(buf, count, ppos, counters, avail);
-	return rval;
+	return simple_copy_to_iter(counters, &iocb->ki_pos, avail, to);
 }
 
 /* read the per-device counters */
-static ssize_t dev_names_read(struct file *file, char __user *buf,
-			      size_t count, loff_t *ppos)
+static ssize_t dev_names_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *names;
 	size_t avail;
 	struct hfi1_devdata *dd;
-	ssize_t rval;
 
-	dd = private2dd(file);
+	dd = private2dd(iocb->ki_filp);
 	avail = hfi1_read_cntrs(dd, &names, NULL);
-	rval =  simple_read_from_buffer(buf, count, ppos, names, avail);
-	return rval;
+	return simple_copy_to_iter(names, &iocb->ki_pos, avail, to);
 }
 
 struct counter_info {
@@ -426,33 +447,27 @@ struct counter_info {
  */
 
 /* read the per-port names (same for each port) */
-static ssize_t portnames_read(struct file *file, char __user *buf,
-			      size_t count, loff_t *ppos)
+static ssize_t portnames_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *names;
 	size_t avail;
 	struct hfi1_devdata *dd;
-	ssize_t rval;
 
-	dd = private2dd(file);
+	dd = private2dd(iocb->ki_filp);
 	avail = hfi1_read_portcntrs(dd->pport, &names, NULL);
-	rval = simple_read_from_buffer(buf, count, ppos, names, avail);
-	return rval;
+	return simple_copy_to_iter(names, &iocb->ki_pos, avail, to);
 }
 
 /* read the per-port counters */
-static ssize_t portcntrs_debugfs_read(struct file *file, char __user *buf,
-				      size_t count, loff_t *ppos)
+static ssize_t portcntrs_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	u64 *counters;
 	size_t avail;
 	struct hfi1_pportdata *ppd;
-	ssize_t rval;
 
-	ppd = private2ppd(file);
+	ppd = private2ppd(iocb->ki_filp);
 	avail = hfi1_read_portcntrs(ppd, NULL, &counters);
-	rval = simple_read_from_buffer(buf, count, ppos, counters, avail);
-	return rval;
+	return simple_copy_to_iter(counters, &iocb->ki_pos, avail, to);
 }
 
 static void check_dyn_flag(u64 scratch0, char *p, int size, int *used,
@@ -469,8 +484,7 @@ static void check_dyn_flag(u64 scratch0, char *p, int size, int *used,
 	}
 }
 
-static ssize_t asic_flags_read(struct file *file, char __user *buf,
-			       size_t count, loff_t *ppos)
+static ssize_t asic_flags_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct hfi1_pportdata *ppd;
 	struct hfi1_devdata *dd;
@@ -481,7 +495,7 @@ static ssize_t asic_flags_read(struct file *file, char __user *buf,
 	int used;
 	int i;
 
-	ppd = private2ppd(file);
+	ppd = private2ppd(iocb->ki_filp);
 	dd = ppd->dd;
 	size = PAGE_SIZE;
 	used = 0;
@@ -513,14 +527,14 @@ static ssize_t asic_flags_read(struct file *file, char __user *buf,
 	}
 	used += scnprintf(tmp + used, size - used, "Write bits to clear\n");
 
-	ret = simple_read_from_buffer(buf, count, ppos, tmp, used);
+	ret = simple_copy_to_iter(tmp, &iocb->ki_pos, used, to);
 	kfree(tmp);
 	return ret;
 }
 
-static ssize_t asic_flags_write(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t asic_flags_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct hfi1_pportdata *ppd;
 	struct hfi1_devdata *dd;
 	char *buff;
@@ -529,11 +543,11 @@ static ssize_t asic_flags_write(struct file *file, const char __user *buf,
 	u64 scratch0;
 	u64 clear;
 
-	ppd = private2ppd(file);
+	ppd = private2ppd(iocb->ki_filp);
 	dd = ppd->dd;
 
 	/* zero terminate and read the expected integer */
-	buff = memdup_user_nul(buf, count);
+	buff = iterdup_nul(from, count);
 	if (IS_ERR(buff))
 		return PTR_ERR(buff);
 
@@ -564,16 +578,16 @@ static ssize_t asic_flags_write(struct file *file, const char __user *buf,
 }
 
 /* read the dc8051 memory */
-static ssize_t dc8051_memory_read(struct file *file, char __user *buf,
-				  size_t count, loff_t *ppos)
+static ssize_t dc8051_memory_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hfi1_pportdata *ppd = private2ppd(file);
+	struct hfi1_pportdata *ppd = private2ppd(iocb->ki_filp);
+	size_t count = iov_iter_count(to);
 	ssize_t rval;
 	void *tmp;
 	loff_t start, end;
 
 	/* the checks below expect the position to be positive */
-	if (*ppos < 0)
+	if (iocb->ki_pos < 0)
 		return -EINVAL;
 
 	tmp = kzalloc(DC8051_DATA_MEM_SIZE, GFP_KERNEL);
@@ -586,9 +600,9 @@ static ssize_t dc8051_memory_read(struct file *file, char __user *buf,
 	 * Adjust start and end to fit.  Skip reading anything if out of
 	 * range.
 	 */
-	start = *ppos & ~0x7;	/* round down */
+	start = iocb->ki_pos & ~0x7;	/* round down */
 	if (start < DC8051_DATA_MEM_SIZE) {
-		end = (*ppos + count + 7) & ~0x7; /* round up */
+		end = (iocb->ki_pos + count + 7) & ~0x7; /* round up */
 		if (end > DC8051_DATA_MEM_SIZE)
 			end = DC8051_DATA_MEM_SIZE;
 		rval = read_8051_data(ppd->dd, start, end - start,
@@ -597,124 +611,123 @@ static ssize_t dc8051_memory_read(struct file *file, char __user *buf,
 			goto done;
 	}
 
-	rval = simple_read_from_buffer(buf, count, ppos, tmp,
-				       DC8051_DATA_MEM_SIZE);
+	rval = simple_copy_to_iter(tmp, &iocb->ki_pos, DC8051_DATA_MEM_SIZE, to);
 done:
 	kfree(tmp);
 	return rval;
 }
 
-static ssize_t debugfs_lcb_read(struct file *file, char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t debugfs_lcb_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hfi1_pportdata *ppd = private2ppd(file);
+	struct hfi1_pportdata *ppd = private2ppd(iocb->ki_filp);
+	size_t count = iov_iter_count(to);
 	struct hfi1_devdata *dd = ppd->dd;
 	unsigned long total, csr_off;
 	u64 data;
 
-	if (*ppos < 0)
+	if (iocb->ki_pos < 0)
 		return -EINVAL;
 	/* only read 8 byte quantities */
 	if ((count % 8) != 0)
 		return -EINVAL;
 	/* offset must be 8-byte aligned */
-	if ((*ppos % 8) != 0)
+	if ((iocb->ki_pos % 8) != 0)
 		return -EINVAL;
 	/* do nothing if out of range or zero count */
-	if (*ppos >= (LCB_END - LCB_START) || !count)
+	if (iocb->ki_pos >= (LCB_END - LCB_START) || !count)
 		return 0;
 	/* reduce count if needed */
-	if (*ppos + count > LCB_END - LCB_START)
-		count = (LCB_END - LCB_START) - *ppos;
+	if (iocb->ki_pos + count > LCB_END - LCB_START)
+		count = (LCB_END - LCB_START) - iocb->ki_pos;
 
-	csr_off = LCB_START + *ppos;
+	csr_off = LCB_START + iocb->ki_pos;
 	for (total = 0; total < count; total += 8, csr_off += 8) {
 		if (read_lcb_csr(dd, csr_off, (u64 *)&data))
 			break; /* failed */
-		if (put_user(data, (unsigned long __user *)(buf + total)))
+		if (!copy_to_iter_full(&data, sizeof(data), to))
 			break;
 	}
-	*ppos += total;
+	iocb->ki_pos += total;
 	return total;
 }
 
-static ssize_t debugfs_lcb_write(struct file *file, const char __user *buf,
-				 size_t count, loff_t *ppos)
+static ssize_t debugfs_lcb_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hfi1_pportdata *ppd = private2ppd(file);
+	struct hfi1_pportdata *ppd = private2ppd(iocb->ki_filp);
+	size_t count = iov_iter_count(from);
 	struct hfi1_devdata *dd = ppd->dd;
 	unsigned long total, csr_off, data;
 
-	if (*ppos < 0)
+	if (iocb->ki_pos < 0)
 		return -EINVAL;
 	/* only write 8 byte quantities */
 	if ((count % 8) != 0)
 		return -EINVAL;
 	/* offset must be 8-byte aligned */
-	if ((*ppos % 8) != 0)
+	if ((iocb->ki_pos % 8) != 0)
 		return -EINVAL;
 	/* do nothing if out of range or zero count */
-	if (*ppos >= (LCB_END - LCB_START) || !count)
+	if (iocb->ki_pos >= (LCB_END - LCB_START) || !count)
 		return 0;
 	/* reduce count if needed */
-	if (*ppos + count > LCB_END - LCB_START)
-		count = (LCB_END - LCB_START) - *ppos;
+	if (iocb->ki_pos + count > LCB_END - LCB_START)
+		count = (LCB_END - LCB_START) - iocb->ki_pos;
 
-	csr_off = LCB_START + *ppos;
+	csr_off = LCB_START + iocb->ki_pos;
 	for (total = 0; total < count; total += 8, csr_off += 8) {
-		if (get_user(data, (unsigned long __user *)(buf + total)))
+		if (!copy_from_iter_full(&data, sizeof(data), from))
 			break;
 		if (write_lcb_csr(dd, csr_off, data))
 			break; /* failed */
 	}
-	*ppos += total;
+	iocb->ki_pos += total;
 	return total;
 }
 
 /*
  * read the per-port QSFP data for ppd
  */
-static ssize_t qsfp_debugfs_dump(struct file *file, char __user *buf,
-				 size_t count, loff_t *ppos)
+static ssize_t qsfp_debugfs_dump(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct hfi1_pportdata *ppd;
 	char *tmp;
 	int ret;
 
-	ppd = private2ppd(file);
+	ppd = private2ppd(iocb->ki_filp);
 	tmp = kmalloc(PAGE_SIZE, GFP_KERNEL);
 	if (!tmp)
 		return -ENOMEM;
 
 	ret = qsfp_dump(ppd, tmp, PAGE_SIZE);
 	if (ret > 0)
-		ret = simple_read_from_buffer(buf, count, ppos, tmp, ret);
+		ret = simple_copy_to_iter(tmp, &iocb->ki_pos, ret, to);
 	kfree(tmp);
 	return ret;
 }
 
 /* Do an i2c write operation on the chain for the given HFI. */
-static ssize_t __i2c_debugfs_write(struct file *file, const char __user *buf,
-				   size_t count, loff_t *ppos, u32 target)
+static ssize_t __i2c_debugfs_write(struct kiocb *iocb, struct iov_iter *from,
+				   u32 target)
 {
 	struct hfi1_pportdata *ppd;
 	char *buff;
+	size_t count = iov_iter_count(from);
 	int ret;
 	int i2c_addr;
 	int offset;
 	int total_written;
 
-	ppd = private2ppd(file);
+	ppd = private2ppd(iocb->ki_filp);
 
 	/* byte offset format: [offsetSize][i2cAddr][offsetHigh][offsetLow] */
-	i2c_addr = (*ppos >> 16) & 0xffff;
-	offset = *ppos & 0xffff;
+	i2c_addr = (iocb->ki_pos >> 16) & 0xffff;
+	offset = iocb->ki_pos & 0xffff;
 
 	/* explicitly reject invalid address 0 to catch cp and cat */
 	if (i2c_addr == 0)
 		return -EINVAL;
 
-	buff = memdup_user(buf, count);
+	buff = iterdup(from, count);
 	if (IS_ERR(buff))
 		return PTR_ERR(buff);
 
@@ -724,7 +737,7 @@ static ssize_t __i2c_debugfs_write(struct file *file, const char __user *buf,
 		goto _free;
 	}
 
-	*ppos += total_written;
+	iocb->ki_pos += total_written;
 
 	ret = total_written;
 
@@ -734,17 +747,15 @@ static ssize_t __i2c_debugfs_write(struct file *file, const char __user *buf,
 }
 
 /* Do an i2c write operation on chain for HFI 0. */
-static ssize_t i2c1_debugfs_write(struct file *file, const char __user *buf,
-				  size_t count, loff_t *ppos)
+static ssize_t i2c1_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return __i2c_debugfs_write(file, buf, count, ppos, 0);
+	return __i2c_debugfs_write(iocb, from, 0);
 }
 
 /* Do an i2c write operation on chain for HFI 1. */
-static ssize_t i2c2_debugfs_write(struct file *file, const char __user *buf,
-				  size_t count, loff_t *ppos)
+static ssize_t i2c2_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return __i2c_debugfs_write(file, buf, count, ppos, 1);
+	return __i2c_debugfs_write(iocb, from, 1);
 }
 
 /* Do an i2c read operation on the chain for the given HFI. */
@@ -799,6 +810,7 @@ static ssize_t i2c1_debugfs_read(struct file *file, char __user *buf,
 {
 	return __i2c_debugfs_read(file, buf, count, ppos, 0);
 }
+FOPS_READ_ITER_HELPER(i2c1_debugfs_read);
 
 /* Do an i2c read operation on chain for HFI 1. */
 static ssize_t i2c2_debugfs_read(struct file *file, char __user *buf,
@@ -806,32 +818,34 @@ static ssize_t i2c2_debugfs_read(struct file *file, char __user *buf,
 {
 	return __i2c_debugfs_read(file, buf, count, ppos, 1);
 }
+FOPS_READ_ITER_HELPER(i2c2_debugfs_read);
 
 /* Do a QSFP write operation on the i2c chain for the given HFI. */
-static ssize_t __qsfp_debugfs_write(struct file *file, const char __user *buf,
-				    size_t count, loff_t *ppos, u32 target)
+static ssize_t __qsfp_debugfs_write(struct kiocb *iocb, struct iov_iter *from,
+				    u32 target)
 {
 	struct hfi1_pportdata *ppd;
 	char *buff;
+	size_t count = iov_iter_count(from);
 	int ret;
 	int total_written;
 
-	if (*ppos + count > QSFP_PAGESIZE * 4) /* base page + page00-page03 */
+	if (iocb->ki_pos + count > QSFP_PAGESIZE * 4) /* base page + page00-page03 */
 		return -EINVAL;
 
-	ppd = private2ppd(file);
+	ppd = private2ppd(iocb->ki_filp);
 
-	buff = memdup_user(buf, count);
+	buff = iterdup(from, count);
 	if (IS_ERR(buff))
 		return PTR_ERR(buff);
 
-	total_written = qsfp_write(ppd, target, *ppos, buff, count);
+	total_written = qsfp_write(ppd, target, iocb->ki_pos, buff, count);
 	if (total_written < 0) {
 		ret = total_written;
 		goto _free;
 	}
 
-	*ppos += total_written;
+	iocb->ki_pos += total_written;
 
 	ret = total_written;
 
@@ -841,17 +855,15 @@ static ssize_t __qsfp_debugfs_write(struct file *file, const char __user *buf,
 }
 
 /* Do a QSFP write operation on i2c chain for HFI 0. */
-static ssize_t qsfp1_debugfs_write(struct file *file, const char __user *buf,
-				   size_t count, loff_t *ppos)
+static ssize_t qsfp1_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return __qsfp_debugfs_write(file, buf, count, ppos, 0);
+	return __qsfp_debugfs_write(iocb, from, 0);
 }
 
 /* Do a QSFP write operation on i2c chain for HFI 1. */
-static ssize_t qsfp2_debugfs_write(struct file *file, const char __user *buf,
-				   size_t count, loff_t *ppos)
+static ssize_t qsfp2_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return __qsfp_debugfs_write(file, buf, count, ppos, 1);
+	return __qsfp_debugfs_write(iocb, from, 1);
 }
 
 /* Do a QSFP read operation on the i2c chain for the given HFI. */
@@ -904,6 +916,7 @@ static ssize_t qsfp1_debugfs_read(struct file *file, char __user *buf,
 {
 	return __qsfp_debugfs_read(file, buf, count, ppos, 0);
 }
+FOPS_READ_ITER_HELPER(qsfp1_debugfs_read);
 
 /* Do a QSFP read operation on i2c chain for HFI 1. */
 static ssize_t qsfp2_debugfs_read(struct file *file, char __user *buf,
@@ -911,6 +924,7 @@ static ssize_t qsfp2_debugfs_read(struct file *file, char __user *buf,
 {
 	return __qsfp_debugfs_read(file, buf, count, ppos, 1);
 }
+FOPS_READ_ITER_HELPER(qsfp2_debugfs_read);
 
 static int __i2c_debugfs_open(struct inode *in, struct file *fp, u32 target)
 {
@@ -1015,22 +1029,20 @@ static int exprom_wp_set(struct hfi1_devdata *dd, bool disable)
 	return 0;
 }
 
-static ssize_t exprom_wp_debugfs_read(struct file *file, char __user *buf,
-				      size_t count, loff_t *ppos)
+static ssize_t exprom_wp_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return 0;
 }
 
-static ssize_t exprom_wp_debugfs_write(struct file *file,
-				       const char __user *buf, size_t count,
-				       loff_t *ppos)
+static ssize_t exprom_wp_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hfi1_pportdata *ppd = private2ppd(file);
+	struct hfi1_pportdata *ppd = private2ppd(iocb->ki_filp);
+	size_t count = iov_iter_count(from);
 	char cdata;
 
 	if (count != 1)
 		return -EINVAL;
-	if (get_user(cdata, buf))
+	if (get_iter(cdata, from))
 		return -EFAULT;
 	if (cdata == '0')
 		exprom_wp_set(ppd->dd, false);
@@ -1068,8 +1080,8 @@ static int exprom_wp_debugfs_release(struct inode *in, struct file *fp)
 	.name = nm, \
 	.ops = { \
 		.owner = THIS_MODULE, \
-		.read = readroutine, \
-		.write = writeroutine, \
+		.read_iter = readroutine, \
+		.write_iter = writeroutine, \
 		.llseek = generic_file_llseek, \
 	}, \
 }
@@ -1079,8 +1091,8 @@ static int exprom_wp_debugfs_release(struct inode *in, struct file *fp)
 	.name = nm, \
 	.ops = { \
 		.owner = THIS_MODULE, \
-		.read = readf, \
-		.write = writef, \
+		.read_iter = readf, \
+		.write_iter = writef, \
 		.llseek = generic_file_llseek, \
 		.open = openf, \
 		.release = releasef \
@@ -1095,14 +1107,14 @@ static const struct counter_info cntr_ops[] = {
 
 static const struct counter_info port_cntr_ops[] = {
 	DEBUGFS_OPS("port%dcounters", portcntrs_debugfs_read, NULL),
-	DEBUGFS_XOPS("i2c1", i2c1_debugfs_read, i2c1_debugfs_write,
+	DEBUGFS_XOPS("i2c1", i2c1_debugfs_read_iter, i2c1_debugfs_write,
 		     i2c1_debugfs_open, i2c1_debugfs_release),
-	DEBUGFS_XOPS("i2c2", i2c2_debugfs_read, i2c2_debugfs_write,
+	DEBUGFS_XOPS("i2c2", i2c2_debugfs_read_iter, i2c2_debugfs_write,
 		     i2c2_debugfs_open, i2c2_debugfs_release),
 	DEBUGFS_OPS("qsfp_dump%d", qsfp_debugfs_dump, NULL),
-	DEBUGFS_XOPS("qsfp1", qsfp1_debugfs_read, qsfp1_debugfs_write,
+	DEBUGFS_XOPS("qsfp1", qsfp1_debugfs_read_iter, qsfp1_debugfs_write,
 		     qsfp1_debugfs_open, qsfp1_debugfs_release),
-	DEBUGFS_XOPS("qsfp2", qsfp2_debugfs_read, qsfp2_debugfs_write,
+	DEBUGFS_XOPS("qsfp2", qsfp2_debugfs_read_iter, qsfp2_debugfs_write,
 		     qsfp2_debugfs_open, qsfp2_debugfs_release),
 	DEBUGFS_XOPS("exprom_wp", exprom_wp_debugfs_read,
 		     exprom_wp_debugfs_write, exprom_wp_debugfs_open,
@@ -1194,7 +1206,7 @@ void hfi1_dbg_ibdev_init(struct hfi1_ibdev *ibd)
 				 port_cntr_ops[i].name,
 				 j + 1);
 			debugfs_create_file(name,
-					    !port_cntr_ops[i].ops.write ?
+					    !port_cntr_ops[i].ops.write_iter ?
 						    S_IRUGO :
 						    S_IRUGO | S_IWUSR,
 					    root, ppd, &port_cntr_ops[i].ops);
