@@ -896,14 +896,14 @@ static int sonypi_misc_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t sonypi_misc_read(struct file *file, char __user *buf,
-				size_t count, loff_t *pos)
+static ssize_t sonypi_misc_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	ssize_t ret;
 	unsigned char c;
 
 	if ((kfifo_len(&sonypi_device.fifo) == 0) &&
-	    (file->f_flags & O_NONBLOCK))
+	    (iocb->ki_filp->f_flags & O_NONBLOCK))
 		return -EAGAIN;
 
 	ret = wait_event_interruptible(sonypi_device.fifo_proc_list,
@@ -914,13 +914,13 @@ static ssize_t sonypi_misc_read(struct file *file, char __user *buf,
 	while (ret < count &&
 	       (kfifo_out_locked(&sonypi_device.fifo, &c, sizeof(c),
 				 &sonypi_device.fifo_lock) == sizeof(c))) {
-		if (put_user(c, buf++))
+		if (put_iter(c, to))
 			return -EFAULT;
 		ret++;
 	}
 
 	if (ret > 0) {
-		struct inode *inode = file_inode(file);
+		struct inode *inode = file_inode(iocb->ki_filp);
 		inode_set_atime_to_ts(inode, current_time(inode));
 	}
 
@@ -1049,7 +1049,7 @@ static long sonypi_misc_ioctl(struct file *fp,
 
 static const struct file_operations sonypi_misc_fops = {
 	.owner		= THIS_MODULE,
-	.read		= sonypi_misc_read,
+	.read_iter	= sonypi_misc_read,
 	.poll		= sonypi_misc_poll,
 	.open		= sonypi_misc_open,
 	.release	= sonypi_misc_release,
