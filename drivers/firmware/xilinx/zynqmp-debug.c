@@ -304,10 +304,8 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 
 /**
  * zynqmp_pm_debugfs_api_write() - debugfs write function
- * @file:	User file
- * @ptr:	User entered PM-API string
- * @len:	Length of the userspace buffer
- * @off:	Offset within the file
+ * @iocb:	Metadata for IO
+ * @from:	User entered PM-API string
  *
  * Used for triggering pm api functions by writing
  * echo <pm_api_id>	> /sys/kernel/debug/zynqmp_pm/power or
@@ -316,9 +314,8 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
  * Return: Number of bytes copied if PM-API request succeeds,
  *	   the corresponding error code otherwise
  */
-static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
-					   const char __user *ptr, size_t len,
-					   loff_t *off)
+static ssize_t zynqmp_pm_debugfs_api_write(struct kiocb *iocb,
+					   struct iov_iter *from)
 {
 	char *kern_buff, *tmp_buff;
 	char *pm_api_req;
@@ -326,16 +323,17 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 	u64 pm_api_arg[5] = {0, 0, 0, 0, 0};
 	/* Return values from PM APIs calls */
 	u32 pm_api_ret[4] = {0, 0, 0, 0};
+	size_t len = iov_iter_count(from);
 
 	int ret;
 	int i = 0;
 
 	strcpy(debugfs_buf, "");
 
-	if (*off != 0 || len <= 1 || len > PAGE_SIZE - 1)
+	if (iocb->ki_pos != 0 || len <= 1 || len > PAGE_SIZE - 1)
 		return -EINVAL;
 
-	kern_buff = memdup_user_nul(ptr, len);
+	kern_buff = iterdup(from, len);
 	if (IS_ERR(kern_buff))
 		return PTR_ERR(kern_buff);
 	tmp_buff = kern_buff;
@@ -374,18 +372,18 @@ err:
  * Return: Length of the version string on success
  *	   else error code
  */
-static ssize_t zynqmp_pm_debugfs_api_read(struct file *file, char __user *ptr,
-					  size_t len, loff_t *off)
+static ssize_t zynqmp_pm_debugfs_api_read(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
-	return simple_read_from_buffer(ptr, len, off, debugfs_buf,
-				       strlen(debugfs_buf));
+	return simple_copy_to_iter(debugfs_buf, &iocb->ki_pos,
+				       strlen(debugfs_buf), to);
 }
 
 /* Setup debugfs fops */
 static const struct file_operations fops_zynqmp_pm_dbgfs = {
 	.owner = THIS_MODULE,
-	.write = zynqmp_pm_debugfs_api_write,
-	.read = zynqmp_pm_debugfs_api_read,
+	.write_iter = zynqmp_pm_debugfs_api_write,
+	.read_iter = zynqmp_pm_debugfs_api_read,
 };
 
 /**
