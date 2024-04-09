@@ -264,6 +264,7 @@ static ssize_t dvb_dvr_write(struct file *file, const char __user *buf,
 	mutex_unlock(&dmxdev->mutex);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(dvb_dvr_write);
 
 static ssize_t dvb_dvr_read(struct file *file, char __user *buf, size_t count,
 			    loff_t *ppos)
@@ -278,6 +279,7 @@ static ssize_t dvb_dvr_read(struct file *file, char __user *buf, size_t count,
 				      file->f_flags & O_NONBLOCK,
 				      buf, count, ppos);
 }
+FOPS_READ_ITER_HELPER(dvb_dvr_read);
 
 static int dvb_dvr_set_buffer_size(struct dmxdev *dmxdev,
 				      unsigned long size)
@@ -1041,6 +1043,7 @@ dvb_demux_read(struct file *file, char __user *buf, size_t count,
 	mutex_unlock(&dmxdevfilter->mutex);
 	return ret;
 }
+FOPS_READ_ITER_HELPER(dvb_demux_read);
 
 static int dvb_demux_do_ioctl(struct file *file,
 			      unsigned int cmd, void *parg)
@@ -1261,7 +1264,7 @@ static int dvb_demux_release(struct inode *inode, struct file *file)
 
 static const struct file_operations dvb_demux_fops = {
 	.owner = THIS_MODULE,
-	.read = dvb_demux_read,
+	.read_iter = dvb_demux_read_iter,
 	.unlocked_ioctl = dvb_demux_ioctl,
 	.compat_ioctl = dvb_demux_ioctl,
 	.open = dvb_demux_open,
@@ -1382,8 +1385,8 @@ static int dvb_dvr_mmap(struct file *file, struct vm_area_struct *vma)
 
 static const struct file_operations dvb_dvr_fops = {
 	.owner = THIS_MODULE,
-	.read = dvb_dvr_read,
-	.write = dvb_dvr_write,
+	.read_iter = dvb_dvr_read_iter,
+	.write_iter = dvb_dvr_write_iter,
 	.unlocked_ioctl = dvb_dvr_ioctl,
 	.open = dvb_dvr_open,
 	.release = dvb_dvr_release,

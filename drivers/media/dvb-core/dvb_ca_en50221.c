@@ -1436,10 +1436,10 @@ static long dvb_ca_en50221_io_ioctl(struct file *file,
 /**
  * dvb_ca_en50221_io_write - Implementation of write() syscall.
  *
- * @file: File structure.
- * @buf: Source buffer.
- * @count: Size of source buffer.
- * @ppos: Position in file (ignored).
+ * @file: file handle
+ * @buf: source buffer
+ * @count: size of source buffer
+ * @ppos: position in file (ignored)
  *
  * return: Number of bytes read, or <0 on error.
  */
@@ -1539,6 +1539,7 @@ static ssize_t dvb_ca_en50221_io_write(struct file *file,
 exit:
 	return status;
 }
+FOPS_WRITE_ITER_HELPER(dvb_ca_en50221_io_write);
 
 /*
  * Condition for waking up in dvb_ca_en50221_io_read_condition
@@ -1699,6 +1700,7 @@ static ssize_t dvb_ca_en50221_io_read(struct file *file, char __user *buf,
 exit:
 	return status;
 }
+FOPS_READ_ITER_HELPER(dvb_ca_en50221_io_read);
 
 /**
  * dvb_ca_en50221_io_open - Implementation of file open syscall.
@@ -1834,8 +1836,8 @@ static __poll_t dvb_ca_en50221_io_poll(struct file *file, poll_table *wait)
 
 static const struct file_operations dvb_ca_fops = {
 	.owner = THIS_MODULE,
-	.read = dvb_ca_en50221_io_read,
-	.write = dvb_ca_en50221_io_write,
+	.read_iter = dvb_ca_en50221_io_read_iter,
+	.write_iter = dvb_ca_en50221_io_write_iter,
 	.unlocked_ioctl = dvb_ca_en50221_io_ioctl,
 	.open = dvb_ca_en50221_io_open,
 	.release = dvb_ca_en50221_io_release,
