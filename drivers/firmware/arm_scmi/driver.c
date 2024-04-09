@@ -2968,21 +2968,20 @@ static const char * const dbg_counter_strs[] = {
 	"xfers_inflight",
 };
 
-static ssize_t reset_all_on_write(struct file *filp, const char __user *buf,
-				  size_t count, loff_t *ppos)
+static ssize_t reset_all_on_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct scmi_debug_info *dbg = filp->private_data;
+	struct scmi_debug_info *dbg = iocb->ki_filp->private_data;
 
 	for (int i = 0; i < SCMI_DEBUG_COUNTERS_LAST; i++)
 		atomic_set(&dbg->counters[i], 0);
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations fops_reset_counts = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.write = reset_all_on_write,
+	.write_iter = reset_all_on_write,
 };
 
 static void scmi_debugfs_counters_setup(struct scmi_debug_info *dbg,
