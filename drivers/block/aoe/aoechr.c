@@ -192,6 +192,7 @@ aoechr_write(struct file *filp, const char __user *buf, size_t cnt, loff_t *offp
 		ret = cnt;
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(aoechr_write);
 
 static int
 aoechr_open(struct inode *inode, struct file *filp)
@@ -217,16 +218,16 @@ aoechr_rel(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t
-aoechr_read(struct file *filp, char __user *buf, size_t cnt, loff_t *off)
+static ssize_t aoechr_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t cnt = iov_iter_count(to);
 	unsigned long n;
 	char *mp;
 	struct ErrMsg *em;
 	ssize_t len;
 	ulong flags;
 
-	n = (unsigned long) filp->private_data;
+	n = (unsigned long) iocb->ki_filp->private_data;
 	if (n != MINOR_ERR)
 		return -EFAULT;
 
@@ -236,7 +237,7 @@ aoechr_read(struct file *filp, char __user *buf, size_t cnt, loff_t *off)
 		em = emsgs + emsgs_head_idx;
 		if ((em->flags & EMFL_VALID) != 0)
 			break;
-		if (filp->f_flags & O_NDELAY) {
+		if (iocb->ki_filp->f_flags & O_NDELAY) {
 			spin_unlock_irqrestore(&emsgs_lock, flags);
 			return -EAGAIN;
 		}
@@ -269,14 +270,14 @@ aoechr_read(struct file *filp, char __user *buf, size_t cnt, loff_t *off)
 
 	spin_unlock_irqrestore(&emsgs_lock, flags);
 
-	n = copy_to_user(buf, mp, len);
+	n = !copy_to_iter_full(mp, len, to);
 	kfree(mp);
 	return n == 0 ? len : -EFAULT;
 }
 
 static const struct file_operations aoe_fops = {
-	.write = aoechr_write,
-	.read = aoechr_read,
+	.write_iter = aoechr_write_iter,
+	.read_iter = aoechr_read,
 	.open = aoechr_open,
 	.release = aoechr_rel,
 	.owner = THIS_MODULE,
