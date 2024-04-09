@@ -88,14 +88,13 @@ struct vmlogrdr_priv_t {
  */
 static int vmlogrdr_open(struct inode *, struct file *);
 static int vmlogrdr_release(struct inode *, struct file *);
-static ssize_t vmlogrdr_read (struct file *filp, char __user *data,
-			      size_t count, loff_t * ppos);
+static ssize_t vmlogrdr_read(struct kiocb *iocb, struct iov_iter *to);
 
 static const struct file_operations vmlogrdr_fops = {
 	.owner   = THIS_MODULE,
 	.open    = vmlogrdr_open,
 	.release = vmlogrdr_release,
-	.read    = vmlogrdr_read,
+	.read_iter = vmlogrdr_read,
 };
 
 
@@ -472,11 +471,11 @@ static int vmlogrdr_receive_data(struct vmlogrdr_priv_t *priv)
 }
 
 
-static ssize_t vmlogrdr_read(struct file *filp, char __user *data,
-			     size_t count, loff_t * ppos)
+static ssize_t vmlogrdr_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	int rc;
-	struct vmlogrdr_priv_t * priv = filp->private_data;
+	struct vmlogrdr_priv_t * priv = iocb->ki_filp->private_data;
 
 	while (priv->buffer_free) {
 		rc = vmlogrdr_receive_data(priv);
@@ -491,10 +490,10 @@ static ssize_t vmlogrdr_read(struct file *filp, char __user *data,
 	if (count > priv->remaining)
 		count = priv->remaining;
 
-	if (copy_to_user(data, priv->current_position, count))
+	if (!copy_to_iter_full(priv->current_position, count, to))
 		return -EFAULT;
 
-	*ppos += count;
+	iocb->ki_pos += count;
 	priv->current_position += count;
 	priv->remaining -= count;
 
