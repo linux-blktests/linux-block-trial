@@ -122,6 +122,7 @@ static ssize_t queue_dbg_read(struct file *file, char __user *buf,
 
 	return actual;
 }
+FOPS_READ_ITER_HELPER(queue_dbg_read);
 
 static int queue_dbg_release(struct inode *inode, struct file *file)
 {
@@ -163,16 +164,14 @@ out:
 	return ret;
 }
 
-static ssize_t regs_dbg_read(struct file *file, char __user *buf,
-		size_t nbytes, loff_t *ppos)
+static ssize_t regs_dbg_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct inode *inode = file_inode(file);
+	struct inode *inode = file_inode(iocb->ki_filp);
 	int ret;
 
 	inode_lock(inode);
-	ret = simple_read_from_buffer(buf, nbytes, ppos,
-			file->private_data,
-			file_inode(file)->i_size);
+	ret = simple_copy_to_iter(iocb->ki_filp->private_data, &iocb->ki_pos,
+			file_inode(iocb->ki_filp)->i_size, to);
 	inode_unlock(inode);
 
 	return ret;
@@ -187,7 +186,7 @@ static int regs_dbg_release(struct inode *inode, struct file *file)
 static const struct file_operations queue_dbg_fops = {
 	.owner		= THIS_MODULE,
 	.open		= queue_dbg_open,
-	.read		= queue_dbg_read,
+	.read_iter	= queue_dbg_read_iter,
 	.release	= queue_dbg_release,
 };
 
@@ -195,7 +194,7 @@ static const struct file_operations regs_dbg_fops = {
 	.owner		= THIS_MODULE,
 	.open		= regs_dbg_open,
 	.llseek		= generic_file_llseek,
-	.read		= regs_dbg_read,
+	.read_iter	= regs_dbg_read,
 	.release	= regs_dbg_release,
 };
 
