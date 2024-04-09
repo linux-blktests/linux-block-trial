@@ -305,18 +305,17 @@ static irqreturn_t wdt_interrupt(int irq, void *dev_id)
 
 /**
  *	wdt_write:
- *	@file: file handle to the watchdog
- *	@buf: buffer to write (unused as data does not matter here
- *	@count: count of bytes
- *	@ppos: pointer to the position to write. No seeks allowed
+ *	@iocb: metadata for the request
+ *	@from: iov_iter to read from
  *
  *	A write to a watchdog device is defined as a keepalive signal. Any
  *	write of data will do, as we we don't define content meaning.
  */
 
-static ssize_t wdt_write(struct file *file, const char __user *buf,
-						size_t count, loff_t *ppos)
+static ssize_t wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
+
 	if (count) {
 		if (!nowayout) {
 			size_t i;
@@ -326,7 +325,7 @@ static ssize_t wdt_write(struct file *file, const char __user *buf,
 
 			for (i = 0; i != count; i++) {
 				char c;
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_close = 42;
@@ -447,21 +446,18 @@ static int wdt_release(struct inode *inode, struct file *file)
 
 /**
  *	wdt_temp_read:
- *	@file: file handle to the watchdog board
- *	@buf: buffer to write 1 byte into
- *	@count: length of buffer
- *	@ptr: offset (no seek allowed)
+ *	@iocb: metadata for the request
+ *	@to: iov_iter to write to
  *
  *	Temp_read reports the temperature in degrees Fahrenheit. The API is in
  *	farenheit. It was designed by an imperial measurement luddite.
  */
 
-static ssize_t wdt_temp_read(struct file *file, char __user *buf,
-						size_t count, loff_t *ptr)
+static ssize_t wdt_temp_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int temperature = wdt_get_temperature();
 
-	if (copy_to_user(buf, &temperature, 1))
+	if (!copy_to_iter_full(&temperature, 1, to))
 		return -EFAULT;
 
 	return 1;
@@ -520,7 +516,7 @@ static int wdt_notify_sys(struct notifier_block *this, unsigned long code,
 
 static const struct file_operations wdt_fops = {
 	.owner		= THIS_MODULE,
-	.write		= wdt_write,
+	.write_iter	= wdt_write,
 	.unlocked_ioctl	= wdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= wdt_open,
@@ -535,7 +531,7 @@ static struct miscdevice wdt_miscdev = {
 
 static const struct file_operations wdt_temp_fops = {
 	.owner		= THIS_MODULE,
-	.read		= wdt_temp_read,
+	.read_iter	= wdt_temp_read,
 	.open		= wdt_temp_open,
 	.release	= wdt_temp_release,
 };
