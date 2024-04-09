@@ -239,6 +239,9 @@ bool copy_to_iter_full(const void *addr, size_t bytes, struct iov_iter *i)
 	return false;
 }
 
+#define put_iter(val, to)	!copy_to_iter_full(&(val), sizeof((val)), to)
+#define get_iter(val, from)	!copy_from_iter_full(&(val), sizeof((val)), from)
+
 static __always_inline __must_check
 bool copy_from_iter_full(void *addr, size_t bytes, struct iov_iter *i)
 {
