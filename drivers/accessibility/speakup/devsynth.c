@@ -11,11 +11,10 @@ static int synth_registered, synthu_registered;
 static int dev_opened;
 
 /* Latin1 version */
-static ssize_t speakup_file_write(struct file *fp, const char __user *buffer,
-				  size_t nbytes, loff_t *ppos)
+static ssize_t speakup_file_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t nbytes = iov_iter_count(from);
 	size_t count = nbytes;
-	const char __user *ptr = buffer;
 	size_t bytes;
 	unsigned long flags;
 	u_char buf[256];
@@ -24,10 +23,9 @@ static ssize_t speakup_file_write(struct file *fp, const char __user *buffer,
 		return -ENODEV;
 	while (count > 0) {
 		bytes = min(count, sizeof(buf));
-		if (copy_from_user(buf, ptr, bytes))
+		if (!copy_from_iter_full(buf, bytes, from))
 			return -EFAULT;
 		count -= bytes;
-		ptr += bytes;
 		spin_lock_irqsave(&speakup_info.spinlock, flags);
 		synth_write(buf, bytes);
 		spin_unlock_irqrestore(&speakup_info.spinlock, flags);
@@ -36,11 +34,10 @@ static ssize_t speakup_file_write(struct file *fp, const char __user *buffer,
 }
 
 /* UTF-8 version */
-static ssize_t speakup_file_writeu(struct file *fp, const char __user *buffer,
-				   size_t nbytes, loff_t *ppos)
+static ssize_t speakup_file_writeu(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t nbytes = iov_iter_count(from);
 	size_t count = nbytes, consumed, want;
-	const char __user *ptr = buffer;
 	size_t bytes;
 	unsigned long flags;
 	unsigned char buf[256];
@@ -54,7 +51,7 @@ static ssize_t speakup_file_writeu(struct file *fp, const char __user *buffer,
 	while (count >= want) {
 		/* Copy some UTF-8 piece from userland */
 		bytes = min(count, sizeof(buf));
-		if (copy_from_user(buf, ptr, bytes))
+		if (!copy_from_iter_full(buf, bytes, from))
 			return -EFAULT;
 
 		/* Convert to u16 */
@@ -79,7 +76,6 @@ static ssize_t speakup_file_writeu(struct file *fp, const char __user *buffer,
 		}
 
 		count -= bytes;
-		ptr += bytes;
 
 		/* And speak this up */
 		if (out) {
@@ -94,8 +90,7 @@ static ssize_t speakup_file_writeu(struct file *fp, const char __user *buffer,
 	return (ssize_t)(nbytes - count);
 }
 
-static ssize_t speakup_file_read(struct file *fp, char __user *buf,
-				 size_t nbytes, loff_t *ppos)
+static ssize_t speakup_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return 0;
 }
@@ -116,15 +111,15 @@ static int speakup_file_release(struct inode *ip, struct file *fp)
 }
 
 static const struct file_operations synth_fops = {
-	.read = speakup_file_read,
-	.write = speakup_file_write,
+	.read_iter = speakup_file_read,
+	.write_iter = speakup_file_write,
 	.open = speakup_file_open,
 	.release = speakup_file_release,
 };
 
 static const struct file_operations synthu_fops = {
-	.read = speakup_file_read,
-	.write = speakup_file_writeu,
+	.read_iter = speakup_file_read,
+	.write_iter = speakup_file_writeu,
 	.open = speakup_file_open,
 	.release = speakup_file_release,
 };

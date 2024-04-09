@@ -215,17 +215,17 @@ static int softsynth_close(struct inode *inode, struct file *fp)
 	return 0;
 }
 
-static ssize_t softsynthx_read(struct file *fp, char __user *buf, size_t count,
-			       loff_t *pos, int unicode)
+static ssize_t softsynthx_read(struct kiocb *iocb, struct iov_iter *to,
+			       int unicode)
 {
 	int chars_sent = 0;
-	char __user *cp;
 	char *init;
 	size_t bytes_per_ch = unicode ? 3 : 1;
 	u16 ch;
 	int empty;
 	unsigned long flags;
 	DEFINE_WAIT(wait);
+	size_t count = iov_iter_count(to);
 
 	if (count < bytes_per_ch)
 		return -EINVAL;
@@ -241,7 +241,7 @@ static ssize_t softsynthx_read(struct file *fp, char __user *buf, size_t count,
 				break;
 		}
 		spin_unlock_irqrestore(&speakup_info.spinlock, flags);
-		if (fp->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			finish_wait(&speakup_event, &wait);
 			return -EAGAIN;
 		}
@@ -254,7 +254,6 @@ static ssize_t softsynthx_read(struct file *fp, char __user *buf, size_t count,
 	}
 	finish_wait(&speakup_event, &wait);
 
-	cp = buf;
 	init = get_initstring();
 
 	/* Keep 3 bytes available for a 16bit UTF-8-encoded character */
@@ -278,22 +277,20 @@ static ssize_t softsynthx_read(struct file *fp, char __user *buf, size_t count,
 		if ((!unicode && ch < 0x100) || (unicode && ch < 0x80)) {
 			u_char c = ch;
 
-			if (copy_to_user(cp, &c, 1))
+			if (!copy_to_iter_full(&c, 1, to))
 				return -EFAULT;
 
 			chars_sent++;
-			cp++;
 		} else if (unicode && ch < 0x800) {
 			u_char s[2] = {
 				0xc0 | (ch >> 6),
 				0x80 | (ch & 0x3f)
 			};
 
-			if (copy_to_user(cp, s, sizeof(s)))
+			if (!copy_to_iter_full(s, sizeof(s), to))
 				return -EFAULT;
 
 			chars_sent += sizeof(s);
-			cp += sizeof(s);
 		} else if (unicode) {
 			u_char s[3] = {
 				0xe0 | (ch >> 12),
@@ -301,46 +298,43 @@ static ssize_t softsynthx_read(struct file *fp, char __user *buf, size_t count,
 				0x80 | (ch & 0x3f)
 			};
 
-			if (copy_to_user(cp, s, sizeof(s)))
+			if (!copy_to_iter_full(s, sizeof(s), to))
 				return -EFAULT;
 
 			chars_sent += sizeof(s);
-			cp += sizeof(s);
 		}
 
 		spin_lock_irqsave(&speakup_info.spinlock, flags);
 	}
-	*pos += chars_sent;
+	iocb->ki_pos += chars_sent;
 	empty = synth_buffer_empty();
 	spin_unlock_irqrestore(&speakup_info.spinlock, flags);
 	if (empty) {
 		speakup_start_ttys();
-		*pos = 0;
+		iocb->ki_pos = 0;
 	}
 	return chars_sent;
 }
 
-static ssize_t softsynth_read(struct file *fp, char __user *buf, size_t count,
-			      loff_t *pos)
+static ssize_t softsynth_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return softsynthx_read(fp, buf, count, pos, 0);
+	return softsynthx_read(iocb, to, 0);
 }
 
-static ssize_t softsynthu_read(struct file *fp, char __user *buf, size_t count,
-			       loff_t *pos)
+static ssize_t softsynthu_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return softsynthx_read(fp, buf, count, pos, 1);
+	return softsynthx_read(iocb, to, 1);
 }
 
 static int last_index;
 
-static ssize_t softsynth_write(struct file *fp, const char __user *buf,
-			       size_t count, loff_t *pos)
+static ssize_t softsynth_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	unsigned long supplied_index = 0;
+	size_t count = iov_iter_count(from);
 	int converted;
 
-	converted = kstrtoul_from_user(buf, count, 0, &supplied_index);
+	converted = kstrtoul_from_iter(from, count, 0, &supplied_index);
 
 	if (converted < 0)
 		return converted;
@@ -376,8 +370,8 @@ static unsigned char get_index(struct spk_synth *synth)
 static const struct file_operations softsynth_fops = {
 	.owner = THIS_MODULE,
 	.poll = softsynth_poll,
-	.read = softsynth_read,
-	.write = softsynth_write,
+	.read_iter = softsynth_read,
+	.write_iter = softsynth_write,
 	.open = softsynth_open,
 	.release = softsynth_close,
 };
@@ -385,8 +379,8 @@ static const struct file_operations softsynth_fops = {
 static const struct file_operations softsynthu_fops = {
 	.owner = THIS_MODULE,
 	.poll = softsynth_poll,
-	.read = softsynthu_read,
-	.write = softsynth_write,
+	.read_iter = softsynthu_read,
+	.write_iter = softsynth_write,
 	.open = softsynth_open,
 	.release = softsynth_close,
 };
