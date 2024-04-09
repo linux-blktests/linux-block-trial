@@ -1178,12 +1178,11 @@ static const struct video_device si476x_viddev_template = {
 
 
 
-static ssize_t si476x_radio_read_acf_blob(struct file *file,
-					  char __user *user_buf,
-					  size_t count, loff_t *ppos)
+static ssize_t si476x_radio_read_acf_blob(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
 	int err;
-	struct si476x_radio *radio = file->private_data;
+	struct si476x_radio *radio = iocb->ki_filp->private_data;
 	struct si476x_acf_status_report report;
 
 	si476x_core_lock(radio->core);
@@ -1196,22 +1195,20 @@ static ssize_t si476x_radio_read_acf_blob(struct file *file,
 	if (err < 0)
 		return err;
 
-	return simple_read_from_buffer(user_buf, count, ppos, &report,
-				       sizeof(report));
+	return simple_copy_to_iter(&report, &iocb->ki_pos, sizeof(report), to);
 }
 
 static const struct file_operations radio_acf_fops = {
 	.open	= simple_open,
 	.llseek = default_llseek,
-	.read	= si476x_radio_read_acf_blob,
+	.read_iter = si476x_radio_read_acf_blob,
 };
 
-static ssize_t si476x_radio_read_rds_blckcnt_blob(struct file *file,
-						  char __user *user_buf,
-						  size_t count, loff_t *ppos)
+static ssize_t si476x_radio_read_rds_blckcnt_blob(struct kiocb *iocb,
+						  struct iov_iter *to)
 {
 	int err;
-	struct si476x_radio *radio = file->private_data;
+	struct si476x_radio *radio = iocb->ki_filp->private_data;
 	struct si476x_rds_blockcount_report report;
 
 	si476x_core_lock(radio->core);
@@ -1225,22 +1222,20 @@ static ssize_t si476x_radio_read_rds_blckcnt_blob(struct file *file,
 	if (err < 0)
 		return err;
 
-	return simple_read_from_buffer(user_buf, count, ppos, &report,
-				       sizeof(report));
+	return simple_copy_to_iter(&report, &iocb->ki_pos, sizeof(report), to);
 }
 
 static const struct file_operations radio_rds_blckcnt_fops = {
 	.open	= simple_open,
 	.llseek = default_llseek,
-	.read	= si476x_radio_read_rds_blckcnt_blob,
+	.read_iter = si476x_radio_read_rds_blckcnt_blob,
 };
 
-static ssize_t si476x_radio_read_agc_blob(struct file *file,
-					  char __user *user_buf,
-					  size_t count, loff_t *ppos)
+static ssize_t si476x_radio_read_agc_blob(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
 	int err;
-	struct si476x_radio *radio = file->private_data;
+	struct si476x_radio *radio = iocb->ki_filp->private_data;
 	struct si476x_agc_status_report report;
 
 	si476x_core_lock(radio->core);
@@ -1253,22 +1248,20 @@ static ssize_t si476x_radio_read_agc_blob(struct file *file,
 	if (err < 0)
 		return err;
 
-	return simple_read_from_buffer(user_buf, count, ppos, &report,
-				       sizeof(report));
+	return simple_copy_to_iter(&report, &iocb->ki_pos, sizeof(report), to);
 }
 
 static const struct file_operations radio_agc_fops = {
 	.open	= simple_open,
 	.llseek = default_llseek,
-	.read	= si476x_radio_read_agc_blob,
+	.read_iter = si476x_radio_read_agc_blob,
 };
 
-static ssize_t si476x_radio_read_rsq_blob(struct file *file,
-					  char __user *user_buf,
-					  size_t count, loff_t *ppos)
+static ssize_t si476x_radio_read_rsq_blob(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
 	int err;
-	struct si476x_radio *radio = file->private_data;
+	struct si476x_radio *radio = iocb->ki_filp->private_data;
 	struct si476x_rsq_status_report report;
 	struct si476x_rsq_status_args args = {
 		.primary	= false,
@@ -1288,22 +1281,20 @@ static ssize_t si476x_radio_read_rsq_blob(struct file *file,
 	if (err < 0)
 		return err;
 
-	return simple_read_from_buffer(user_buf, count, ppos, &report,
-				       sizeof(report));
+	return simple_copy_to_iter(&report, &iocb->ki_pos, sizeof(report), to);
 }
 
 static const struct file_operations radio_rsq_fops = {
 	.open	= simple_open,
 	.llseek = default_llseek,
-	.read	= si476x_radio_read_rsq_blob,
+	.read_iter = si476x_radio_read_rsq_blob,
 };
 
-static ssize_t si476x_radio_read_rsq_primary_blob(struct file *file,
-						  char __user *user_buf,
-						  size_t count, loff_t *ppos)
+static ssize_t si476x_radio_read_rsq_primary_blob(struct kiocb *iocb,
+						  struct iov_iter *to)
 {
 	int err;
-	struct si476x_radio *radio = file->private_data;
+	struct si476x_radio *radio = iocb->ki_filp->private_data;
 	struct si476x_rsq_status_report report;
 	struct si476x_rsq_status_args args = {
 		.primary	= true,
@@ -1323,14 +1314,13 @@ static ssize_t si476x_radio_read_rsq_primary_blob(struct file *file,
 	if (err < 0)
 		return err;
 
-	return simple_read_from_buffer(user_buf, count, ppos, &report,
-				       sizeof(report));
+	return simple_copy_to_iter(&report, &iocb->ki_pos, sizeof(report), to);
 }
 
 static const struct file_operations radio_rsq_primary_fops = {
 	.open	= simple_open,
 	.llseek = default_llseek,
-	.read	= si476x_radio_read_rsq_primary_blob,
+	.read_iter = si476x_radio_read_rsq_primary_blob,
 };
 
 
