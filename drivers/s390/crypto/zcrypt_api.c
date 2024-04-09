@@ -478,8 +478,7 @@ static void zcdn_destroy_all(void)
  *
  * This function is not supported beyond zcrypt 1.3.1.
  */
-static ssize_t zcrypt_read(struct file *filp, char __user *buf,
-			   size_t count, loff_t *f_pos)
+static ssize_t zcrypt_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return -EPERM;
 }
@@ -489,8 +488,7 @@ static ssize_t zcrypt_read(struct file *filp, char __user *buf,
  *
  * Write is not allowed
  */
-static ssize_t zcrypt_write(struct file *filp, const char __user *buf,
-			    size_t count, loff_t *f_pos)
+static ssize_t zcrypt_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return -EPERM;
 }
@@ -1736,8 +1734,8 @@ static long zcrypt_unlocked_ioctl(struct file *filp, unsigned int cmd,
  */
 static const struct file_operations zcrypt_fops = {
 	.owner		= THIS_MODULE,
-	.read		= zcrypt_read,
-	.write		= zcrypt_write,
+	.read_iter	= zcrypt_read,
+	.write_iter	= zcrypt_write,
 	.unlocked_ioctl	= zcrypt_unlocked_ioctl,
 	.open		= zcrypt_open,
 	.release	= zcrypt_release,
