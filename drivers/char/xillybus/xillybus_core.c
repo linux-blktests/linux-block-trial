@@ -28,6 +28,7 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
+#include <linux/uio.h>
 #include "xillybus.h"
 #include "xillybus_class.h"
 
@@ -687,15 +688,15 @@ static int xilly_obtain_idt(struct xilly_endpoint *endpoint)
 	return 0;
 }
 
-static ssize_t xillybus_read(struct file *filp, char __user *userbuf,
-			     size_t count, loff_t *f_pos)
+static ssize_t xillybus_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	ssize_t rc;
 	unsigned long flags;
 	int bytes_done = 0;
 	int no_time_left = 0;
 	long deadline, left_to_sleep;
-	struct xilly_channel *channel = filp->private_data;
+	struct xilly_channel *channel = iocb->ki_filp->private_data;
 
 	int empty, reached_eof, exhausted, ready;
 	/* Initializations are there only to silence warnings */
@@ -775,13 +776,11 @@ static ssize_t xillybus_read(struct file *filp, char __user *userbuf,
 							channel->wr_buf_size,
 							DMA_FROM_DEVICE);
 
-			if (copy_to_user(
-				    userbuf,
+			if (!copy_to_iter_full(
 				    channel->wr_buffers[bufidx]->addr
-				    + bufpos, howmany))
+				    + bufpos, howmany, to))
 				rc = -EFAULT;
 
-			userbuf += howmany;
 			bytes_done += howmany;
 
 			if (bufferdone) {
@@ -831,7 +830,7 @@ static ssize_t xillybus_read(struct file *filp, char __user *userbuf,
 		 * nonblocking mode, but only for a very short time.
 		 */
 
-		if (!no_time_left && (filp->f_flags & O_NONBLOCK)) {
+		if (!no_time_left && (iocb->ki_filp->f_flags & O_NONBLOCK)) {
 			if (bytes_done > 0)
 				break;
 
@@ -933,7 +932,7 @@ interrupted: /* Mutex is not held if got here */
 				return -EIO;
 			if (bytes_done)
 				return bytes_done;
-			if (filp->f_flags & O_NONBLOCK)
+			if (iocb->ki_filp->f_flags & O_NONBLOCK)
 				return -EAGAIN; /* Don't admit snoozing */
 			return -EINTR;
 		}
@@ -1198,13 +1197,13 @@ static void xillybus_autoflush(struct work_struct *work)
 			"Autoflush failed under weird circumstances.\n");
 }
 
-static ssize_t xillybus_write(struct file *filp, const char __user *userbuf,
-			      size_t count, loff_t *f_pos)
+static ssize_t xillybus_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	ssize_t rc;
 	unsigned long flags;
 	int bytes_done = 0;
-	struct xilly_channel *channel = filp->private_data;
+	struct xilly_channel *channel = iocb->ki_filp->private_data;
 
 	int full, exhausted;
 	/* Initializations are there only to silence warnings */
@@ -1318,12 +1317,11 @@ static ssize_t xillybus_write(struct file *filp, const char __user *userbuf,
 				channel->rd_leftovers[3] = 0; /* Clear flag */
 			}
 
-			if (copy_from_user(
+			if (!copy_from_iter_full(
 				    channel->rd_buffers[bufidx]->addr + bufpos,
-				    userbuf, howmany))
+				    howmany, from))
 				rc = -EFAULT;
 
-			userbuf += howmany;
 			bytes_done += howmany;
 
 			if (bufferdone) {
@@ -1382,7 +1380,7 @@ static ssize_t xillybus_write(struct file *filp, const char __user *userbuf,
 		 * sleeps.
 		 */
 
-		if (filp->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			rc = -EAGAIN;
 			break;
 		}
@@ -1414,7 +1412,7 @@ static ssize_t xillybus_write(struct file *filp, const char __user *userbuf,
 		return rc;
 
 	if ((channel->rd_synchronous) && (bytes_done > 0)) {
-		rc = xillybus_myflush(filp->private_data, 0); /* No timeout */
+		rc = xillybus_myflush(channel, 0); /* No timeout */
 
 		if (rc && (rc != -EINTR))
 			return rc;
@@ -1792,8 +1790,8 @@ static __poll_t xillybus_poll(struct file *filp, poll_table *wait)
 
 static const struct file_operations xillybus_fops = {
 	.owner      = THIS_MODULE,
-	.read       = xillybus_read,
-	.write      = xillybus_write,
+	.read_iter  = xillybus_read,
+	.write_iter = xillybus_write,
 	.open       = xillybus_open,
 	.flush      = xillybus_flush,
 	.release    = xillybus_release,

@@ -28,6 +28,7 @@
 #include <linux/poll.h>
 #include <linux/delay.h>
 #include <linux/usb.h>
+#include <linux/uio.h>
 
 #include "xillybus_class.h"
 
@@ -338,22 +339,22 @@ static int fifo_read(struct xillyfifo *fifo,
 }
 
 /*
- * These three wrapper functions are used as the @copier argument to
- * fifo_write() and fifo_read(), so that they can work directly with
- * user memory as well.
+ * These wrapper functions are used as the @copier argument to
+ * fifo_write_iter() and fifo_read_iter(), so that they can work
+ * directly with an iov_iter.
  */
 
-static int xilly_copy_from_user(void *dst, const void *src, int n)
+static int xilly_copy_from_iter(void *dst, const void *src, int n)
 {
-	if (copy_from_user(dst, (const void __user *)src, n))
+	if (!copy_from_iter_full(dst, n, (struct iov_iter *)src))
 		return -EFAULT;
 
 	return 0;
 }
 
-static int xilly_copy_to_user(void *dst, const void *src, int n)
+static int xilly_copy_to_iter(void *dst, const void *src, int n)
 {
-	if (copy_to_user((void __user *)dst, src, n))
+	if (!copy_to_iter_full(src, n, (struct iov_iter *)dst))
 		return -EFAULT;
 
 	return 0;
@@ -364,6 +365,121 @@ static int xilly_memcpy(void *dst, const void *src, int n)
 	memcpy(dst, src, n);
 
 	return 0;
+}
+
+/*
+ * fifo_read_iter() and fifo_write_iter() are variants of fifo_read() and
+ * fifo_write() that pass the data pointer directly to the copier without
+ * adding the done offset, since iov_iter-based copiers advance the
+ * iterator position automatically.
+ */
+
+static int fifo_read_iter(struct xillyfifo *fifo,
+			  void *data, unsigned int len,
+			  int (*copier)(void *, const void *, int))
+{
+	unsigned int done = 0;
+	unsigned int todo = len;
+	unsigned int fill;
+	unsigned int readpos = fifo->readpos;
+	unsigned int readbuf = fifo->readbuf;
+	unsigned long flags;
+	int rc;
+
+	spin_lock_irqsave(&fifo->lock, flags);
+	fill = fifo->fill;
+	spin_unlock_irqrestore(&fifo->lock, flags);
+
+	while (1) {
+		unsigned int nrail = fifo->bufsize - readpos;
+		unsigned int n = min(todo, fill);
+
+		if (n == 0) {
+			spin_lock_irqsave(&fifo->lock, flags);
+			fifo->fill -= done;
+			spin_unlock_irqrestore(&fifo->lock, flags);
+
+			fifo->readpos = readpos;
+			fifo->readbuf = readbuf;
+
+			return done;
+		}
+
+		if (n > nrail)
+			n = nrail;
+
+		rc = (*copier)(data, fifo->mem[readbuf] + readpos, n);
+
+		if (rc)
+			return rc;
+
+		done += n;
+		todo -= n;
+
+		readpos += n;
+		fill -= n;
+
+		if (readpos == fifo->bufsize) {
+			readpos = 0;
+			readbuf++;
+
+			if (readbuf == fifo->bufnum)
+				readbuf = 0;
+		}
+	}
+}
+
+static int fifo_write_iter(struct xillyfifo *fifo,
+			   const void *data, unsigned int len,
+			   int (*copier)(void *, const void *, int))
+{
+	unsigned int done = 0;
+	unsigned int todo = len;
+	unsigned int nmax;
+	unsigned int writepos = fifo->writepos;
+	unsigned int writebuf = fifo->writebuf;
+	unsigned long flags;
+	int rc;
+
+	nmax = fifo->size - READ_ONCE(fifo->fill);
+
+	while (1) {
+		unsigned int nrail = fifo->bufsize - writepos;
+		unsigned int n = min(todo, nmax);
+
+		if (n == 0) {
+			spin_lock_irqsave(&fifo->lock, flags);
+			fifo->fill += done;
+			spin_unlock_irqrestore(&fifo->lock, flags);
+
+			fifo->writepos = writepos;
+			fifo->writebuf = writebuf;
+
+			return done;
+		}
+
+		if (n > nrail)
+			n = nrail;
+
+		rc = (*copier)(fifo->mem[writebuf] + writepos, data, n);
+
+		if (rc)
+			return rc;
+
+		done += n;
+		todo -= n;
+
+		writepos += n;
+		nmax -= n;
+
+		if (writepos == fifo->bufsize) {
+			writepos = 0;
+			writebuf++;
+
+			if (writebuf == fifo->bufnum)
+				writebuf = 0;
+		}
+	}
 }
 
 static int fifo_init(struct xillyfifo *fifo,
@@ -1428,13 +1544,14 @@ unmutex_fail:
 	return rc;
 }
 
-static ssize_t xillyusb_read(struct file *filp, char __user *userbuf,
-			     size_t count, loff_t *f_pos)
+static ssize_t xillyusb_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	struct file *filp = iocb->ki_filp;
 	struct xillyusb_channel *chan = filp->private_data;
 	struct xillyusb_dev *xdev = chan->xdev;
 	struct xillyfifo *fifo = chan->in_fifo;
 	int chan_num = (chan->chan_idx << 1) | 1;
+	size_t count = iov_iter_count(to);
 
 	long deadline, left_to_sleep;
 	int bytes_done = 0;
@@ -1456,8 +1573,8 @@ static ssize_t xillyusb_read(struct file *filp, char __user *userbuf,
 		unsigned int sh = chan->in_log2_element_size;
 		bool checkpoint_for_complete;
 
-		rc = fifo_read(fifo, (__force void *)userbuf + bytes_done,
-			       count - bytes_done, xilly_copy_to_user);
+		rc = fifo_read_iter(fifo, (void *)to,
+				    count - bytes_done, xilly_copy_to_iter);
 
 		if (rc < 0)
 			break;
@@ -1639,12 +1756,13 @@ static int xillyusb_flush(struct file *filp, fl_owner_t id)
 	return rc;
 }
 
-static ssize_t xillyusb_write(struct file *filp, const char __user *userbuf,
-			      size_t count, loff_t *f_pos)
+static ssize_t xillyusb_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	struct file *filp = iocb->ki_filp;
 	struct xillyusb_channel *chan = filp->private_data;
 	struct xillyusb_dev *xdev = chan->xdev;
 	struct xillyfifo *fifo = &chan->out_ep->fifo;
+	size_t count = iov_iter_count(from);
 	int rc;
 
 	rc = mutex_lock_interruptible(&chan->out_mutex);
@@ -1661,8 +1779,8 @@ static ssize_t xillyusb_write(struct file *filp, const char __user *userbuf,
 		if (count == 0)
 			break;
 
-		rc = fifo_write(fifo, (__force void *)userbuf, count,
-				xilly_copy_from_user);
+		rc = fifo_write_iter(fifo, (void *)from, count,
+				     xilly_copy_from_iter);
 
 		if (rc != 0)
 			break;
@@ -1892,8 +2010,8 @@ static __poll_t xillyusb_poll(struct file *filp, poll_table *wait)
 
 static const struct file_operations xillyusb_fops = {
 	.owner      = THIS_MODULE,
-	.read       = xillyusb_read,
-	.write      = xillyusb_write,
+	.read_iter  = xillyusb_read,
+	.write_iter = xillyusb_write,
 	.open       = xillyusb_open,
 	.flush      = xillyusb_flush,
 	.release    = xillyusb_release,
