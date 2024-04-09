@@ -772,8 +772,7 @@ static bool check_can_switch(void)
 }
 
 static ssize_t
-vga_switcheroo_debugfs_write(struct file *filp, const char __user *ubuf,
-			     size_t cnt, loff_t *ppos)
+vga_switcheroo_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char usercmd[64];
 	int ret;
@@ -781,11 +780,12 @@ vga_switcheroo_debugfs_write(struct file *filp, const char __user *ubuf,
 	bool just_mux = false;
 	enum vga_switcheroo_client_id client_id = VGA_SWITCHEROO_UNKNOWN_ID;
 	struct vga_switcheroo_client *client = NULL;
+	size_t cnt = iov_iter_count(from);
 
 	if (cnt > 63)
 		cnt = 63;
 
-	if (copy_from_user(usercmd, ubuf, cnt))
+	if (!copy_from_iter_full(usercmd, cnt, from))
 		return -EFAULT;
 
 	mutex_lock(&vgasr_mutex);
@@ -899,8 +899,8 @@ out:
 static const struct file_operations vga_switcheroo_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = vga_switcheroo_debugfs_open,
-	.write = vga_switcheroo_debugfs_write,
-	.read = seq_read,
+	.write_iter = vga_switcheroo_debugfs_write,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
