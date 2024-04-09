@@ -45,10 +45,10 @@ static int read_mcd_tag(unsigned long addr)
 		return ver;
 }
 
-static ssize_t adi_read(struct file *file, char __user *buf,
-			size_t count, loff_t *offp)
+static ssize_t adi_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	size_t ver_buf_sz, bytes_read = 0;
+	size_t count = iov_iter_count(to);
 	int ver_buf_idx = 0;
 	loff_t offset;
 	u8 *ver_buf;
@@ -59,7 +59,7 @@ static ssize_t adi_read(struct file *file, char __user *buf,
 	if (!ver_buf)
 		return -ENOMEM;
 
-	offset = (*offp) * adi_blksize();
+	offset = iocb->ki_pos * adi_blksize();
 
 	while (bytes_read < count) {
 		ret = read_mcd_tag(offset);
@@ -71,8 +71,7 @@ static ssize_t adi_read(struct file *file, char __user *buf,
 		offset += adi_blksize();
 
 		if (ver_buf_idx >= ver_buf_sz) {
-			if (copy_to_user(buf + bytes_read, ver_buf,
-					 ver_buf_sz)) {
+			if (!copy_to_iter_full(ver_buf, ver_buf_sz, to)) {
 				ret = -EFAULT;
 				goto out;
 			}
@@ -85,7 +84,7 @@ static ssize_t adi_read(struct file *file, char __user *buf,
 		}
 	}
 
-	(*offp) += bytes_read;
+	iocb->ki_pos += bytes_read;
 	ret = bytes_read;
 out:
 	kfree(ver_buf);
@@ -122,10 +121,10 @@ static int set_mcd_tag(unsigned long addr, u8 ver)
 		return ver;
 }
 
-static ssize_t adi_write(struct file *file, const char __user *buf,
-			 size_t count, loff_t *offp)
+static ssize_t adi_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	size_t ver_buf_sz, bytes_written = 0;
+	size_t count = iov_iter_count(from);
 	loff_t offset;
 	u8 *ver_buf;
 	ssize_t ret;
@@ -139,11 +138,10 @@ static ssize_t adi_write(struct file *file, const char __user *buf,
 	if (!ver_buf)
 		return -ENOMEM;
 
-	offset = (*offp) * adi_blksize();
+	offset = iocb->ki_pos * adi_blksize();
 
 	do {
-		if (copy_from_user(ver_buf, &buf[bytes_written],
-				   ver_buf_sz)) {
+		if (!copy_from_iter_full(ver_buf, ver_buf_sz, from)) {
 			ret = -EFAULT;
 			goto out;
 		}
@@ -160,7 +158,7 @@ static ssize_t adi_write(struct file *file, const char __user *buf,
 		ver_buf_sz = min_t(size_t, count - bytes_written, MAX_BUF_SZ);
 	} while (bytes_written < count);
 
-	(*offp) += bytes_written;
+	iocb->ki_pos += bytes_written;
 	ret = bytes_written;
 out:
 	__asm__ __volatile__("membar #Sync");
@@ -199,8 +197,8 @@ static loff_t adi_llseek(struct file *file, loff_t offset, int whence)
 static const struct file_operations adi_fops = {
 	.owner		= THIS_MODULE,
 	.llseek		= adi_llseek,
-	.read		= adi_read,
-	.write		= adi_write,
+	.read_iter	= adi_read,
+	.write_iter	= adi_write,
 	.fop_flags	= FOP_UNSIGNED_OFFSET,
 };
 
