@@ -631,20 +631,19 @@ static void ocrdma_update_stats(struct ocrdma_dev *dev)
 	}
 }
 
-static ssize_t ocrdma_dbgfs_ops_write(struct file *filp,
-					const char __user *buffer,
-					size_t count, loff_t *ppos)
+static ssize_t ocrdma_dbgfs_ops_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char tmp_str[32];
 	long reset;
 	int status;
-	struct ocrdma_stats *pstats = filp->private_data;
+	struct ocrdma_stats *pstats = iocb->ki_filp->private_data;
 	struct ocrdma_dev *dev = pstats->dev;
+	size_t count = iov_iter_count(from);
 
-	if (*ppos != 0 || count == 0 || count > sizeof(tmp_str))
+	if (iocb->ki_pos != 0 || count == 0 || count > sizeof(tmp_str))
 		goto err;
 
-	if (copy_from_user(tmp_str, buffer, count))
+	if (!copy_from_iter_full(tmp_str, count, from))
 		goto err;
 
 	tmp_str[count-1] = '\0';
@@ -683,16 +682,16 @@ void ocrdma_pma_counters(struct ocrdma_dev *dev, struct ib_mad *out_mad)
 	pma_cnt->port_rcv_packets  = cpu_to_be32(ocrdma_sysfs_rcv_pkts(dev));
 }
 
-static ssize_t ocrdma_dbgfs_ops_read(struct file *filp, char __user *buffer,
-					size_t usr_buf_len, loff_t *ppos)
+static ssize_t ocrdma_dbgfs_ops_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ocrdma_stats *pstats = filp->private_data;
+	struct ocrdma_stats *pstats = iocb->ki_filp->private_data;
+	size_t usr_buf_len = iov_iter_count(to);
 	struct ocrdma_dev *dev = pstats->dev;
 	ssize_t status = 0;
 	char *data = NULL;
 
 	/* No partial reads */
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	mutex_lock(&dev->stats_lock);
@@ -741,8 +740,7 @@ static ssize_t ocrdma_dbgfs_ops_read(struct file *filp, char __user *buffer,
 		goto exit;
 	}
 
-	status = simple_read_from_buffer(buffer, usr_buf_len, ppos, data,
-					 strlen(data));
+	status = simple_copy_to_iter(data, &iocb->ki_pos, strlen(data), to);
 exit:
 	mutex_unlock(&dev->stats_lock);
 	return status;
@@ -751,8 +749,8 @@ exit:
 static const struct file_operations ocrdma_dbg_ops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = ocrdma_dbgfs_ops_read,
-	.write = ocrdma_dbgfs_ops_write,
+	.read_iter = ocrdma_dbgfs_ops_read,
+	.write_iter = ocrdma_dbgfs_ops_write,
 };
 
 void ocrdma_add_port_stats(struct ocrdma_dev *dev)
