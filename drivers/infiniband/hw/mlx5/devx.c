@@ -2793,6 +2793,7 @@ static ssize_t devx_async_cmd_event_read(struct file *filp, char __user *buf,
 	kvfree(event);
 	return ret;
 }
+FOPS_READ_ITER_HELPER(devx_async_cmd_event_read);
 
 static __poll_t devx_async_cmd_event_poll(struct file *filp,
 					      struct poll_table_struct *wait)
@@ -2815,7 +2816,7 @@ static __poll_t devx_async_cmd_event_poll(struct file *filp,
 
 static const struct file_operations devx_async_cmd_event_fops = {
 	.owner	 = THIS_MODULE,
-	.read	 = devx_async_cmd_event_read,
+	.read_iter	 = devx_async_cmd_event_read_iter,
 	.poll    = devx_async_cmd_event_poll,
 	.release = uverbs_uobject_fd_release,
 };
@@ -2897,6 +2898,7 @@ static ssize_t devx_async_event_read(struct file *filp, char __user *buf,
 		kfree(event);
 	return ret;
 }
+FOPS_READ_ITER_HELPER(devx_async_event_read);
 
 static __poll_t devx_async_event_poll(struct file *filp,
 				      struct poll_table_struct *wait)
@@ -2929,7 +2931,7 @@ static void devx_free_subscription(struct rcu_head *rcu)
 
 static const struct file_operations devx_async_event_fops = {
 	.owner	 = THIS_MODULE,
-	.read	 = devx_async_event_read,
+	.read_iter	 = devx_async_event_read_iter,
 	.poll    = devx_async_event_poll,
 	.release = uverbs_uobject_fd_release,
 };

@@ -368,10 +368,10 @@ alloc_err:
 	return err;
 }
 
-static ssize_t set_param(struct file *filp, const char __user *buf,
-			 size_t count, loff_t *pos)
+static ssize_t set_param(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mlx5_ib_dbg_param *param = filp->private_data;
+	struct mlx5_ib_dbg_param *param = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int offset = param->offset;
 	char lbuf[11] = { };
 	u32 var;
@@ -380,7 +380,7 @@ static ssize_t set_param(struct file *filp, const char __user *buf,
 	if (count > sizeof(lbuf))
 		return -EINVAL;
 
-	if (copy_from_user(lbuf, buf, count))
+	if (!copy_from_iter_full(lbuf, count, from))
 		return -EFAULT;
 
 	lbuf[sizeof(lbuf) - 1] = '\0';
@@ -392,10 +392,9 @@ static ssize_t set_param(struct file *filp, const char __user *buf,
 	return ret ? ret : count;
 }
 
-static ssize_t get_param(struct file *filp, char __user *buf, size_t count,
-			 loff_t *pos)
+static ssize_t get_param(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mlx5_ib_dbg_param *param = filp->private_data;
+	struct mlx5_ib_dbg_param *param = iocb->ki_filp->private_data;
 	int offset = param->offset;
 	u32 var = 0;
 	int ret;
@@ -409,14 +408,14 @@ static ssize_t get_param(struct file *filp, char __user *buf, size_t count,
 	if (ret < 0)
 		return ret;
 
-	return simple_read_from_buffer(buf, count, pos, lbuf, ret);
+	return simple_copy_to_iter(lbuf, &iocb->ki_pos, ret, to);
 }
 
 static const struct file_operations dbg_cc_fops = {
 	.owner	= THIS_MODULE,
 	.open	= simple_open,
-	.write	= set_param,
-	.read	= get_param,
+	.write_iter	= set_param,
+	.read_iter	= get_param,
 };
 
 void mlx5_ib_cleanup_cong_debugfs(struct mlx5_ib_dev *dev, u32 port_num)

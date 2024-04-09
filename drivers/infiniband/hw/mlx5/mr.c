@@ -379,14 +379,14 @@ static int resize_available_mrs(struct mlx5_cache_ent *ent, unsigned int target,
 	}
 }
 
-static ssize_t size_write(struct file *filp, const char __user *buf,
-			  size_t count, loff_t *pos)
+static ssize_t size_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mlx5_cache_ent *ent = filp->private_data;
+	struct mlx5_cache_ent *ent = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	u32 target;
 	int err;
 
-	err = kstrtou32_from_user(buf, count, 0, &target);
+	err = kstrtou32_from_iter(from, count, 0, &target);
 	if (err)
 		return err;
 
@@ -417,10 +417,9 @@ err_unlock:
 	return err;
 }
 
-static ssize_t size_read(struct file *filp, char __user *buf, size_t count,
-			 loff_t *pos)
+static ssize_t size_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mlx5_cache_ent *ent = filp->private_data;
+	struct mlx5_cache_ent *ent = iocb->ki_filp->private_data;
 	char lbuf[20];
 	int err;
 
@@ -429,24 +428,24 @@ static ssize_t size_read(struct file *filp, char __user *buf, size_t count,
 	if (err < 0)
 		return err;
 
-	return simple_read_from_buffer(buf, count, pos, lbuf, err);
+	return simple_copy_to_iter(lbuf, &iocb->ki_pos, err, to);
 }
 
 static const struct file_operations size_fops = {
 	.owner	= THIS_MODULE,
 	.open	= simple_open,
-	.write	= size_write,
-	.read	= size_read,
+	.write_iter	= size_write,
+	.read_iter	= size_read,
 };
 
-static ssize_t limit_write(struct file *filp, const char __user *buf,
-			   size_t count, loff_t *pos)
+static ssize_t limit_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mlx5_cache_ent *ent = filp->private_data;
+	struct mlx5_cache_ent *ent = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	u32 var;
 	int err;
 
-	err = kstrtou32_from_user(buf, count, 0, &var);
+	err = kstrtou32_from_iter(from, count, 0, &var);
 	if (err)
 		return err;
 
@@ -463,10 +462,9 @@ static ssize_t limit_write(struct file *filp, const char __user *buf,
 	return count;
 }
 
-static ssize_t limit_read(struct file *filp, char __user *buf, size_t count,
-			  loff_t *pos)
+static ssize_t limit_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mlx5_cache_ent *ent = filp->private_data;
+	struct mlx5_cache_ent *ent = iocb->ki_filp->private_data;
 	char lbuf[20];
 	int err;
 
@@ -474,14 +472,14 @@ static ssize_t limit_read(struct file *filp, char __user *buf, size_t count,
 	if (err < 0)
 		return err;
 
-	return simple_read_from_buffer(buf, count, pos, lbuf, err);
+	return simple_copy_to_iter(lbuf, &iocb->ki_pos, err, to);
 }
 
 static const struct file_operations limit_fops = {
 	.owner	= THIS_MODULE,
 	.open	= simple_open,
-	.write	= limit_write,
-	.read	= limit_read,
+	.write_iter	= limit_write,
+	.read_iter	= limit_read,
 };
 
 static bool someone_adding(struct mlx5_mkey_cache *cache)

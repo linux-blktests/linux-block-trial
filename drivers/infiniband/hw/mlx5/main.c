@@ -3822,25 +3822,25 @@ static int mlx5_ib_rn_get_params(struct ib_device *device, u32 port_num,
 	return mlx5_rdma_rn_get_params(to_mdev(device)->mdev, device, params);
 }
 
-static ssize_t delay_drop_timeout_read(struct file *filp, char __user *buf,
-				       size_t count, loff_t *pos)
+static ssize_t delay_drop_timeout_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mlx5_ib_delay_drop *delay_drop = filp->private_data;
+	struct mlx5_ib_delay_drop *delay_drop = iocb->ki_filp->private_data;
 	char lbuf[20];
 	int len;
 
 	len = snprintf(lbuf, sizeof(lbuf), "%u\n", delay_drop->timeout);
-	return simple_read_from_buffer(buf, count, pos, lbuf, len);
+	return simple_copy_to_iter(lbuf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t delay_drop_timeout_write(struct file *filp, const char __user *buf,
-					size_t count, loff_t *pos)
+static ssize_t delay_drop_timeout_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct mlx5_ib_delay_drop *delay_drop = filp->private_data;
+	struct mlx5_ib_delay_drop *delay_drop = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	u32 timeout;
 	u32 var;
 
-	if (kstrtouint_from_user(buf, count, 0, &var))
+	if (kstrtouint_from_iter(from, count, 0, &var))
 		return -EFAULT;
 
 	timeout = min_t(u32, roundup(var, 100), MLX5_MAX_DELAY_DROP_TIMEOUT_MS *
@@ -3857,8 +3857,8 @@ static ssize_t delay_drop_timeout_write(struct file *filp, const char __user *bu
 static const struct file_operations fops_delay_drop_timeout = {
 	.owner	= THIS_MODULE,
 	.open	= simple_open,
-	.write	= delay_drop_timeout_write,
-	.read	= delay_drop_timeout_read,
+	.write_iter	= delay_drop_timeout_write,
+	.read_iter	= delay_drop_timeout_read,
 };
 
 static void mlx5_ib_unbind_slave_port(struct mlx5_ib_dev *ibdev,
