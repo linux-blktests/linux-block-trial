@@ -221,14 +221,14 @@ static int skel_do_read_io(struct usb_skel *dev, size_t count)
 	return rv;
 }
 
-static ssize_t skel_read(struct file *file, char *buffer, size_t count,
-			 loff_t *ppos)
+static ssize_t skel_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	struct usb_skel *dev;
 	int rv;
 	bool ongoing_io;
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
 	if (!count)
 		return 0;
@@ -251,7 +251,7 @@ retry:
 
 	if (ongoing_io) {
 		/* nonblocking IO shall not wait */
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			rv = -EAGAIN;
 			goto exit;
 		}
@@ -301,9 +301,9 @@ retry:
 		 * chunk tells us how much shall be copied
 		 */
 
-		if (copy_to_user(buffer,
+		if (!copy_to_iter_full(
 				 dev->bulk_in_buffer + dev->bulk_in_copied,
-				 chunk))
+				 chunk, to))
 			rv = -EFAULT;
 		else
 			rv = chunk;
@@ -356,16 +356,16 @@ static void skel_write_bulk_callback(struct urb *urb)
 	up(&dev->limit_sem);
 }
 
-static ssize_t skel_write(struct file *file, const char *user_buffer,
-			  size_t count, loff_t *ppos)
+static ssize_t skel_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct usb_skel *dev;
 	int retval = 0;
 	struct urb *urb = NULL;
 	char *buf = NULL;
 	size_t writesize = min_t(size_t, count, MAX_TRANSFER);
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
 	/* verify that we actually have some data to write */
 	if (count == 0)
@@ -375,7 +375,7 @@ static ssize_t skel_write(struct file *file, const char *user_buffer,
 	 * limit the number of URBs in flight to stop a user from using up all
 	 * RAM
 	 */
-	if (!(file->f_flags & O_NONBLOCK)) {
+	if (!(iocb->ki_filp->f_flags & O_NONBLOCK)) {
 		if (down_interruptible(&dev->limit_sem)) {
 			retval = -ERESTARTSYS;
 			goto exit;
@@ -413,7 +413,7 @@ static ssize_t skel_write(struct file *file, const char *user_buffer,
 		goto error;
 	}
 
-	if (copy_from_user(buf, user_buffer, writesize)) {
+	if (!copy_from_iter_full(buf, writesize, from)) {
 		retval = -EFAULT;
 		goto error;
 	}
@@ -467,8 +467,8 @@ exit:
 
 static const struct file_operations skel_fops = {
 	.owner =	THIS_MODULE,
-	.read =		skel_read,
-	.write =	skel_write,
+	.read_iter =	skel_read,
+	.write_iter =	skel_write,
 	.open =		skel_open,
 	.release =	skel_release,
 	.flush =	skel_flush,
