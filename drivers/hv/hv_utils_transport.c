@@ -24,13 +24,13 @@ static void hvt_reset(struct hvutil_transport *hvt)
 		hvt->on_reset();
 }
 
-static ssize_t hvt_op_read(struct file *file, char __user *buf,
-			   size_t count, loff_t *ppos)
+static ssize_t hvt_op_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	struct hvutil_transport *hvt;
 	int ret;
 
-	hvt = container_of(file->f_op, struct hvutil_transport, fops);
+	hvt = container_of(iocb->ki_filp->f_op, struct hvutil_transport, fops);
 
 	if (wait_event_interruptible(hvt->outmsg_q, hvt->outmsg_len > 0 ||
 				     hvt->mode != HVUTIL_TRANSPORT_CHARDEV))
@@ -53,7 +53,7 @@ static ssize_t hvt_op_read(struct file *file, char __user *buf,
 		goto out_unlock;
 	}
 
-	if (!copy_to_user(buf, hvt->outmsg, hvt->outmsg_len))
+	if (copy_to_iter_full(hvt->outmsg, hvt->outmsg_len, to))
 		ret = hvt->outmsg_len;
 	else
 		ret = -EFAULT;
@@ -93,6 +93,7 @@ static ssize_t hvt_op_write(struct file *file, const char __user *buf,
 
 	return ret ? ret : count;
 }
+FOPS_WRITE_ITER_HELPER(hvt_op_write);
 
 static __poll_t hvt_op_poll(struct file *file, poll_table *wait)
 {
@@ -285,8 +286,8 @@ struct hvutil_transport *hvutil_transport_init(const char *name,
 	hvt->mdev.name = name;
 
 	hvt->fops.owner = THIS_MODULE;
-	hvt->fops.read = hvt_op_read;
-	hvt->fops.write = hvt_op_write;
+	hvt->fops.read_iter = hvt_op_read;
+	hvt->fops.write_iter = hvt_op_write_iter;
 	hvt->fops.poll = hvt_op_poll;
 	hvt->fops.open = hvt_op_open;
 	hvt->fops.release = hvt_op_release;
