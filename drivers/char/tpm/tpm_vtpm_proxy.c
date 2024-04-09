@@ -69,10 +69,10 @@ static void vtpm_proxy_delete_device(struct proxy_dev *proxy_dev);
  * Return:
  *	Number of bytes read or negative error code
  */
-static ssize_t vtpm_proxy_fops_read(struct file *filp, char __user *buf,
-				    size_t count, loff_t *off)
+static ssize_t vtpm_proxy_fops_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct proxy_dev *proxy_dev = filp->private_data;
+	struct proxy_dev *proxy_dev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	size_t len;
 	int sig, rc;
 
@@ -98,7 +98,7 @@ static ssize_t vtpm_proxy_fops_read(struct file *filp, char __user *buf,
 		return -EIO;
 	}
 
-	rc = copy_to_user(buf, proxy_dev->buffer, len);
+	rc = !copy_to_iter_full(proxy_dev->buffer, len, to);
 	memset(proxy_dev->buffer, 0, len);
 	proxy_dev->req_len = 0;
 
@@ -116,18 +116,16 @@ static ssize_t vtpm_proxy_fops_read(struct file *filp, char __user *buf,
 /**
  * vtpm_proxy_fops_write - Write TPM responses on 'server side'
  *
- * @filp: file pointer
- * @buf: write buffer
- * @count: number of bytes to write
- * @off: offset
+ * @iocb: kiocb for the write
+ * @from: iov_iter with write data
  *
  * Return:
  *	Number of bytes read or negative error value
  */
-static ssize_t vtpm_proxy_fops_write(struct file *filp, const char __user *buf,
-				     size_t count, loff_t *off)
+static ssize_t vtpm_proxy_fops_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct proxy_dev *proxy_dev = filp->private_data;
+	struct proxy_dev *proxy_dev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 
 	mutex_lock(&proxy_dev->buf_lock);
 
@@ -146,7 +144,7 @@ static ssize_t vtpm_proxy_fops_write(struct file *filp, const char __user *buf,
 
 	proxy_dev->req_len = 0;
 
-	if (copy_from_user(proxy_dev->buffer, buf, count)) {
+	if (!copy_from_iter_full(proxy_dev->buffer, count, from)) {
 		mutex_unlock(&proxy_dev->buf_lock);
 		return -EFAULT;
 	}
@@ -243,8 +241,8 @@ static int vtpm_proxy_fops_release(struct inode *inode, struct file *filp)
 
 static const struct file_operations vtpm_proxy_fops = {
 	.owner = THIS_MODULE,
-	.read = vtpm_proxy_fops_read,
-	.write = vtpm_proxy_fops_write,
+	.read_iter = vtpm_proxy_fops_read,
+	.write_iter = vtpm_proxy_fops_write,
 	.poll = vtpm_proxy_fops_poll,
 	.release = vtpm_proxy_fops_release,
 };

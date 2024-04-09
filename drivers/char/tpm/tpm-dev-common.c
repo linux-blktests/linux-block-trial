@@ -127,10 +127,10 @@ void tpm_common_open(struct file *file, struct tpm_chip *chip,
 	file->private_data = priv;
 }
 
-ssize_t tpm_common_read(struct file *file, char __user *buf,
-			size_t size, loff_t *off)
+ssize_t tpm_common_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct file_priv *priv = file->private_data;
+	struct file_priv *priv = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(to);
 	ssize_t ret_size = 0;
 	int rc;
 
@@ -145,21 +145,21 @@ ssize_t tpm_common_read(struct file *file, char __user *buf,
 			goto out;
 		}
 
-		rc = copy_to_user(buf, priv->data_buffer + *off, ret_size);
+		rc = !copy_to_iter_full(priv->data_buffer + iocb->ki_pos, ret_size, to);
 		if (rc) {
 			memset(priv->data_buffer, 0, TPM_BUFSIZE);
 			priv->response_length = 0;
 			ret_size = -EFAULT;
 		} else {
-			memset(priv->data_buffer + *off, 0, ret_size);
+			memset(priv->data_buffer + iocb->ki_pos, 0, ret_size);
 			priv->response_length -= ret_size;
-			*off += ret_size;
+			iocb->ki_pos += ret_size;
 		}
 	}
 
 out:
 	if (!priv->response_length) {
-		*off = 0;
+		iocb->ki_pos = 0;
 		timer_delete_sync(&priv->user_read_timer);
 		flush_work(&priv->timeout_work);
 	}
@@ -167,10 +167,11 @@ out:
 	return ret_size;
 }
 
-ssize_t tpm_common_write(struct file *file, const char __user *buf,
-			 size_t size, loff_t *off)
+ssize_t tpm_common_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	struct file *file = iocb->ki_filp;
 	struct file_priv *priv = file->private_data;
+	size_t size = iov_iter_count(from);
 	int ret = 0;
 
 	if (size > TPM_BUFSIZE)
@@ -188,7 +189,7 @@ ssize_t tpm_common_write(struct file *file, const char __user *buf,
 		goto out;
 	}
 
-	if (copy_from_user(priv->data_buffer, buf, size)) {
+	if (!copy_from_iter_full(priv->data_buffer, size, from)) {
 		ret = -EFAULT;
 		goto out;
 	}
@@ -201,7 +202,7 @@ ssize_t tpm_common_write(struct file *file, const char __user *buf,
 
 	priv->response_length = 0;
 	priv->response_read = false;
-	*off = 0;
+	iocb->ki_pos = 0;
 
 	/*
 	 * If in nonblocking mode schedule an async job to send

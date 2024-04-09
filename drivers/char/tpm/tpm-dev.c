@@ -60,8 +60,8 @@ static int tpm_release(struct inode *inode, struct file *file)
 const struct file_operations tpm_fops = {
 	.owner = THIS_MODULE,
 	.open = tpm_open,
-	.read = tpm_common_read,
-	.write = tpm_common_write,
+	.read_iter = tpm_common_read_iter,
+	.write_iter = tpm_common_write,
 	.poll = tpm_common_poll,
 	.release = tpm_release,
 };
