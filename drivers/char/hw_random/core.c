@@ -240,10 +240,10 @@ static inline int rng_get_data(struct hwrng *rng, u8 *buffer, size_t size,
 	return 0;
 }
 
-static ssize_t rng_dev_read(struct file *filp, char __user *buf,
-			    size_t size, loff_t *offp)
+static ssize_t rng_dev_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	u8 buffer[RNG_BUFFER_SIZE];
+	size_t size = iov_iter_count(to);
 	ssize_t ret = 0;
 	int err = 0;
 	int bytes_read, len;
@@ -263,12 +263,12 @@ static ssize_t rng_dev_read(struct file *filp, char __user *buf,
 		if (!data_avail) {
 			bytes_read = rng_get_data(rng, rng_buffer,
 				rng_buffer_size(),
-				!(filp->f_flags & O_NONBLOCK));
+				!(iocb->ki_filp->f_flags & O_NONBLOCK));
 			if (bytes_read < 0) {
 				err = bytes_read;
 				goto out_unlock_reading;
 			} else if (bytes_read == 0 &&
-				   (filp->f_flags & O_NONBLOCK)) {
+				   (iocb->ki_filp->f_flags & O_NONBLOCK)) {
 				err = -EAGAIN;
 				goto out_unlock_reading;
 			}
@@ -289,7 +289,7 @@ static ssize_t rng_dev_read(struct file *filp, char __user *buf,
 		put_rng(rng);
 
 		if (len) {
-			if (copy_to_user(buf + ret, buffer, len)) {
+			if (!copy_to_iter_full(buffer, len, to)) {
 				err = -EFAULT;
 				goto out;
 			}
@@ -321,7 +321,7 @@ out_put:
 static const struct file_operations rng_chrdev_ops = {
 	.owner		= THIS_MODULE,
 	.open		= rng_dev_open,
-	.read		= rng_dev_read,
+	.read_iter	= rng_dev_read,
 	.llseek		= noop_llseek,
 };
 
