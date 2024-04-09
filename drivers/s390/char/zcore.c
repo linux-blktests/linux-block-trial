@@ -133,8 +133,7 @@ static void release_hsa(void)
 	hsa_available = 0;
 }
 
-static ssize_t zcore_reipl_write(struct file *filp, const char __user *buf,
-				 size_t count, loff_t *ppos)
+static ssize_t zcore_reipl_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	if (zcore_ipl_block) {
 		diag308(DIAG308_SET, zcore_ipl_block);
@@ -146,7 +145,7 @@ static ssize_t zcore_reipl_write(struct file *filp, const char __user *buf,
 		else
 			diag308(DIAG308_LOAD_NORMAL, NULL);
 	}
-	return count;
+	return iov_iter_count(from);
 }
 
 static int zcore_reipl_open(struct inode *inode, struct file *filp)
@@ -161,13 +160,12 @@ static int zcore_reipl_release(struct inode *inode, struct file *filp)
 
 static const struct file_operations zcore_reipl_fops = {
 	.owner		= THIS_MODULE,
-	.write		= zcore_reipl_write,
+	.write_iter	= zcore_reipl_write,
 	.open		= zcore_reipl_open,
 	.release	= zcore_reipl_release,
 };
 
-static ssize_t zcore_hsa_read(struct file *filp, char __user *buf,
-			      size_t count, loff_t *ppos)
+static ssize_t zcore_hsa_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	static char str[18];
 
@@ -175,28 +173,27 @@ static ssize_t zcore_hsa_read(struct file *filp, char __user *buf,
 		snprintf(str, sizeof(str), "%lx\n", sclp.hsa_size);
 	else
 		snprintf(str, sizeof(str), "0\n");
-	return simple_read_from_buffer(buf, count, ppos, str, strlen(str));
+	return simple_copy_to_iter(str, &iocb->ki_pos, strlen(str), to);
 }
 
-static ssize_t zcore_hsa_write(struct file *filp, const char __user *buf,
-			       size_t count, loff_t *ppos)
+static ssize_t zcore_hsa_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char value;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return -EPIPE;
-	if (copy_from_user(&value, buf, 1))
+	if (!copy_from_iter_full(&value, 1, from))
 		return -EFAULT;
 	if (value != '0')
 		return -EINVAL;
 	release_hsa();
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations zcore_hsa_fops = {
 	.owner		= THIS_MODULE,
-	.write		= zcore_hsa_write,
-	.read		= zcore_hsa_read,
+	.write_iter	= zcore_hsa_write,
+	.read_iter	= zcore_hsa_read,
 	.open		= nonseekable_open,
 };
 
