@@ -1126,10 +1126,10 @@ static __poll_t cs_char_poll(struct file *file, poll_table *wait)
 	return ret;
 }
 
-static ssize_t cs_char_read(struct file *file, char __user *buf, size_t count,
-								loff_t *unused)
+static ssize_t cs_char_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct cs_char *csdata = file->private_data;
+	struct cs_char *csdata = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	u32 data;
 	ssize_t retval;
 
@@ -1152,7 +1152,7 @@ static ssize_t cs_char_read(struct file *file, char __user *buf, size_t count,
 
 		if (data)
 			break;
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			retval = -EAGAIN;
 			goto out;
 		} else if (signal_pending(current)) {
@@ -1165,7 +1165,7 @@ static ssize_t cs_char_read(struct file *file, char __user *buf, size_t count,
 		finish_wait(&csdata->wait, &wait);
 	}
 
-	retval = put_user(data, (u32 __user *)buf);
+	retval = put_iter(data, to);
 	if (!retval)
 		retval = sizeof(data);
 
@@ -1173,10 +1173,10 @@ out:
 	return retval;
 }
 
-static ssize_t cs_char_write(struct file *file, const char __user *buf,
-						size_t count, loff_t *unused)
+static ssize_t cs_char_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct cs_char *csdata = file->private_data;
+	struct cs_char *csdata = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	u32 data;
 	int err;
 	ssize_t	retval;
@@ -1184,7 +1184,7 @@ static ssize_t cs_char_write(struct file *file, const char __user *buf,
 	if (count < sizeof(data))
 		return -EINVAL;
 
-	if (get_user(data, (u32 __user *)buf))
+	if (get_iter(data, from))
 		retval = -EFAULT;
 	else
 		retval = count;
@@ -1349,8 +1349,8 @@ static int cs_char_release(struct inode *unused, struct file *file)
 
 static const struct file_operations cs_char_fops = {
 	.owner		= THIS_MODULE,
-	.read		= cs_char_read,
-	.write		= cs_char_write,
+	.read_iter	= cs_char_read,
+	.write_iter	= cs_char_write,
 	.poll		= cs_char_poll,
 	.unlocked_ioctl	= cs_char_ioctl,
 	.mmap		= cs_char_mmap,
