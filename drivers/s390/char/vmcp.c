@@ -127,14 +127,13 @@ static int vmcp_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t
-vmcp_read(struct file *file, char __user *buff, size_t count, loff_t *ppos)
+static ssize_t vmcp_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	ssize_t ret;
 	size_t size;
 	struct vmcp_session *session;
 
-	session = file->private_data;
+	session = iocb->ki_filp->private_data;
 	if (mutex_lock_interruptible(&session->mutex))
 		return -ERESTARTSYS;
 	if (!session->response) {
@@ -142,27 +141,25 @@ vmcp_read(struct file *file, char __user *buff, size_t count, loff_t *ppos)
 		return 0;
 	}
 	size = min_t(size_t, session->resp_size, session->bufsize);
-	ret = simple_read_from_buffer(buff, count, ppos,
-					session->response, size);
+	ret = simple_copy_to_iter(session->response, &iocb->ki_pos, size, to);
 
 	mutex_unlock(&session->mutex);
 
 	return ret;
 }
 
-static ssize_t
-vmcp_write(struct file *file, const char __user *buff, size_t count,
-	   loff_t *ppos)
+static ssize_t vmcp_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char *cmd;
 	struct vmcp_session *session;
+	size_t count = iov_iter_count(from);
 
 	if (count > 240)
 		return -EINVAL;
-	cmd = memdup_user_nul(buff, count);
+	cmd = iterdup_nul(from, count);
 	if (IS_ERR(cmd))
 		return PTR_ERR(cmd);
-	session = file->private_data;
+	session = iocb->ki_filp->private_data;
 	if (mutex_lock_interruptible(&session->mutex)) {
 		kfree(cmd);
 		return -ERESTARTSYS;
@@ -179,7 +176,7 @@ vmcp_write(struct file *file, const char __user *buff, size_t count,
 				   &session->resp_code);
 	mutex_unlock(&session->mutex);
 	kfree(cmd);
-	*ppos = 0;		/* reset the file pointer after a command */
+	iocb->ki_pos = 0;	/* reset the file pointer after a command */
 	return count;
 }
 
@@ -234,8 +231,8 @@ static const struct file_operations vmcp_fops = {
 	.owner		= THIS_MODULE,
 	.open		= vmcp_open,
 	.release	= vmcp_release,
-	.read		= vmcp_read,
-	.write		= vmcp_write,
+	.read_iter	= vmcp_read,
+	.write_iter	= vmcp_write,
 	.unlocked_ioctl	= vmcp_ioctl,
 };
 
