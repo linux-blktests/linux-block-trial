@@ -247,17 +247,14 @@ static void write_fault_count(struct edac_priv *priv)
  * - Write the Correctable Error bit position value:
  *	echo <bit_pos val> > /sys/kernel/debug/edac/ocm/inject_ce_bitpos
  */
-static ssize_t inject_ce_write(struct file *file, const char __user *data,
-			       size_t count, loff_t *ppos)
+static ssize_t inject_ce_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct edac_device_ctl_info *edac_dev = file->private_data;
+	struct edac_device_ctl_info *edac_dev = iocb->ki_filp->private_data;
 	struct edac_priv *priv = edac_dev->pvt_info;
+	size_t count = iov_iter_count(from);
 	int ret;
 
-	if (!data)
-		return -EFAULT;
-
-	ret = kstrtou8_from_user(data, count, 0, &priv->ce_bitpos);
+	ret = kstrtou8_from_iter(from, count, 0, &priv->ce_bitpos);
 	if (ret)
 		return ret;
 
@@ -280,7 +277,7 @@ static ssize_t inject_ce_write(struct file *file, const char __user *data,
 
 static const struct file_operations inject_ce_fops = {
 	.open = simple_open,
-	.write = inject_ce_write,
+	.write_iter = inject_ce_write,
 	.llseek = generic_file_llseek,
 };
 
@@ -291,21 +288,18 @@ static const struct file_operations inject_ce_fops = {
  * - Write the Uncorrectable Error bit position values:
  *      echo <bit_pos0 val>,<bit_pos1 val> > /sys/kernel/debug/edac/ocm/inject_ue_bitpos
  */
-static ssize_t inject_ue_write(struct file *file, const char __user *data,
-			       size_t count, loff_t *ppos)
+static ssize_t inject_ue_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct edac_device_ctl_info *edac_dev = file->private_data;
+	struct edac_device_ctl_info *edac_dev = iocb->ki_filp->private_data;
 	struct edac_priv *priv = edac_dev->pvt_info;
 	char buf[6], *pbuf, *token[2];
+	size_t count = iov_iter_count(from);
 	u64 ue_bitpos;
 	int i, ret;
 	u8 len;
 
-	if (!data)
-		return -EFAULT;
-
 	len = min_t(size_t, count, sizeof(buf));
-	if (copy_from_user(buf, data, len))
+	if (!copy_from_iter_full(from, len, from))
 		return -EFAULT;
 
 	buf[len] = '\0';
@@ -342,7 +336,7 @@ static ssize_t inject_ue_write(struct file *file, const char __user *data,
 
 static const struct file_operations inject_ue_fops = {
 	.open = simple_open,
-	.write = inject_ue_write,
+	.write_iter = inject_ue_write,
 	.llseek = generic_file_llseek,
 };
 
