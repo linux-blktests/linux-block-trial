@@ -145,10 +145,10 @@ static long riowd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	return 0;
 }
 
-static ssize_t riowd_write(struct file *file, const char __user *buf,
-						size_t count, loff_t *ppos)
+static ssize_t riowd_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct riowd *p = riowd_device;
+	size_t count = iov_iter_count(from);
 
 	if (count) {
 		riowd_writereg(p, riowd_timeout, WDTO_INDEX);
@@ -163,7 +163,7 @@ static const struct file_operations riowd_fops = {
 	.unlocked_ioctl =	riowd_ioctl,
 	.compat_ioctl	=	compat_ptr_ioctl,
 	.open =			riowd_open,
-	.write =		riowd_write,
+	.write_iter =		riowd_write,
 	.release =		riowd_release,
 };
 
