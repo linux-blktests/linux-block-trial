@@ -788,37 +788,36 @@ static int radeon_ttm_vram_open(struct inode *inode, struct file *filep)
 	return 0;
 }
 
-static ssize_t radeon_ttm_vram_read(struct file *f, char __user *buf,
-				    size_t size, loff_t *pos)
+static ssize_t radeon_ttm_vram_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct radeon_device *rdev = f->private_data;
+	struct radeon_device *rdev = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(to);
 	ssize_t result = 0;
 	int r;
 
-	if (size & 0x3 || *pos & 0x3)
+	if (size & 0x3 || iocb->ki_pos & 0x3)
 		return -EINVAL;
 
 	while (size) {
 		unsigned long flags;
 		uint32_t value;
 
-		if (*pos >= rdev->mc.mc_vram_size)
+		if (iocb->ki_pos >= rdev->mc.mc_vram_size)
 			return result;
 
 		spin_lock_irqsave(&rdev->mmio_idx_lock, flags);
-		WREG32(RADEON_MM_INDEX, ((uint32_t)*pos) | 0x80000000);
+		WREG32(RADEON_MM_INDEX, ((uint32_t)iocb->ki_pos) | 0x80000000);
 		if (rdev->family >= CHIP_CEDAR)
-			WREG32(EVERGREEN_MM_INDEX_HI, *pos >> 31);
+			WREG32(EVERGREEN_MM_INDEX_HI, iocb->ki_pos >> 31);
 		value = RREG32(RADEON_MM_DATA);
 		spin_unlock_irqrestore(&rdev->mmio_idx_lock, flags);
 
-		r = put_user(value, (uint32_t __user *)buf);
+		r = put_iter(value, to);
 		if (r)
 			return r;
 
 		result += 4;
-		buf += 4;
-		*pos += 4;
+		iocb->ki_pos += 4;
 		size -= 4;
 	}
 
@@ -828,7 +827,7 @@ static ssize_t radeon_ttm_vram_read(struct file *f, char __user *buf,
 static const struct file_operations radeon_ttm_vram_fops = {
 	.owner = THIS_MODULE,
 	.open = radeon_ttm_vram_open,
-	.read = radeon_ttm_vram_read,
+	.read_iter = radeon_ttm_vram_read,
 	.llseek = default_llseek
 };
 
@@ -840,16 +839,16 @@ static int radeon_ttm_gtt_open(struct inode *inode, struct file *filep)
 	return 0;
 }
 
-static ssize_t radeon_ttm_gtt_read(struct file *f, char __user *buf,
-				   size_t size, loff_t *pos)
+static ssize_t radeon_ttm_gtt_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct radeon_device *rdev = f->private_data;
+	struct radeon_device *rdev = iocb->ki_filp->private_data;
+	size_t size = iov_iter_count(to);
 	ssize_t result = 0;
 	int r;
 
 	while (size) {
-		loff_t p = *pos / PAGE_SIZE;
-		unsigned off = *pos & ~PAGE_MASK;
+		loff_t p = iocb->ki_pos / PAGE_SIZE;
+		unsigned off = iocb->ki_pos & ~PAGE_MASK;
 		size_t cur_size = min_t(size_t, size, PAGE_SIZE - off);
 		struct page *page;
 		void *ptr;
@@ -862,17 +861,16 @@ static ssize_t radeon_ttm_gtt_read(struct file *f, char __user *buf,
 			ptr = kmap_local_page(page);
 			ptr += off;
 
-			r = copy_to_user(buf, ptr, cur_size);
+			r = !copy_to_iter_full(ptr, cur_size, to);
 			kunmap_local(ptr);
 		} else
-			r = clear_user(buf, cur_size);
+			r = iov_iter_zero(cur_size, to) != cur_size;
 
 		if (r)
 			return -EFAULT;
 
 		result += cur_size;
-		buf += cur_size;
-		*pos += cur_size;
+		iocb->ki_pos += cur_size;
 		size -= cur_size;
 	}
 
@@ -882,7 +880,7 @@ static ssize_t radeon_ttm_gtt_read(struct file *f, char __user *buf,
 static const struct file_operations radeon_ttm_gtt_fops = {
 	.owner = THIS_MODULE,
 	.open = radeon_ttm_gtt_open,
-	.read = radeon_ttm_gtt_read,
+	.read_iter = radeon_ttm_gtt_read,
 	.llseek = default_llseek
 };
 
