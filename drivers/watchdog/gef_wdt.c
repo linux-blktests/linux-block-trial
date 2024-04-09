@@ -132,9 +132,10 @@ static void gef_wdt_set_timeout(unsigned int timeout)
 }
 
 
-static ssize_t gef_wdt_write(struct file *file, const char __user *data,
-				 size_t len, loff_t *ppos)
+static ssize_t gef_wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
+
 	if (len) {
 		if (!nowayout) {
 			size_t i;
@@ -143,7 +144,7 @@ static ssize_t gef_wdt_write(struct file *file, const char __user *data,
 
 			for (i = 0; i != len; i++) {
 				char c;
-				if (get_user(c, data + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_close = 42;
@@ -245,7 +246,7 @@ static int gef_wdt_release(struct inode *inode, struct file *file)
 
 static const struct file_operations gef_wdt_fops = {
 	.owner = THIS_MODULE,
-	.write = gef_wdt_write,
+	.write_iter = gef_wdt_write,
 	.unlocked_ioctl = gef_wdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open = gef_wdt_open,
