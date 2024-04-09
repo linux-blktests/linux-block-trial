@@ -3035,7 +3035,7 @@ static const struct file_operations amdgpu_driver_kms_fops = {
 	.unlocked_ioctl = amdgpu_drm_ioctl,
 	.mmap = drm_gem_mmap,
 	.poll = drm_poll,
-	.read = drm_read,
+	.read_iter = drm_read,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = amdgpu_kms_compat_ioctl,
 #endif

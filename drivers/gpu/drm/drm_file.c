@@ -104,7 +104,7 @@ bool drm_dev_needs_global_mutex(struct drm_device *dev)
  *             .unlocked_ioctl = drm_ioctl,
  *             .compat_ioctl = drm_compat_ioctl, // NULL if CONFIG_COMPAT=n
  *             .poll = drm_poll,
- *             .read = drm_read,
+ *             .read_iter = drm_read,
  *             .mmap = drm_gem_mmap,
  *     };
  *
@@ -515,18 +515,16 @@ EXPORT_SYMBOL(drm_release_noglobal);
 
 /**
  * drm_read - read method for DRM file
- * @filp: file pointer
- * @buffer: userspace destination pointer for the read
- * @count: count in bytes to read
- * @offset: offset to read
+ * @iocb: metadata for IO
+ * @to: userspace destination pointer for the read
  *
  * This function must be used by drivers as their &file_operations.read
  * method if they use DRM events for asynchronous signalling to userspace.
  * Since events are used by the KMS API for vblank and page flip completion this
  * means all modern display drivers must use it.
  *
- * @offset is ignored, DRM events are read like a pipe. Polling support is
- * provided by drm_poll().
+ * offset in @iocb is ignored, DRM events are read like a pipe. Polling support
+ * is provided by drm_poll().
  *
  * This function will only ever read a full event. Therefore userspace must
  * supply a big enough buffer to fit any event to ensure forward progress. Since
@@ -537,11 +535,11 @@ EXPORT_SYMBOL(drm_release_noglobal);
  * Number of bytes read (always aligned to full events, and can be 0) or a
  * negative error code on failure.
  */
-ssize_t drm_read(struct file *filp, char __user *buffer,
-		 size_t count, loff_t *offset)
+ssize_t drm_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct drm_file *file_priv = filp->private_data;
+	struct drm_file *file_priv = iocb->ki_filp->private_data;
 	struct drm_device *dev = file_priv->minor->dev;
+	size_t count = iov_iter_count(to);
 	ssize_t ret;
 
 	ret = mutex_lock_interruptible(&file_priv->event_read_lock);
@@ -564,7 +562,7 @@ ssize_t drm_read(struct file *filp, char __user *buffer,
 			if (ret)
 				break;
 
-			if (filp->f_flags & O_NONBLOCK) {
+			if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 				ret = -EAGAIN;
 				break;
 			}
@@ -590,7 +588,7 @@ put_back_event:
 				break;
 			}
 
-			if (copy_to_user(buffer + ret, e->event, length)) {
+			if (!copy_to_iter_full(e->event, length, to)) {
 				if (ret == 0)
 					ret = -EFAULT;
 				goto put_back_event;

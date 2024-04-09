@@ -363,7 +363,7 @@ static const struct file_operations xe_driver_fops = {
 	.unlocked_ioctl = xe_drm_ioctl,
 	.mmap = xe_mmap,
 	.poll = drm_poll,
-	.read = drm_read,
+	.read_iter = drm_read,
 	.compat_ioctl = xe_drm_compat_ioctl,
 	.llseek = noop_llseek,
 #ifdef CONFIG_PROC_FS

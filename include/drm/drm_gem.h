@@ -470,7 +470,7 @@ struct drm_gem_object {
 	.unlocked_ioctl	= drm_ioctl,\
 	.compat_ioctl	= drm_compat_ioctl,\
 	.poll		= drm_poll,\
-	.read		= drm_read,\
+	.read_iter	= drm_read,\
 	.llseek		= noop_llseek,\
 	.get_unmapped_area	= drm_gem_get_unmapped_area,\
 	.mmap		= drm_gem_mmap, \

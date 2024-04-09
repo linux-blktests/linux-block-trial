@@ -1572,7 +1572,7 @@ static const struct file_operations vmwgfx_driver_fops = {
 	.unlocked_ioctl = vmw_unlocked_ioctl,
 	.mmap = drm_gem_mmap,
 	.poll = drm_poll,
-	.read = drm_read,
+	.read_iter = drm_read,
 #if defined(CONFIG_COMPAT)
 	.compat_ioctl = vmw_compat_ioctl,
 #endif

@@ -499,7 +499,7 @@ static const struct file_operations psb_gem_fops = {
 	.compat_ioctl = drm_compat_ioctl,
 	.mmap = drm_gem_mmap,
 	.poll = drm_poll,
-	.read = drm_read,
+	.read_iter = drm_read,
 	.fop_flags = FOP_UNSIGNED_OFFSET,
 };
 

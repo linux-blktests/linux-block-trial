@@ -472,8 +472,7 @@ void drm_minor_release(struct drm_minor *minor);
 
 int drm_open(struct inode *inode, struct file *filp);
 int drm_open_helper(struct file *filp, struct drm_minor *minor);
-ssize_t drm_read(struct file *filp, char __user *buffer,
-		 size_t count, loff_t *offset);
+ssize_t drm_read(struct kiocb *iocb, struct iov_iter *to);
 int drm_release(struct inode *inode, struct file *filp);
 int drm_release_noglobal(struct inode *inode, struct file *filp);
 __poll_t drm_poll(struct file *filp, struct poll_table_struct *wait);

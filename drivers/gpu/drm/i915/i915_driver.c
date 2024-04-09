@@ -1760,7 +1760,7 @@ static const struct file_operations i915_driver_fops = {
 	.unlocked_ioctl = drm_ioctl,
 	.mmap = i915_gem_mmap,
 	.poll = drm_poll,
-	.read = drm_read,
+	.read_iter = drm_read,
 	.compat_ioctl = i915_ioc32_compat_ioctl,
 	.llseek = noop_llseek,
 #ifdef CONFIG_PROC_FS

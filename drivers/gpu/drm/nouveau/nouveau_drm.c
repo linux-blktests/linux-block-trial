@@ -1319,7 +1319,7 @@ nouveau_driver_fops = {
 	.unlocked_ioctl = nouveau_drm_ioctl,
 	.mmap = drm_gem_mmap,
 	.poll = drm_poll,
-	.read = drm_read,
+	.read_iter = drm_read,
 #if defined(CONFIG_COMPAT)
 	.compat_ioctl = nouveau_compat_ioctl,
 #endif
