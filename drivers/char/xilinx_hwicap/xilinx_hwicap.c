@@ -349,10 +349,10 @@ static int hwicap_initialize_hwicap(struct hwicap_drvdata *drvdata)
 	return 0;
 }
 
-static ssize_t
-hwicap_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+static ssize_t hwicap_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hwicap_drvdata *drvdata = file->private_data;
+	struct hwicap_drvdata *drvdata = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	ssize_t bytes_to_read = 0;
 	u32 *kbuf;
 	u32 words;
@@ -372,7 +372,7 @@ hwicap_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 			drvdata->read_buffer_in_use;
 
 		/* Return the data currently in the read buffer. */
-		if (copy_to_user(buf, drvdata->read_buffer, bytes_to_read)) {
+		if (!copy_to_iter_full(drvdata->read_buffer, bytes_to_read, to)) {
 			status = -EFAULT;
 			goto error;
 		}
@@ -417,7 +417,7 @@ hwicap_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 		}
 
 		/* If we fail to return the data to the user, then bail out. */
-		if (copy_to_user(buf, kbuf, bytes_to_read)) {
+		if (!copy_to_iter_full(kbuf, bytes_to_read, to)) {
 			free_page((unsigned long)kbuf);
 			status = -EFAULT;
 			goto error;
@@ -434,11 +434,10 @@ hwicap_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
 	return status;
 }
 
-static ssize_t
-hwicap_write(struct file *file, const char __user *buf,
-		size_t count, loff_t *ppos)
+static ssize_t hwicap_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hwicap_drvdata *drvdata = file->private_data;
+	struct hwicap_drvdata *drvdata = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	ssize_t written = 0;
 	ssize_t left = count;
 	u32 *kbuf;
@@ -475,16 +474,15 @@ hwicap_write(struct file *file, const char __user *buf,
 		if (drvdata->write_buffer_in_use) {
 			memcpy(kbuf, drvdata->write_buffer,
 					drvdata->write_buffer_in_use);
-			if (copy_from_user(
+			if (!copy_from_iter_full(
 			    (((char *)kbuf) + drvdata->write_buffer_in_use),
-			    buf + written,
-			    len - (drvdata->write_buffer_in_use))) {
+			    len - (drvdata->write_buffer_in_use), from)) {
 				free_page((unsigned long)kbuf);
 				status = -EFAULT;
 				goto error;
 			}
 		} else {
-			if (copy_from_user(kbuf, buf + written, len)) {
+			if (!copy_from_iter_full(kbuf, len, from)) {
 				free_page((unsigned long)kbuf);
 				status = -EFAULT;
 				goto error;
@@ -508,8 +506,7 @@ hwicap_write(struct file *file, const char __user *buf,
 		left -= len;
 	}
 	if ((left > 0) && (left < 4)) {
-		if (!copy_from_user(drvdata->write_buffer,
-						buf + written, left)) {
+		if (copy_from_iter_full(drvdata->write_buffer, left, from)) {
 			drvdata->write_buffer_in_use = left;
 			written += left;
 			left = 0;
@@ -589,8 +586,8 @@ static int hwicap_release(struct inode *inode, struct file *file)
 
 static const struct file_operations hwicap_fops = {
 	.owner = THIS_MODULE,
-	.write = hwicap_write,
-	.read = hwicap_read,
+	.write_iter = hwicap_write,
+	.read_iter = hwicap_read,
 	.open = hwicap_open,
 	.release = hwicap_release,
 	.llseek = noop_llseek,
