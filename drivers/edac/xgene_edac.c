@@ -138,11 +138,10 @@ struct xgene_edac_mc_ctx {
 	u32			mcu_id;
 };
 
-static ssize_t xgene_edac_mc_err_inject_write(struct file *file,
-					      const char __user *data,
-					      size_t count, loff_t *ppos)
+static ssize_t xgene_edac_mc_err_inject_write(struct kiocb *iocb,
+					      struct iov_iter *from)
 {
-	struct mem_ctl_info *mci = file->private_data;
+	struct mem_ctl_info *mci = iocb->ki_filp->private_data;
 	struct xgene_edac_mc_ctx *ctx = mci->pvt_info;
 	int i;
 
@@ -151,12 +150,12 @@ static ssize_t xgene_edac_mc_err_inject_write(struct file *file,
 		       MCU_ESRR_DEMANDUCERR_MASK | MCU_ESRR_CERR_MASK,
 		       ctx->mcu_csr + MCUESRRA0 + i * MCU_RANK_STRIDE);
 	}
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations xgene_edac_mc_debug_inject_fops = {
 	.open = simple_open,
-	.write = xgene_edac_mc_err_inject_write,
+	.write_iter = xgene_edac_mc_err_inject_write,
 	.llseek = generic_file_llseek,
 };
 
@@ -804,11 +803,10 @@ static void xgene_edac_pmd_hw_ctl(struct edac_device_ctl_info *edac_dev,
 	}
 }
 
-static ssize_t xgene_edac_pmd_l1_inject_ctrl_write(struct file *file,
-						   const char __user *data,
-						   size_t count, loff_t *ppos)
+static ssize_t xgene_edac_pmd_l1_inject_ctrl_write(struct kiocb *iocb,
+						   struct iov_iter *from)
 {
-	struct edac_device_ctl_info *edac_dev = file->private_data;
+	struct edac_device_ctl_info *edac_dev = iocb->ki_filp->private_data;
 	struct xgene_edac_pmd_ctx *ctx = edac_dev->pvt_info;
 	void __iomem *cpux_pg_f;
 	int i;
@@ -827,16 +825,16 @@ static ssize_t xgene_edac_pmd_l1_inject_ctrl_write(struct file *file,
 		       MEMERR_CPU_MMUESR_CERR_MASK,
 		       cpux_pg_f + MEMERR_CPU_MMUESRA_PAGE_OFFSET);
 	}
-	return count;
+	return iov_iter_count(from);
 }
 
-static ssize_t xgene_edac_pmd_l2_inject_ctrl_write(struct file *file,
-						   const char __user *data,
-						   size_t count, loff_t *ppos)
+static ssize_t xgene_edac_pmd_l2_inject_ctrl_write(struct kiocb *iocb,
+						   struct iov_iter *from)
 {
-	struct edac_device_ctl_info *edac_dev = file->private_data;
+	struct edac_device_ctl_info *edac_dev = iocb->ki_filp->private_data;
 	struct xgene_edac_pmd_ctx *ctx = edac_dev->pvt_info;
 	void __iomem *pg_e = ctx->pmd_csr + CPU_MEMERR_L2C_PAGE;
+	size_t count = iov_iter_count(from);
 
 	writel(MEMERR_L2C_L2ESR_MULTUCERR_MASK |
 	       MEMERR_L2C_L2ESR_MULTICERR_MASK |
@@ -849,11 +847,11 @@ static ssize_t xgene_edac_pmd_l2_inject_ctrl_write(struct file *file,
 static const struct file_operations xgene_edac_pmd_debug_inject_fops[] = {
 	{
 	.open = simple_open,
-	.write = xgene_edac_pmd_l1_inject_ctrl_write,
+	.write_iter = xgene_edac_pmd_l1_inject_ctrl_write,
 	.llseek = generic_file_llseek, },
 	{
 	.open = simple_open,
-	.write = xgene_edac_pmd_l2_inject_ctrl_write,
+	.write_iter = xgene_edac_pmd_l2_inject_ctrl_write,
 	.llseek = generic_file_llseek, },
 	{ }
 };
@@ -1144,21 +1142,20 @@ static void xgene_edac_l3_hw_init(struct edac_device_ctl_info *edac_dev,
 	}
 }
 
-static ssize_t xgene_edac_l3_inject_ctrl_write(struct file *file,
-					       const char __user *data,
-					       size_t count, loff_t *ppos)
+static ssize_t xgene_edac_l3_inject_ctrl_write(struct kiocb *iocb,
+					       struct iov_iter *from)
 {
-	struct edac_device_ctl_info *edac_dev = file->private_data;
+	struct edac_device_ctl_info *edac_dev = iocb->ki_filp->private_data;
 	struct xgene_edac_dev_ctx *ctx = edac_dev->pvt_info;
 
 	/* Generate all errors */
 	writel(0xFFFFFFFF, ctx->dev_csr + L3C_ESR);
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations xgene_edac_l3_debug_inject_fops = {
 	.open = simple_open,
-	.write = xgene_edac_l3_inject_ctrl_write,
+	.write_iter = xgene_edac_l3_inject_ctrl_write,
 	.llseek = generic_file_llseek
 };
 
