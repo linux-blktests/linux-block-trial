@@ -180,11 +180,11 @@ static int dsp56k_upload(u_char __user *bin, int len)
 	return 0;
 }
 
-static ssize_t dsp56k_read(struct file *file, char __user *buf, size_t count,
-			   loff_t *ppos)
+static ssize_t dsp56k_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct inode *inode = file_inode(file);
+	struct inode *inode = file_inode(iocb->ki_filp);
 	int dev = iminor(inode) & 0x0f;
+	size_t count = iov_iter_count(to);
 
 	switch(dev)
 	{
@@ -201,36 +201,30 @@ static ssize_t dsp56k_read(struct file *file, char __user *buf, size_t count,
 		case 1:  /* 8 bit */
 		{
 			handshake(count, dsp56k.maxio, dsp56k.timeout, DSP56K_RECEIVE,
-				  put_user(dsp56k_host_interface.data.b[3], buf+n++));
+				  put_iter(dsp56k_host_interface.data.b[3], to); n++);
 			return n;
 		}
 		case 2:  /* 16 bit */
 		{
-			short __user *data;
-
 			count /= 2;
-			data = (short __user *) buf;
 			handshake(count, dsp56k.maxio, dsp56k.timeout, DSP56K_RECEIVE,
-				  put_user(dsp56k_host_interface.data.w[1], data+n++));
+				  put_iter(dsp56k_host_interface.data.w[1], to); n++);
 			return 2*n;
 		}
 		case 3:  /* 24 bit */
 		{
 			count /= 3;
 			handshake(count, dsp56k.maxio, dsp56k.timeout, DSP56K_RECEIVE,
-				  put_user(dsp56k_host_interface.data.b[1], buf+n++);
-				  put_user(dsp56k_host_interface.data.b[2], buf+n++);
-				  put_user(dsp56k_host_interface.data.b[3], buf+n++));
+				  put_iter(dsp56k_host_interface.data.b[1], to);
+				  put_iter(dsp56k_host_interface.data.b[2], to);
+				  put_iter(dsp56k_host_interface.data.b[3], to); n++);
 			return 3*n;
 		}
 		case 4:  /* 32 bit */
 		{
-			long __user *data;
-
 			count /= 4;
-			data = (long __user *) buf;
 			handshake(count, dsp56k.maxio, dsp56k.timeout, DSP56K_RECEIVE,
-				  put_user(dsp56k_host_interface.data.l, data+n++));
+				  put_iter(dsp56k_host_interface.data.l, to); n++);
 			return 4*n;
 		}
 		}
@@ -243,11 +237,11 @@ static ssize_t dsp56k_read(struct file *file, char __user *buf, size_t count,
 	}
 }
 
-static ssize_t dsp56k_write(struct file *file, const char __user *buf, size_t count,
-			    loff_t *ppos)
+static ssize_t dsp56k_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct inode *inode = file_inode(file);
+	struct inode *inode = file_inode(iocb->ki_filp);
 	int dev = iminor(inode) & 0x0f;
+	size_t count = iov_iter_count(from);
 
 	switch(dev)
 	{
@@ -263,36 +257,30 @@ static ssize_t dsp56k_write(struct file *file, const char __user *buf, size_t co
 		case 1:  /* 8 bit */
 		{
 			handshake(count, dsp56k.maxio, dsp56k.timeout, DSP56K_TRANSMIT,
-				  get_user(dsp56k_host_interface.data.b[3], buf+n++));
+				  get_iter(dsp56k_host_interface.data.b[3], from); n++);
 			return n;
 		}
 		case 2:  /* 16 bit */
 		{
-			const short __user *data;
-
 			count /= 2;
-			data = (const short __user *)buf;
 			handshake(count, dsp56k.maxio, dsp56k.timeout, DSP56K_TRANSMIT,
-				  get_user(dsp56k_host_interface.data.w[1], data+n++));
+				  get_iter(dsp56k_host_interface.data.w[1], from); n++);
 			return 2*n;
 		}
 		case 3:  /* 24 bit */
 		{
 			count /= 3;
 			handshake(count, dsp56k.maxio, dsp56k.timeout, DSP56K_TRANSMIT,
-				  get_user(dsp56k_host_interface.data.b[1], buf+n++);
-				  get_user(dsp56k_host_interface.data.b[2], buf+n++);
-				  get_user(dsp56k_host_interface.data.b[3], buf+n++));
+				  get_iter(dsp56k_host_interface.data.b[1], from);
+				  get_iter(dsp56k_host_interface.data.b[2], from);
+				  get_iter(dsp56k_host_interface.data.b[3], from); n++);
 			return 3*n;
 		}
 		case 4:  /* 32 bit */
 		{
-			const long __user *data;
-
 			count /= 4;
-			data = (const long __user *)buf;
 			handshake(count, dsp56k.maxio, dsp56k.timeout, DSP56K_TRANSMIT,
-				  get_user(dsp56k_host_interface.data.l, data+n++));
+				  get_iter(dsp56k_host_interface.data.l, from); n++);
 			return 4*n;
 		}
 		}
@@ -480,8 +468,8 @@ static int dsp56k_release(struct inode *inode, struct file *file)
 
 static const struct file_operations dsp56k_fops = {
 	.owner		= THIS_MODULE,
-	.read		= dsp56k_read,
-	.write		= dsp56k_write,
+	.read_iter	= dsp56k_read,
+	.write_iter	= dsp56k_write,
 	.unlocked_ioctl	= dsp56k_ioctl,
 	.open		= dsp56k_open,
 	.release	= dsp56k_release,
