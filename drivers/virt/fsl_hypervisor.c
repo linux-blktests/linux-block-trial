@@ -590,11 +590,10 @@ static __poll_t fsl_hv_poll(struct file *filp, struct poll_table_struct *p)
  * return them to the caller as an array of 32-bit integers.  Otherwise,
  * block until there is at least one handle to return.
  */
-static ssize_t fsl_hv_read(struct file *filp, char __user *buf, size_t len,
-			   loff_t *off)
+static ssize_t fsl_hv_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct doorbell_queue *dbq = filp->private_data;
-	uint32_t __user *p = (uint32_t __user *) buf; /* for put_user() */
+	struct doorbell_queue *dbq = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	unsigned long flags;
 	ssize_t count = 0;
 
@@ -613,7 +612,7 @@ static ssize_t fsl_hv_read(struct file *filp, char __user *buf, size_t len,
 			spin_unlock_irqrestore(&dbq->lock, flags);
 			if (count)
 				break;
-			if (filp->f_flags & O_NONBLOCK)
+			if (iocb->ki_filp->f_flags & O_NONBLOCK)
 				return -EAGAIN;
 			if (wait_event_interruptible(dbq->wait,
 						     dbq->head != dbq->tail))
@@ -639,9 +638,8 @@ static ssize_t fsl_hv_read(struct file *filp, char __user *buf, size_t len,
 
 		spin_unlock_irqrestore(&dbq->lock, flags);
 
-		if (put_user(dbell, p))
+		if (put_iter(dbell, to))
 			return -EFAULT;
-		p++;
 		count += sizeof(uint32_t);
 		len -= sizeof(uint32_t);
 	}
@@ -700,7 +698,7 @@ static const struct file_operations fsl_hv_fops = {
 	.open = fsl_hv_open,
 	.release = fsl_hv_close,
 	.poll = fsl_hv_poll,
-	.read = fsl_hv_read,
+	.read_iter = fsl_hv_read,
 	.unlocked_ioctl = fsl_hv_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
 };
