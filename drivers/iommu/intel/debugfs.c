@@ -684,19 +684,19 @@ static int dmar_perf_latency_open(struct inode *inode, struct file *filp)
 	return single_open(filp, latency_show, NULL);
 }
 
-static ssize_t dmar_perf_latency_write(struct file *filp,
-				       const char __user *ubuf,
-				       size_t cnt, loff_t *ppos)
+static ssize_t dmar_perf_latency_write(struct kiocb *iocb,
+				       struct iov_iter *from)
 {
 	struct dmar_drhd_unit *drhd;
 	struct intel_iommu *iommu;
+	size_t cnt = iov_iter_count(from);
 	int counting;
 	char buf[64];
 
 	if (cnt > 63)
 		cnt = 63;
 
-	if (copy_from_user(&buf, ubuf, cnt))
+	if (!copy_from_iter_full(&buf, cnt, from))
 		return -EFAULT;
 
 	buf[cnt] = 0;
@@ -736,14 +736,14 @@ static ssize_t dmar_perf_latency_write(struct file *filp,
 		return -EINVAL;
 	}
 
-	*ppos += cnt;
+	iocb->ki_pos += cnt;
 	return cnt;
 }
 
 static const struct file_operations dmar_perf_latency_fops = {
 	.open		= dmar_perf_latency_open,
-	.write		= dmar_perf_latency_write,
-	.read		= seq_read,
+	.write_iter	= dmar_perf_latency_write,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
