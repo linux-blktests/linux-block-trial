@@ -891,6 +891,7 @@ void dasd_profile_off(struct dasd_profile *profile)
 	spin_unlock_bh(&profile->lock);
 }
 
+/* this can go away once proc is converted to ->write_iter() */
 char *dasd_get_user_string(const char __user *user_buf, size_t user_len)
 {
 	char *buffer;
@@ -910,18 +911,37 @@ char *dasd_get_user_string(const char __user *user_buf, size_t user_len)
 	return buffer;
 }
 
-static ssize_t dasd_stats_write(struct file *file,
-				const char __user *user_buf,
-				size_t user_len, loff_t *pos)
+char *dasd_get_iter_string(struct iov_iter *from)
+{
+	size_t user_len = iov_iter_count(from);
+	char *buffer;
+
+	buffer = vmalloc(user_len + 1);
+	if (buffer == NULL)
+		return ERR_PTR(-ENOMEM);
+	if (!copy_from_iter_full(buffer, user_len, from)) {
+		vfree(buffer);
+		return ERR_PTR(-EFAULT);
+	}
+	/* got the string, now strip linefeed. */
+	if (buffer[user_len - 1] == '\n')
+		buffer[user_len - 1] = 0;
+	else
+		buffer[user_len] = 0;
+	return buffer;
+}
+
+static ssize_t dasd_stats_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char *buffer, *str;
 	int rc;
-	struct seq_file *m = (struct seq_file *)file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct dasd_profile *prof = m->private;
+	size_t user_len = iov_iter_count(from);
 
 	if (user_len > 65536)
 		user_len = 65536;
-	buffer = dasd_get_user_string(user_buf, user_len);
+	buffer = dasd_get_iter_string(from);
 	if (IS_ERR(buffer))
 		return PTR_ERR(buffer);
 
@@ -1035,10 +1055,10 @@ static int dasd_stats_open(struct inode *inode, struct file *file)
 static const struct file_operations dasd_stats_raw_fops = {
 	.owner		= THIS_MODULE,
 	.open		= dasd_stats_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
-	.write		= dasd_stats_write,
+	.write_iter	= dasd_stats_write,
 };
 
 static void dasd_profile_init(struct dasd_profile *profile,

@@ -593,15 +593,15 @@ static int dasd_eer_close(struct inode *inp, struct file *filp)
 	return 0;
 }
 
-static ssize_t dasd_eer_read(struct file *filp, char __user *buf,
-			     size_t count, loff_t *ppos)
+static ssize_t dasd_eer_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	int tc,rc;
 	int tailcount,effective_count;
         unsigned long flags;
 	struct eerbuffer *eerb;
 
-	eerb = (struct eerbuffer *) filp->private_data;
+	eerb = (struct eerbuffer *) iocb->ki_filp->private_data;
 	if (mutex_lock_interruptible(&readbuffer_mutex))
 		return -ERESTARTSYS;
 
@@ -626,7 +626,7 @@ static ssize_t dasd_eer_read(struct file *filp, char __user *buf,
 				/* no data available */
 				spin_unlock_irqrestore(&bufferlock, flags);
 				mutex_unlock(&readbuffer_mutex);
-				if (filp->f_flags & O_NONBLOCK)
+				if (iocb->ki_filp->f_flags & O_NONBLOCK)
 					return -EAGAIN;
 				rc = wait_event_interruptible(
 					dasd_eer_read_wait_queue,
@@ -648,7 +648,7 @@ static ssize_t dasd_eer_read(struct file *filp, char __user *buf,
 
 	spin_unlock_irqrestore(&bufferlock, flags);
 
-	if (copy_to_user(buf, readbuffer, effective_count)) {
+	if (!copy_to_iter_full(readbuffer, effective_count, to)) {
 		mutex_unlock(&readbuffer_mutex);
 		return -EFAULT;
 	}
@@ -677,7 +677,7 @@ static __poll_t dasd_eer_poll(struct file *filp, poll_table *ptable)
 static const struct file_operations dasd_eer_fops = {
 	.open		= &dasd_eer_open,
 	.release	= &dasd_eer_close,
-	.read		= &dasd_eer_read,
+	.read_iter	= &dasd_eer_read,
 	.poll		= &dasd_eer_poll,
 	.owner		= THIS_MODULE,
 	.llseek		= noop_llseek,
