@@ -60,12 +60,10 @@ static int display_open(struct inode *inode, struct file *file);
 static int display_close(struct inode *inode, struct file *file);
 
 /* VFD write operation */
-static ssize_t vfd_write(struct file *file, const char __user *buf,
-			 size_t n_bytes, loff_t *pos);
+static ssize_t vfd_write(struct kiocb *iocb, struct iov_iter *from);
 
 /* LCD file_operations override function prototypes */
-static ssize_t lcd_write(struct file *file, const char __user *buf,
-			 size_t n_bytes, loff_t *pos);
+static ssize_t lcd_write(struct kiocb *iocb, struct iov_iter *from);
 
 /*** G L O B A L S ***/
 
@@ -174,7 +172,7 @@ struct imon_context {
 static const struct file_operations vfd_fops = {
 	.owner		= THIS_MODULE,
 	.open		= display_open,
-	.write		= vfd_write,
+	.write_iter	= vfd_write,
 	.release	= display_close,
 	.llseek		= noop_llseek,
 };
@@ -183,7 +181,7 @@ static const struct file_operations vfd_fops = {
 static const struct file_operations lcd_fops = {
 	.owner		= THIS_MODULE,
 	.open		= display_open,
-	.write		= lcd_write,
+	.write_iter	= lcd_write,
 	.release	= display_close,
 	.llseek		= noop_llseek,
 };
@@ -943,16 +941,16 @@ static const struct attribute_group imon_rf_attr_group = {
  * than 32 bytes are provided spaces will be appended to
  * generate a full screen.
  */
-static ssize_t vfd_write(struct file *file, const char __user *buf,
-			 size_t n_bytes, loff_t *pos)
+static ssize_t vfd_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int i;
 	int offset;
 	int seq;
 	int retval = 0;
-	struct imon_context *ictx = file->private_data;
+	struct imon_context *ictx = iocb->ki_filp->private_data;
 	static const unsigned char vfd_packet6[] = {
 		0x01, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF };
+	size_t n_bytes = iov_iter_count(from);
 
 	if (mutex_lock_interruptible(&ictx->lock))
 		return -ERESTARTSYS;
@@ -974,7 +972,7 @@ static ssize_t vfd_write(struct file *file, const char __user *buf,
 		goto exit;
 	}
 
-	if (copy_from_user(ictx->tx.data_buf, buf, n_bytes)) {
+	if (!copy_from_iter_full(ictx->tx.data_buf, n_bytes, from)) {
 		retval = -EFAULT;
 		goto exit;
 	}
@@ -1030,11 +1028,11 @@ exit:
  * display whatever diacritics you need, and so on), but it's also
  * a lot more complicated than most LCDs...
  */
-static ssize_t lcd_write(struct file *file, const char __user *buf,
-			 size_t n_bytes, loff_t *pos)
+static ssize_t lcd_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int retval = 0;
-	struct imon_context *ictx = file->private_data;
+	struct imon_context *ictx = iocb->ki_filp->private_data;
+	size_t n_bytes = iov_iter_count(from);
 
 	mutex_lock(&ictx->lock);
 
@@ -1056,7 +1054,7 @@ static ssize_t lcd_write(struct file *file, const char __user *buf,
 		goto exit;
 	}
 
-	if (copy_from_user(ictx->usb_tx_buf, buf, 8)) {
+	if (!copy_from_iter_full(ictx->usb_tx_buf, 8, from)) {
 		retval = -EFAULT;
 		goto exit;
 	}
