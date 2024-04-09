@@ -76,6 +76,7 @@ static ssize_t media_read(struct file *filp, char __user *buf,
 		return -EIO;
 	return devnode->fops->read(filp, buf, sz, off);
 }
+FOPS_READ_ITER_HELPER(media_read);
 
 static ssize_t media_write(struct file *filp, const char __user *buf,
 		size_t sz, loff_t *off)
@@ -88,6 +89,7 @@ static ssize_t media_write(struct file *filp, const char __user *buf,
 		return -EIO;
 	return devnode->fops->write(filp, buf, sz, off);
 }
+FOPS_WRITE_ITER_HELPER(media_write);
 
 static __poll_t media_poll(struct file *filp,
 			       struct poll_table_struct *poll)
@@ -193,8 +195,8 @@ static int media_release(struct inode *inode, struct file *filp)
 
 static const struct file_operations media_devnode_fops = {
 	.owner = THIS_MODULE,
-	.read = media_read,
-	.write = media_write,
+	.read_iter = media_read_iter,
+	.write_iter = media_write_iter,
 	.open = media_open,
 	.unlocked_ioctl = media_ioctl,
 #ifdef CONFIG_COMPAT
