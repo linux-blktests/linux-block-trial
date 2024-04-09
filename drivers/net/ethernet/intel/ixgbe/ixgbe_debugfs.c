@@ -10,16 +10,17 @@ static struct dentry *ixgbe_dbg_root;
 
 static char ixgbe_dbg_reg_ops_buf[256] = "";
 
-static ssize_t ixgbe_dbg_common_ops_read(struct file *filp, char __user *buffer,
-					 size_t count, loff_t *ppos,
+static ssize_t ixgbe_dbg_common_ops_read(struct kiocb *iocb,
+					 struct iov_iter *to,
 					 char *dbg_buf)
 {
-	struct ixgbe_adapter *adapter = filp->private_data;
+	struct ixgbe_adapter *adapter = iocb->ki_filp->private_data;
 	char *buf;
 	int len;
+	size_t count = iov_iter_count(to);
 
 	/* don't allow partial reads */
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	buf = kasprintf(GFP_KERNEL, "%s: %s\n",
@@ -32,51 +33,43 @@ static ssize_t ixgbe_dbg_common_ops_read(struct file *filp, char __user *buffer,
 		return -ENOSPC;
 	}
 
-	len = simple_read_from_buffer(buffer, count, ppos, buf, strlen(buf));
+	len = simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 
 	kfree(buf);
 	return len;
 }
 
 /**
- * ixgbe_dbg_reg_ops_read - read for reg_ops datum
- * @filp: the opened file
- * @buffer: where to write the data for the user to read
- * @count: the size of the user's buffer
- * @ppos: file position offset
+ * ixgbe_dbg_reg_ops_read_iter - read for reg_ops datum
+ * @iocb: the kernel io callback (kiocb) struct
+ * @to: iovec iterator
  **/
-static ssize_t ixgbe_dbg_reg_ops_read(struct file *filp, char __user *buffer,
-				      size_t count, loff_t *ppos)
+static ssize_t ixgbe_dbg_reg_ops_read_iter(struct kiocb *iocb,
+					   struct iov_iter *to)
 {
-	return ixgbe_dbg_common_ops_read(filp, buffer, count, ppos,
-					 ixgbe_dbg_reg_ops_buf);
+	return ixgbe_dbg_common_ops_read(iocb, to, ixgbe_dbg_reg_ops_buf);
 }
 
 /**
- * ixgbe_dbg_reg_ops_write - write into reg_ops datum
- * @filp: the opened file
- * @buffer: where to find the user's data
- * @count: the length of the user's data
- * @ppos: file position offset
+ * ixgbe_dbg_reg_ops_write_iter - write into reg_ops datum
+ * @iocb: the kernel io callback (kiocb) struct
+ * @from: iovec iterator
  **/
-static ssize_t ixgbe_dbg_reg_ops_write(struct file *filp,
-				     const char __user *buffer,
-				     size_t count, loff_t *ppos)
+static ssize_t ixgbe_dbg_reg_ops_write_iter(struct kiocb *iocb,
+					    struct iov_iter *from)
 {
-	struct ixgbe_adapter *adapter = filp->private_data;
+	struct ixgbe_adapter *adapter = iocb->ki_filp->private_data;
 	int len;
+	size_t count = iov_iter_count(from);
 
 	/* don't allow partial writes */
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 	if (count >= sizeof(ixgbe_dbg_reg_ops_buf))
 		return -ENOSPC;
 
-	len = simple_write_to_buffer(ixgbe_dbg_reg_ops_buf,
-				     sizeof(ixgbe_dbg_reg_ops_buf)-1,
-				     ppos,
-				     buffer,
-				     count);
+	len = simple_copy_from_iter(ixgbe_dbg_reg_ops_buf, &iocb->ki_pos,
+				    sizeof(ixgbe_dbg_reg_ops_buf) - 1, from);
 	if (len < 0)
 		return len;
 
@@ -115,51 +108,43 @@ static ssize_t ixgbe_dbg_reg_ops_write(struct file *filp,
 static const struct file_operations ixgbe_dbg_reg_ops_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read =  ixgbe_dbg_reg_ops_read,
-	.write = ixgbe_dbg_reg_ops_write,
+	.read_iter = ixgbe_dbg_reg_ops_read_iter,
+	.write_iter = ixgbe_dbg_reg_ops_write_iter,
 };
 
 static char ixgbe_dbg_netdev_ops_buf[256] = "";
 
 /**
- * ixgbe_dbg_netdev_ops_read - read for netdev_ops datum
- * @filp: the opened file
- * @buffer: where to write the data for the user to read
- * @count: the size of the user's buffer
- * @ppos: file position offset
+ * ixgbe_dbg_netdev_ops_read_iter - read for netdev_ops datum
+ * @iocb: the kernel io callback (kiocb) struct
+ * @to: iovec iterator
  **/
-static ssize_t ixgbe_dbg_netdev_ops_read(struct file *filp, char __user *buffer,
-					 size_t count, loff_t *ppos)
+static ssize_t ixgbe_dbg_netdev_ops_read_iter(struct kiocb *iocb,
+					      struct iov_iter *to)
 {
-	return ixgbe_dbg_common_ops_read(filp, buffer, count, ppos,
-					 ixgbe_dbg_netdev_ops_buf);
+	return ixgbe_dbg_common_ops_read(iocb, to, ixgbe_dbg_netdev_ops_buf);
 }
 
 /**
- * ixgbe_dbg_netdev_ops_write - write into netdev_ops datum
- * @filp: the opened file
- * @buffer: where to find the user's data
- * @count: the length of the user's data
- * @ppos: file position offset
+ * ixgbe_dbg_netdev_ops_write_iter - write into netdev_ops datum
+ * @iocb: the kernel io callback (kiocb) struct
+ * @from: iovec iterator
  **/
-static ssize_t ixgbe_dbg_netdev_ops_write(struct file *filp,
-					  const char __user *buffer,
-					  size_t count, loff_t *ppos)
+static ssize_t ixgbe_dbg_netdev_ops_write_iter(struct kiocb *iocb,
+					       struct iov_iter *from)
 {
-	struct ixgbe_adapter *adapter = filp->private_data;
+	struct ixgbe_adapter *adapter = iocb->ki_filp->private_data;
 	int len;
+	size_t count = iov_iter_count(from);
 
 	/* don't allow partial writes */
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 	if (count >= sizeof(ixgbe_dbg_netdev_ops_buf))
 		return -ENOSPC;
 
-	len = simple_write_to_buffer(ixgbe_dbg_netdev_ops_buf,
-				     sizeof(ixgbe_dbg_netdev_ops_buf)-1,
-				     ppos,
-				     buffer,
-				     count);
+	len = simple_copy_from_iter(ixgbe_dbg_netdev_ops_buf, &iocb->ki_pos,
+				    sizeof(ixgbe_dbg_netdev_ops_buf) - 1, from);
 	if (len < 0)
 		return len;
 
@@ -181,8 +166,8 @@ static ssize_t ixgbe_dbg_netdev_ops_write(struct file *filp,
 static const struct file_operations ixgbe_dbg_netdev_ops_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = ixgbe_dbg_netdev_ops_read,
-	.write = ixgbe_dbg_netdev_ops_write,
+	.read_iter = ixgbe_dbg_netdev_ops_read_iter,
+	.write_iter = ixgbe_dbg_netdev_ops_write_iter,
 };
 
 /**

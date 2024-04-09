@@ -1573,11 +1573,12 @@ command_write_done:
 	cmd_buf = NULL;
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(i40e_dbg_command_write);
 
 static const struct file_operations i40e_dbg_command_fops = {
 	.owner = THIS_MODULE,
 	.open =  simple_open,
-	.write = i40e_dbg_command_write,
+	.write_iter = i40e_dbg_command_write_iter,
 };
 
 /**************************************************************
@@ -1699,11 +1700,12 @@ netdev_ops_write_done:
 	kfree(cmd_buf);
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(i40e_dbg_netdev_ops_write);
 
 static const struct file_operations i40e_dbg_netdev_ops_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.write = i40e_dbg_netdev_ops_write,
+	.write_iter = i40e_dbg_netdev_ops_write_iter,
 };
 
 /**

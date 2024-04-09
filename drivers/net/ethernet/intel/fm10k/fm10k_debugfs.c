@@ -132,11 +132,11 @@ static int fm10k_dbg_desc_open(struct inode *inode, struct file *filep)
 }
 
 static const struct file_operations fm10k_dbg_desc_fops = {
-	.owner   = THIS_MODULE,
-	.open    = fm10k_dbg_desc_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = seq_release,
+	.owner     = THIS_MODULE,
+	.open      = fm10k_dbg_desc_open,
+	.read_iter = seq_read_iter,
+	.llseek    = seq_lseek,
+	.release   = seq_release,
 };
 
 /**
