@@ -795,7 +795,7 @@ static int type_c_parameter_open(struct inode *inode, struct file *file)
 
 static const struct file_operations type_c_parameter_fops = {
 	.open			= type_c_parameter_open,
-	.read			= seq_read,
+	.read_iter		= seq_read_iter,
 	.llseek			= seq_lseek,
 	.release		= single_release,
 };
@@ -837,7 +837,7 @@ static int type_c_status_open(struct inode *inode, struct file *file)
 
 static const struct file_operations type_c_status_fops = {
 	.open			= type_c_status_open,
-	.read			= seq_read,
+	.read_iter		= seq_read_iter,
 	.llseek			= seq_lseek,
 	.release		= single_release,
 };
