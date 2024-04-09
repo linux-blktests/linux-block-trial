@@ -1374,12 +1374,12 @@ EXPORT_SYMBOL(mipi_dbi_spi_transfer);
 
 #ifdef CONFIG_DEBUG_FS
 
-static ssize_t mipi_dbi_debugfs_command_write(struct file *file,
-					      const char __user *ubuf,
-					      size_t count, loff_t *ppos)
+static ssize_t mipi_dbi_debugfs_command_write(struct kiocb *iocb,
+					      struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct mipi_dbi_dev *dbidev = m->private;
+	size_t count = iov_iter_count(from);
 	u8 val, cmd = 0, parameters[64];
 	char *buf, *pos, *token;
 	int i, ret, idx;
@@ -1387,7 +1387,7 @@ static ssize_t mipi_dbi_debugfs_command_write(struct file *file,
 	if (!drm_dev_enter(&dbidev->drm, &idx))
 		return -ENODEV;
 
-	buf = memdup_user_nul(ubuf, count);
+	buf = iterdup_nul(from, count);
 	if (IS_ERR(buf)) {
 		ret = PTR_ERR(buf);
 		goto err_exit;
@@ -1488,10 +1488,10 @@ static int mipi_dbi_debugfs_command_open(struct inode *inode,
 static const struct file_operations mipi_dbi_debugfs_command_fops = {
 	.owner = THIS_MODULE,
 	.open = mipi_dbi_debugfs_command_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = mipi_dbi_debugfs_command_write,
+	.write_iter = mipi_dbi_debugfs_command_write,
 };
 
 /**
