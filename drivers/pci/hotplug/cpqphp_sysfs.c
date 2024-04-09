@@ -156,11 +156,10 @@ static loff_t lseek(struct file *file, loff_t off, int whence)
 	return fixed_size_llseek(file, off, whence, dbg->size);
 }
 
-static ssize_t read(struct file *file, char __user *buf,
-		    size_t nbytes, loff_t *ppos)
+static ssize_t read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ctrl_dbg *dbg = file->private_data;
-	return simple_read_from_buffer(buf, nbytes, ppos, dbg->data, dbg->size);
+	struct ctrl_dbg *dbg = iocb->ki_filp->private_data;
+	return simple_copy_from_iter(dbg->data, &iocb->ki_pos, dbg->size, to);
 }
 
 static int release(struct inode *inode, struct file *file)
@@ -176,7 +175,7 @@ static const struct file_operations debug_ops = {
 	.owner = THIS_MODULE,
 	.open = open,
 	.llseek = lseek,
-	.read = read,
+	.read_iter = read,
 	.release = release,
 };
 
