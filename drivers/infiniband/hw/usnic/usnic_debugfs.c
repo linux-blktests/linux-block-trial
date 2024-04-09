@@ -42,13 +42,13 @@
 static struct dentry *debugfs_root;
 static struct dentry *flows_dentry;
 
-static ssize_t usnic_debugfs_buildinfo_read(struct file *f, char __user *data,
-						size_t count, loff_t *ppos)
+static ssize_t usnic_debugfs_buildinfo_read(struct kiocb *iocb,
+					    struct iov_iter *to)
 {
 	char buf[500];
 	int res;
 
-	if (*ppos > 0)
+	if (iocb->ki_pos > 0)
 		return 0;
 
 	res = scnprintf(buf, sizeof(buf),
@@ -56,29 +56,29 @@ static ssize_t usnic_debugfs_buildinfo_read(struct file *f, char __user *data,
 			"build date:    %s\n",
 			DRV_VERSION, DRV_RELDATE);
 
-	return simple_read_from_buffer(data, count, ppos, buf, res);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, res, to);
 }
 
 static const struct file_operations usnic_debugfs_buildinfo_ops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = usnic_debugfs_buildinfo_read
+	.read_iter = usnic_debugfs_buildinfo_read
 };
 
-static ssize_t flowinfo_read(struct file *f, char __user *data,
-				size_t count, loff_t *ppos)
+static ssize_t flowinfo_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct usnic_ib_qp_grp_flow *qp_flow;
+	size_t count = iov_iter_count(to);
 	int n;
 	int left;
 	char *ptr;
 	char buf[512];
 
-	qp_flow = f->private_data;
+	qp_flow = iocb->ki_filp->private_data;
 	ptr = buf;
 	left = count;
 
-	if (*ppos > 0)
+	if (iocb->ki_pos > 0)
 		return 0;
 
 	spin_lock(&qp_flow->qp_grp->lock);
@@ -100,13 +100,13 @@ static ssize_t flowinfo_read(struct file *f, char __user *data,
 	}
 	spin_unlock(&qp_flow->qp_grp->lock);
 
-	return simple_read_from_buffer(data, count, ppos, buf, ptr - buf);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, ptr - buf, to);
 }
 
 static const struct file_operations flowinfo_ops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = flowinfo_read,
+	.read_iter = flowinfo_read,
 };
 
 void usnic_debugfs_init(void)
