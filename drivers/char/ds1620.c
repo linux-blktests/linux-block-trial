@@ -216,8 +216,7 @@ static int ds1620_open(struct inode *inode, struct file *file)
 	return stream_open(inode, file);
 }
 
-static ssize_t
-ds1620_read(struct file *file, char __user *buf, size_t count, loff_t *ptr)
+static ssize_t ds1620_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	signed int cur_temp;
 	signed char cur_temp_degF;
@@ -227,7 +226,7 @@ ds1620_read(struct file *file, char __user *buf, size_t count, loff_t *ptr)
 	/* convert to Fahrenheit, as per wdt.c */
 	cur_temp_degF = (cur_temp * 9) / 5 + 32;
 
-	if (copy_to_user(buf, &cur_temp_degF, 1))
+	if (!copy_to_iter_full(&cur_temp_degF, 1, to))
 		return -EFAULT;
 
 	return 1;
@@ -351,7 +350,7 @@ static int ds1620_proc_therm_show(struct seq_file *m, void *v)
 static const struct file_operations ds1620_fops = {
 	.owner		= THIS_MODULE,
 	.open		= ds1620_open,
-	.read		= ds1620_read,
+	.read_iter	= ds1620_read,
 	.unlocked_ioctl	= ds1620_unlocked_ioctl,
 };
 
