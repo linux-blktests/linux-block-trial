@@ -128,9 +128,10 @@ static struct notifier_block scx200_wdt_notifier = {
 	.notifier_call = scx200_wdt_notify_sys,
 };
 
-static ssize_t scx200_wdt_write(struct file *file, const char __user *data,
-				     size_t len, loff_t *ppos)
+static ssize_t scx200_wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
+
 	/* check for a magic close character */
 	if (len) {
 		size_t i;
@@ -140,7 +141,7 @@ static ssize_t scx200_wdt_write(struct file *file, const char __user *data,
 		expect_close = 0;
 		for (i = 0; i < len; ++i) {
 			char c;
-			if (get_user(c, data + i))
+			if (get_iter(c, from))
 				return -EFAULT;
 			if (c == 'V')
 				expect_close = 42;
@@ -198,7 +199,7 @@ static long scx200_wdt_ioctl(struct file *file, unsigned int cmd,
 
 static const struct file_operations scx200_wdt_fops = {
 	.owner = THIS_MODULE,
-	.write = scx200_wdt_write,
+	.write_iter = scx200_wdt_write,
 	.unlocked_ioctl = scx200_wdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open = scx200_wdt_open,
