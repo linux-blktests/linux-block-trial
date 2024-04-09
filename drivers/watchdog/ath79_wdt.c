@@ -146,9 +146,10 @@ static int ath79_wdt_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t ath79_wdt_write(struct file *file, const char *data,
-				size_t len, loff_t *ppos)
+static ssize_t ath79_wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
+
 	if (len) {
 		if (!nowayout) {
 			size_t i;
@@ -158,7 +159,7 @@ static ssize_t ath79_wdt_write(struct file *file, const char *data,
 			for (i = 0; i != len; i++) {
 				char c;
 
-				if (get_user(c, data + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 
 				if (c == 'V')
@@ -231,7 +232,7 @@ static long ath79_wdt_ioctl(struct file *file, unsigned int cmd,
 
 static const struct file_operations ath79_wdt_fops = {
 	.owner		= THIS_MODULE,
-	.write		= ath79_wdt_write,
+	.write_iter	= ath79_wdt_write,
 	.unlocked_ioctl	= ath79_wdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= ath79_wdt_open,
