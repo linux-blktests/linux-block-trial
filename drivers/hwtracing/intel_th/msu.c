@@ -1440,8 +1440,8 @@ found:
  * @offset:	running offset
  */
 struct msc_win_to_user_struct {
-	char __user	*buf;
-	unsigned long	offset;
+	struct iov_iter	*to;
+	struct kiocb	*iocb;
 };
 
 /**
@@ -1455,11 +1455,11 @@ struct msc_win_to_user_struct {
 static unsigned long msc_win_to_user(void *data, void *src, size_t len)
 {
 	struct msc_win_to_user_struct *u = data;
-	unsigned long ret;
+	size_t ret;
 
-	ret = copy_to_user(u->buf + u->offset, src, len);
-	u->offset += len - ret;
-
+	ret = copy_to_iter(src, len, u->to);
+	if (ret > 0)
+		u->iocb->ki_pos += ret;
 	return ret;
 }
 
@@ -1496,20 +1496,20 @@ static int intel_th_msc_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t
-msc_single_to_user(struct msc *msc, char __user *buf, loff_t off, size_t len)
+static ssize_t msc_single_to_user(struct msc *msc, struct kiocb *iocb,
+				  struct iov_iter *to)
 {
+	size_t len = iov_iter_count(to);
 	unsigned long size = msc->nr_pages << PAGE_SHIFT, rem = len;
-	unsigned long start = off, tocopy = 0;
+	unsigned long start = iocb->ki_pos, tocopy = 0;
 
 	if (msc->single_wrap) {
 		start += msc->single_sz;
 		if (start < size) {
 			tocopy = min(rem, size - start);
-			if (copy_to_user(buf, msc->base + start, tocopy))
+			if (!copy_to_iter_full(msc->base + start, tocopy, to))
 				return -EFAULT;
 
-			buf += tocopy;
 			rem -= tocopy;
 			start += tocopy;
 		}
@@ -1517,7 +1517,7 @@ msc_single_to_user(struct msc *msc, char __user *buf, loff_t off, size_t len)
 		start &= size - 1;
 		if (rem) {
 			tocopy = min(rem, msc->single_sz - start);
-			if (copy_to_user(buf, msc->base + start, tocopy))
+			if (!copy_to_iter_full(msc->base + start, tocopy, to))
 				return -EFAULT;
 
 			rem -= tocopy;
@@ -1526,19 +1526,19 @@ msc_single_to_user(struct msc *msc, char __user *buf, loff_t off, size_t len)
 		return len - rem;
 	}
 
-	if (copy_to_user(buf, msc->base + start, rem))
+	if (!copy_to_iter_full(msc->base + start, rem, to))
 		return -EFAULT;
 
 	return len;
 }
 
-static ssize_t intel_th_msc_read(struct file *file, char __user *buf,
-				 size_t len, loff_t *ppos)
+static ssize_t intel_th_msc_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct msc_iter *iter = file->private_data;
+	struct msc_iter *iter = iocb->ki_filp->private_data;
 	struct msc *msc = iter->msc;
+	size_t len = iov_iter_count(to);
 	size_t size;
-	loff_t off = *ppos;
+	loff_t off = iocb->ki_pos;
 	ssize_t ret = 0;
 
 	if (!atomic_inc_unless_negative(&msc->user_count))
@@ -1559,18 +1559,16 @@ static ssize_t intel_th_msc_read(struct file *file, char __user *buf,
 		len = size - off;
 
 	if (msc->mode == MSC_MODE_SINGLE) {
-		ret = msc_single_to_user(msc, buf, off, len);
+		ret = msc_single_to_user(msc, iocb, to);
 		if (ret >= 0)
-			*ppos += ret;
+			iocb->ki_pos += ret;
 	} else if (msc->mode == MSC_MODE_MULTI) {
 		struct msc_win_to_user_struct u = {
-			.buf	= buf,
-			.offset	= 0,
+			.to	= to,
+			.iocb	= iocb,
 		};
 
 		ret = msc_buffer_iterate(iter, len, &u, msc_win_to_user);
-		if (ret >= 0)
-			*ppos = iter->offset;
 	} else {
 		ret = -EINVAL;
 	}
@@ -1666,7 +1664,7 @@ out:
 static const struct file_operations intel_th_msc_fops = {
 	.open		= intel_th_msc_open,
 	.release	= intel_th_msc_release,
-	.read		= intel_th_msc_read,
+	.read_iter	= intel_th_msc_read,
 	.mmap		= intel_th_msc_mmap,
 	.owner		= THIS_MODULE,
 };
