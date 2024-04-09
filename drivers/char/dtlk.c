@@ -88,10 +88,8 @@ static wait_queue_head_t dtlk_process_list;
 static DEFINE_TIMER(dtlk_timer, dtlk_timer_tick);
 
 /* prototypes for file_operations struct */
-static ssize_t dtlk_read(struct file *, char __user *,
-			 size_t nbytes, loff_t * ppos);
-static ssize_t dtlk_write(struct file *, const char __user *,
-			  size_t nbytes, loff_t * ppos);
+static ssize_t dtlk_read(struct kiocb *iocb, struct iov_iter *to);
+static ssize_t dtlk_write(struct kiocb *iocb, struct iov_iter *from);
 static __poll_t dtlk_poll(struct file *, poll_table *);
 static int dtlk_open(struct inode *, struct file *);
 static int dtlk_release(struct inode *, struct file *);
@@ -101,8 +99,8 @@ static long dtlk_ioctl(struct file *file,
 static const struct file_operations dtlk_fops =
 {
 	.owner		= THIS_MODULE,
-	.read		= dtlk_read,
-	.write		= dtlk_write,
+	.read_iter	= dtlk_read,
+	.write_iter	= dtlk_write,
 	.poll		= dtlk_poll,
 	.unlocked_ioctl	= dtlk_ioctl,
 	.open		= dtlk_open,
@@ -122,10 +120,10 @@ static char dtlk_write_tts(char);
    static void dtlk_handle_error(char, char, unsigned int);
  */
 
-static ssize_t dtlk_read(struct file *file, char __user *buf,
-			 size_t count, loff_t * ppos)
+static ssize_t dtlk_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	unsigned int minor = iminor(file_inode(file));
+	size_t count = iov_iter_count(to);
+	unsigned int minor = iminor(file_inode(iocb->ki_filp));
 	char ch;
 	int i = 0, retries;
 
@@ -139,13 +137,13 @@ static ssize_t dtlk_read(struct file *file, char __user *buf,
 		while (i < count && dtlk_readable()) {
 			ch = dtlk_read_lpc();
 			/*        printk("dtlk_read() reads 0x%02x\n", ch); */
-			if (put_user(ch, buf++))
+			if (put_iter(ch, to))
 				return -EFAULT;
 			i++;
 		}
 		if (i)
 			return i;
-		if (file->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			break;
 		msleep_interruptible(100);
 	}
@@ -155,36 +153,20 @@ static ssize_t dtlk_read(struct file *file, char __user *buf,
 	return -EAGAIN;
 }
 
-static ssize_t dtlk_write(struct file *file, const char __user *buf,
-			  size_t count, loff_t * ppos)
+static ssize_t dtlk_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	int i = 0, retries = 0, ch;
 
 	TRACE_TEXT("(dtlk_write");
-#ifdef TRACING
-	printk(" \"");
-	{
-		int i, ch;
-		for (i = 0; i < count; i++) {
-			if (get_user(ch, buf + i))
-				return -EFAULT;
-			if (' ' <= ch && ch <= '~')
-				printk("%c", ch);
-			else
-				printk("\\%03o", ch);
-		}
-		printk("\"");
-	}
-#endif
 
-	if (iminor(file_inode(file)) != DTLK_MINOR)
+	if (iminor(file_inode(iocb->ki_filp)) != DTLK_MINOR)
 		return -EINVAL;
 
 	while (1) {
-		while (i < count && !get_user(ch, buf) &&
+		while (i < count && !get_iter(ch, from) &&
 		       (ch == DTLK_CLEAR || dtlk_writeable())) {
 			dtlk_write_tts(ch);
-			buf++;
 			i++;
 			if (i % 5 == 0)
 				/* We yield our time until scheduled
@@ -210,7 +192,7 @@ static ssize_t dtlk_write(struct file *file, const char __user *buf,
 		}
 		if (i == count)
 			return i;
-		if (file->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			break;
 
 		msleep_interruptible(1);
