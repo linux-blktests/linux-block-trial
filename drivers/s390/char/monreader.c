@@ -357,10 +357,10 @@ static int mon_close(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t mon_read(struct file *filp, char __user *data,
-			size_t count, loff_t *ppos)
+static ssize_t mon_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mon_private *monpriv = filp->private_data;
+	struct mon_private *monpriv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	struct mon_msg *monmsg;
 	int ret;
 	u32 mce_start;
@@ -370,7 +370,7 @@ static ssize_t mon_read(struct file *filp, char __user *data,
 		return PTR_ERR(monmsg);
 
 	if (!monmsg) {
-		if (filp->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 		ret = wait_event_interruptible(mon_read_wait_queue,
 					atomic_read(&monpriv->read_ready) ||
@@ -391,7 +391,7 @@ static ssize_t mon_read(struct file *filp, char __user *data,
 	mce_start = mon_mca_start(monmsg) + monmsg->mca_offset;
 	if ((monmsg->pos >= mce_start) && (monmsg->pos < mce_start + 12)) {
 		count = min(count, (size_t) mce_start + 12 - monmsg->pos);
-		ret = copy_to_user(data, __va(monmsg->pos), count);
+		ret = !copy_to_iter_full(__va(monmsg->pos), count, to);
 		if (ret)
 			return -EFAULT;
 		monmsg->pos += count;
@@ -404,7 +404,7 @@ static ssize_t mon_read(struct file *filp, char __user *data,
 	if (monmsg->pos <= mon_rec_end(monmsg)) {
 		count = min(count, (size_t) mon_rec_end(monmsg) - monmsg->pos
 					    + 1);
-		ret = copy_to_user(data, __va(monmsg->pos), count);
+		ret = !copy_to_iter_full(__va(monmsg->pos), count, to);
 		if (ret)
 			return -EFAULT;
 		monmsg->pos += count;
@@ -417,7 +417,7 @@ reply:
 	return ret;
 
 out_copy:
-	*ppos += count;
+	iocb->ki_pos += count;
 	return count;
 }
 
@@ -437,7 +437,7 @@ static const struct file_operations mon_fops = {
 	.owner   = THIS_MODULE,
 	.open    = &mon_open,
 	.release = &mon_close,
-	.read    = &mon_read,
+	.read_iter = &mon_read,
 	.poll    = &mon_poll,
 	.llseek  = noop_llseek,
 };
