@@ -225,29 +225,29 @@ static loff_t nvram_misc_llseek(struct file *file, loff_t offset, int origin)
 					nvram_size);
 }
 
-static ssize_t nvram_misc_read(struct file *file, char __user *buf,
-			       size_t count, loff_t *ppos)
+static ssize_t nvram_misc_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	char *tmp;
 	ssize_t ret;
 
 
-	if (*ppos >= nvram_size)
+	if (iocb->ki_pos >= nvram_size)
 		return 0;
 
-	count = min_t(size_t, count, nvram_size - *ppos);
+	count = min_t(size_t, count, nvram_size - iocb->ki_pos);
 	count = min_t(size_t, count, PAGE_SIZE);
 
 	tmp = kmalloc(count, GFP_KERNEL);
 	if (!tmp)
 		return -ENOMEM;
 
-	ret = nvram_read(tmp, count, ppos);
+	ret = nvram_read(tmp, count, &iocb->ki_pos);
 	if (ret <= 0)
 		goto out;
 
-	if (copy_to_user(buf, tmp, ret)) {
-		*ppos -= ret;
+	if (!copy_to_iter_full(tmp, ret, to)) {
+		iocb->ki_pos -= ret;
 		ret = -EFAULT;
 	}
 
@@ -256,23 +256,23 @@ out:
 	return ret;
 }
 
-static ssize_t nvram_misc_write(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t nvram_misc_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char *tmp;
 	ssize_t ret;
 
-	if (*ppos >= nvram_size)
+	if (iocb->ki_pos >= nvram_size)
 		return 0;
 
-	count = min_t(size_t, count, nvram_size - *ppos);
+	count = min_t(size_t, count, nvram_size - iocb->ki_pos);
 	count = min_t(size_t, count, PAGE_SIZE);
 
-	tmp = memdup_user(buf, count);
+	tmp = iterdup(from, count);
 	if (IS_ERR(tmp))
 		return PTR_ERR(tmp);
 
-	ret = nvram_write(tmp, count, ppos);
+	ret = nvram_write(tmp, count, &iocb->ki_pos);
 	kfree(tmp);
 	return ret;
 }
@@ -490,8 +490,8 @@ static int nvram_proc_read(struct seq_file *seq, void *offset)
 static const struct file_operations nvram_misc_fops = {
 	.owner		= THIS_MODULE,
 	.llseek		= nvram_misc_llseek,
-	.read		= nvram_misc_read,
-	.write		= nvram_misc_write,
+	.read_iter	= nvram_misc_read,
+	.write_iter	= nvram_misc_write,
 	.unlocked_ioctl	= nvram_misc_ioctl,
 	.open		= nvram_misc_open,
 	.release	= nvram_misc_release,
