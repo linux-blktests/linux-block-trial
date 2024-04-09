@@ -122,15 +122,16 @@ static ssize_t crw_inject_write(struct file *file, const char __user *buf,
 
 	return lbuf;
 }
+FOPS_WRITE_ITER_HELPER(crw_inject_write);
 
 /* Debugfs write handler for inject_enable node*/
-static ssize_t enable_inject_write(struct file *file, const char __user *buf,
-				   size_t lbuf, loff_t *ppos)
+static ssize_t enable_inject_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t lbuf = iov_iter_count(from);
 	unsigned long en = 0;
 	int rc;
 
-	rc = kstrtoul_from_user(buf, lbuf, 10, &en);
+	rc = kstrtoul_from_iter(from, lbuf, 10, &en);
 	if (rc)
 		return rc;
 
@@ -148,12 +149,12 @@ static ssize_t enable_inject_write(struct file *file, const char __user *buf,
 
 static const struct file_operations crw_fops = {
 	.owner = THIS_MODULE,
-	.write = crw_inject_write,
+	.write_iter = crw_inject_write_iter,
 };
 
 static const struct file_operations cio_en_fops = {
 	.owner = THIS_MODULE,
-	.write = enable_inject_write,
+	.write_iter = enable_inject_write,
 };
 
 static int __init cio_inject_init(void)

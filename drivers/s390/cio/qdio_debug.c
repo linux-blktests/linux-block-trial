@@ -233,11 +233,11 @@ static int qperf_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t qperf_seq_write(struct file *file, const char __user *ubuf,
-			       size_t count, loff_t *off)
+static ssize_t qperf_seq_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *seq = file->private_data;
+	struct seq_file *seq = iocb->ki_filp->private_data;
 	struct qdio_irq *irq_ptr = seq->private;
+	size_t count = iov_iter_count(from);
 	struct qdio_q *q;
 	unsigned long val;
 	int ret, i;
@@ -245,7 +245,7 @@ static ssize_t qperf_seq_write(struct file *file, const char __user *ubuf,
 	if (!irq_ptr)
 		return 0;
 
-	ret = kstrtoul_from_user(ubuf, count, 10, &val);
+	ret = kstrtoul_from_iter(from, count, 10, &val);
 	if (ret)
 		return ret;
 
@@ -274,8 +274,8 @@ static int qperf_seq_open(struct inode *inode, struct file *filp)
 static const struct file_operations debugfs_perf_fops = {
 	.owner	 = THIS_MODULE,
 	.open	 = qperf_seq_open,
-	.read	 = seq_read,
-	.write	 = qperf_seq_write,
+	.read_iter = seq_read_iter,
+	.write_iter = qperf_seq_write,
 	.llseek  = seq_lseek,
 	.release = single_release,
 };
