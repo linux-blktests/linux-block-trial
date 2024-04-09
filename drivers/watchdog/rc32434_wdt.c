@@ -161,9 +161,9 @@ static int rc32434_wdt_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t rc32434_wdt_write(struct file *file, const char *data,
-				size_t len, loff_t *ppos)
+static ssize_t rc32434_wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	if (len) {
 		if (!nowayout) {
 			size_t i;
@@ -173,7 +173,7 @@ static ssize_t rc32434_wdt_write(struct file *file, const char *data,
 
 			for (i = 0; i != len; i++) {
 				char c;
-				if (get_user(c, data + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					expect_close = 42;
@@ -242,7 +242,7 @@ static long rc32434_wdt_ioctl(struct file *file, unsigned int cmd,
 
 static const struct file_operations rc32434_wdt_fops = {
 	.owner		= THIS_MODULE,
-	.write		= rc32434_wdt_write,
+	.write_iter	= rc32434_wdt_write,
 	.unlocked_ioctl	= rc32434_wdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= rc32434_wdt_open,
