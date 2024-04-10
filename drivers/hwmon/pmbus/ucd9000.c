@@ -416,11 +416,10 @@ static int ucd9000_debugfs_show_mfr_status_bit(void *data, u64 *val)
 DEFINE_DEBUGFS_ATTRIBUTE(ucd9000_debugfs_mfr_status_bit,
 			 ucd9000_debugfs_show_mfr_status_bit, NULL, "%1lld\n");
 
-static ssize_t ucd9000_debugfs_read_mfr_status(struct file *file,
-					       char __user *buf, size_t count,
-					       loff_t *ppos)
+static ssize_t ucd9000_debugfs_read_mfr_status(struct kiocb *iocb,
+					       struct iov_iter *to)
 {
-	struct i2c_client *client = file->private_data;
+	struct i2c_client *client = iocb->ki_filp->private_data;
 	u8 buffer[I2C_SMBUS_BLOCK_MAX];
 	char str[(I2C_SMBUS_BLOCK_MAX * 2) + 2];
 	char *res;
@@ -434,12 +433,12 @@ static ssize_t ucd9000_debugfs_read_mfr_status(struct file *file,
 	*res++ = '\n';
 	*res = 0;
 
-	return simple_read_from_buffer(buf, count, ppos, str, res - str);
+	return simple_copy_to_iter(str, &iocb->ki_pos, res - str, to);
 }
 
 static const struct file_operations ucd9000_debugfs_show_mfr_status_fops = {
 	.llseek = noop_llseek,
-	.read = ucd9000_debugfs_read_mfr_status,
+	.read_iter = ucd9000_debugfs_read_mfr_status,
 	.open = simple_open,
 };
 
