@@ -934,10 +934,9 @@ const struct snd_soc_dai_ops avs_dai_fe_ops = {
 	.trigger = avs_dai_fe_trigger,
 };
 
-static ssize_t topology_name_read(struct file *file, char __user *user_buf, size_t count,
-				  loff_t *ppos)
+static ssize_t topology_name_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snd_soc_component *component = file->private_data;
+	struct snd_soc_component *component = iocb->ki_filp->private_data;
 	struct snd_soc_card *card = component->card;
 	struct snd_soc_acpi_mach *mach = dev_get_platdata(card->dev);
 	char buf[64];
@@ -946,12 +945,12 @@ static ssize_t topology_name_read(struct file *file, char __user *user_buf, size
 	len = scnprintf(buf, sizeof(buf), "%s/%s\n", component->driver->topology_name_prefix,
 			mach->tplg_filename);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations topology_name_fops = {
 	.open = simple_open,
-	.read = topology_name_read,
+	.read_iter = topology_name_read,
 	.llseek = default_llseek,
 };
 
