@@ -104,11 +104,10 @@ struct max20730_debugfs_data {
 			struct max20730_debugfs_data, debugfs_entries[(y)])
 
 #ifdef CONFIG_DEBUG_FS
-static ssize_t max20730_debugfs_read(struct file *file, char __user *buf,
-				     size_t count, loff_t *ppos)
+static ssize_t max20730_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int ret, len;
-	int *idxp = file->private_data;
+	int *idxp = iocb->ki_filp->private_data;
 	int idx = *idxp;
 	struct max20730_debugfs_data *psu = to_psu(idxp, idx);
 	const struct pmbus_driver_info *info;
@@ -292,13 +291,12 @@ static ssize_t max20730_debugfs_read(struct file *file, char __user *buf,
 	}
 
 	len = strlen(result);
-	return simple_read_from_buffer(buf, count, ppos, result, len);
+	return simple_copy_to_iter(result, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations max20730_fops = {
 	.llseek = noop_llseek,
-	.read = max20730_debugfs_read,
-	.write = NULL,
+	.read_iter = max20730_debugfs_read,
 	.open = simple_open,
 };
 
