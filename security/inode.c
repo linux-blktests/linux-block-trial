@@ -21,6 +21,7 @@
 #include <linux/security.h>
 #include <linux/lsm_hooks.h>
 #include <linux/magic.h>
+#include <linux/uio.h>
 
 #include "lsm.h"
 
@@ -312,8 +313,7 @@ EXPORT_SYMBOL_GPL(securityfs_remove);
 
 static struct dentry *lsm_dentry;
 
-static ssize_t lsm_read(struct file *filp, char __user *buf, size_t count,
-			loff_t *ppos)
+static ssize_t lsm_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int i;
 	static char *str;
@@ -350,11 +350,11 @@ static ssize_t lsm_read(struct file *filp, char __user *buf, size_t count,
 		spin_unlock(&lock);
 	}
 
-	return simple_read_from_buffer(buf, count, ppos, str, len);
+	return simple_copy_to_iter(str, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations lsm_ops = {
-	.read = lsm_read,
+	.read_iter = lsm_read,
 	.llseek = generic_file_llseek,
 };
 #endif

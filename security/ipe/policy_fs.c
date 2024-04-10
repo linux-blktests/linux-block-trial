@@ -31,12 +31,10 @@ struct ipefs_file {
 
 /**
  * read_pkcs7() - Read handler for "ipe/policies/$name/pkcs7".
- * @f: Supplies a file structure representing the securityfs node.
- * @data: Supplies a buffer passed to the write syscall.
- * @len: Supplies the length of @data.
- * @offset: unused.
+ * @iocb: Metadata for IO
+ * @to: Supplies a buffer passed to the write syscall.
  *
- * @data will be populated with the pkcs7 blob representing the policy
+ * @to will be populated with the pkcs7 blob representing the policy
  * on success. If the policy is unsigned (like the boot policy), this
  * will return -ENOENT.
  *
@@ -44,14 +42,13 @@ struct ipefs_file {
  * * Length of buffer written	- Success
  * * %-ENOENT			- Policy initializing/deleted or is unsigned
  */
-static ssize_t read_pkcs7(struct file *f, char __user *data,
-			  size_t len, loff_t *offset)
+static ssize_t read_pkcs7(struct kiocb *iocb, struct iov_iter *to)
 {
 	const struct ipe_policy *p = NULL;
 	struct inode *root = NULL;
 	int rc = 0;
 
-	root = d_inode(f->f_path.dentry->d_parent);
+	root = d_inode(iocb->ki_filp->f_path.dentry->d_parent);
 
 	inode_lock_shared(root);
 	p = (struct ipe_policy *)root->i_private;
@@ -65,7 +62,7 @@ static ssize_t read_pkcs7(struct file *f, char __user *data,
 		goto out;
 	}
 
-	rc = simple_read_from_buffer(data, len, offset, p->pkcs7, p->pkcs7len);
+	rc = simple_copy_to_iter(p->pkcs7, &iocb->ki_pos, p->pkcs7len, to);
 
 out:
 	inode_unlock_shared(root);
@@ -75,26 +72,23 @@ out:
 
 /**
  * read_policy() - Read handler for "ipe/policies/$name/policy".
- * @f: Supplies a file structure representing the securityfs node.
- * @data: Supplies a buffer passed to the write syscall.
- * @len: Supplies the length of @data.
- * @offset: unused.
+ * @iocb: Metadata for IO
+ * @to: Supplies a buffer passed to the write syscall.
  *
- * @data will be populated with the plain-text version of the policy
+ * @to will be populated with the plain-text version of the policy
  * on success.
  *
  * Return:
  * * Length of buffer written	- Success
  * * %-ENOENT			- Policy initializing/deleted
  */
-static ssize_t read_policy(struct file *f, char __user *data,
-			   size_t len, loff_t *offset)
+static ssize_t read_policy(struct kiocb *iocb, struct iov_iter *to)
 {
 	const struct ipe_policy *p = NULL;
 	struct inode *root = NULL;
 	int rc = 0;
 
-	root = d_inode(f->f_path.dentry->d_parent);
+	root = d_inode(iocb->ki_filp->f_path.dentry->d_parent);
 
 	inode_lock_shared(root);
 	p = (struct ipe_policy *)root->i_private;
@@ -103,7 +97,7 @@ static ssize_t read_policy(struct file *f, char __user *data,
 		goto out;
 	}
 
-	rc = simple_read_from_buffer(data, len, offset, p->text, p->textlen);
+	rc = simple_copy_to_iter(p->text, &iocb->ki_pos, p->textlen, to);
 
 out:
 	inode_unlock_shared(root);
@@ -113,25 +107,22 @@ out:
 
 /**
  * read_name() - Read handler for "ipe/policies/$name/name".
- * @f: Supplies a file structure representing the securityfs node.
- * @data: Supplies a buffer passed to the write syscall.
- * @len: Supplies the length of @data.
- * @offset: unused.
+ * @iocb: Metadata for IO
+ * @to: Supplies a buffer passed to the write syscall.
  *
- * @data will be populated with the policy_name attribute on success.
+ * @to will be populated with the policy_name attribute on success.
  *
  * Return:
  * * Length of buffer written	- Success
  * * %-ENOENT			- Policy initializing/deleted
  */
-static ssize_t read_name(struct file *f, char __user *data,
-			 size_t len, loff_t *offset)
+static ssize_t read_name(struct kiocb *iocb, struct iov_iter *to)
 {
 	const struct ipe_policy *p = NULL;
 	struct inode *root = NULL;
 	int rc = 0;
 
-	root = d_inode(f->f_path.dentry->d_parent);
+	root = d_inode(iocb->ki_filp->f_path.dentry->d_parent);
 
 	inode_lock_shared(root);
 	p = (struct ipe_policy *)root->i_private;
@@ -140,8 +131,8 @@ static ssize_t read_name(struct file *f, char __user *data,
 		goto out;
 	}
 
-	rc = simple_read_from_buffer(data, len, offset, p->parsed->name,
-				     strlen(p->parsed->name));
+	rc = simple_copy_to_iter(p->parsed->name, &iocb->ki_pos,
+				 strlen(p->parsed->name), to);
 
 out:
 	inode_unlock_shared(root);
@@ -151,19 +142,16 @@ out:
 
 /**
  * read_version() - Read handler for "ipe/policies/$name/version".
- * @f: Supplies a file structure representing the securityfs node.
- * @data: Supplies a buffer passed to the write syscall.
- * @len: Supplies the length of @data.
- * @offset: unused.
+ * @iocb: Metadata for IO
+ * @to: Supplies a buffer passed to the write syscall.
  *
- * @data will be populated with the version string on success.
+ * @to will be populated with the version string on success.
  *
  * Return:
  * * Length of buffer written	- Success
  * * %-ENOENT			- Policy initializing/deleted
  */
-static ssize_t read_version(struct file *f, char __user *data,
-			    size_t len, loff_t *offset)
+static ssize_t read_version(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buffer[MAX_VERSION_SIZE] = { 0 };
 	const struct ipe_policy *p = NULL;
@@ -171,7 +159,7 @@ static ssize_t read_version(struct file *f, char __user *data,
 	size_t strsize = 0;
 	ssize_t rc = 0;
 
-	root = d_inode(f->f_path.dentry->d_parent);
+	root = d_inode(iocb->ki_filp->f_path.dentry->d_parent);
 
 	inode_lock_shared(root);
 	p = (struct ipe_policy *)root->i_private;
@@ -184,7 +172,7 @@ static ssize_t read_version(struct file *f, char __user *data,
 			    p->parsed->version.major, p->parsed->version.minor,
 			    p->parsed->version.rev);
 
-	rc = simple_read_from_buffer(data, len, offset, buffer, strsize);
+	rc = simple_copy_to_iter(buffer, &iocb->ki_pos, strsize, to);
 
 out:
 	inode_unlock_shared(root);
@@ -194,10 +182,8 @@ out:
 
 /**
  * setactive() - Write handler for "ipe/policies/$name/active".
- * @f: Supplies a file structure representing the securityfs node.
- * @data: Supplies a buffer passed to the write syscall.
- * @len: Supplies the length of @data.
- * @offset: unused.
+ * @iocb: Metadata for IO
+ * @from: Supplies a buffer passed to the write syscall.
  *
  * Return:
  * * Length of buffer written	- Success
@@ -205,25 +191,25 @@ out:
  * * %-EINVAL			- Invalid input
  * * %-ENOENT			- Policy initializing/deleted
  */
-static ssize_t setactive(struct file *f, const char __user *data,
-			 size_t len, loff_t *offset)
+static ssize_t setactive(struct kiocb *iocb, struct iov_iter *from)
 {
 	const struct ipe_policy *p = NULL;
+	size_t len = iov_iter_count(from);
 	struct inode *root = NULL;
 	bool value = false;
 	int rc = 0;
 
-	if (!file_ns_capable(f, &init_user_ns, CAP_MAC_ADMIN))
+	if (!file_ns_capable(iocb->ki_filp, &init_user_ns, CAP_MAC_ADMIN))
 		return -EPERM;
 
-	rc = kstrtobool_from_user(data, len, &value);
+	rc = kstrtobool_from_iter(from, len, &value);
 	if (rc)
 		return rc;
 
 	if (!value)
 		return -EINVAL;
 
-	root = d_inode(f->f_path.dentry->d_parent);
+	root = d_inode(iocb->ki_filp->f_path.dentry->d_parent);
 	inode_lock(root);
 
 	p = (struct ipe_policy *)root->i_private;
@@ -241,27 +227,24 @@ out:
 
 /**
  * getactive() - Read handler for "ipe/policies/$name/active".
- * @f: Supplies a file structure representing the securityfs node.
- * @data: Supplies a buffer passed to the write syscall.
- * @len: Supplies the length of @data.
- * @offset: unused.
+ * @iocb: Metadata for IO
+ * @to: Supplies a buffer passed to the write syscall.
  *
- * @data will be populated with the 1 or 0 depending on if the
+ * @to will be populated with the 1 or 0 depending on if the
  * corresponding policy is active.
  *
  * Return:
  * * Length of buffer written	- Success
  * * %-ENOENT			- Policy initializing/deleted
  */
-static ssize_t getactive(struct file *f, char __user *data,
-			 size_t len, loff_t *offset)
+static ssize_t getactive(struct kiocb *iocb, struct iov_iter *to)
 {
 	const struct ipe_policy *p = NULL;
 	struct inode *root = NULL;
 	const char *str;
 	int rc = 0;
 
-	root = d_inode(f->f_path.dentry->d_parent);
+	root = d_inode(iocb->ki_filp->f_path.dentry->d_parent);
 
 	inode_lock_shared(root);
 	p = (struct ipe_policy *)root->i_private;
@@ -272,7 +255,7 @@ static ssize_t getactive(struct file *f, char __user *data,
 	inode_unlock_shared(root);
 
 	str = (p == rcu_access_pointer(ipe_active_policy)) ? "1" : "0";
-	rc = simple_read_from_buffer(data, len, offset, str, 1);
+	rc = simple_copy_to_iter(str, &iocb->ki_pos, 1, to);
 
 	return rc;
 }
@@ -328,13 +311,12 @@ out:
 
 	return len;
 }
+FOPS_WRITE_ITER_HELPER(update_policy);
 
 /**
  * delete_policy() - write handler for  "ipe/policies/$name/delete".
- * @f: Supplies a file structure representing the securityfs node.
- * @data: Supplies a buffer passed to the write syscall.
- * @len: Supplies the length of @data.
- * @offset: unused.
+ * @iocb: Metadata for IO
+ * @from: Supplies a buffer passed to the write syscall.
  *
  * On success this deletes the policy represented by $name.
  *
@@ -344,26 +326,26 @@ out:
  * * %-EINVAL			- Invalid input
  * * %-ENOENT			- Policy initializing/deleted
  */
-static ssize_t delete_policy(struct file *f, const char __user *data,
-			     size_t len, loff_t *offset)
+static ssize_t delete_policy(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	struct ipe_policy *ap = NULL;
 	struct ipe_policy *p = NULL;
 	struct inode *root = NULL;
 	bool value = false;
 	int rc = 0;
 
-	if (!file_ns_capable(f, &init_user_ns, CAP_MAC_ADMIN))
+	if (!file_ns_capable(iocb->ki_filp, &init_user_ns, CAP_MAC_ADMIN))
 		return -EPERM;
 
-	rc = kstrtobool_from_user(data, len, &value);
+	rc = kstrtobool_from_iter(from, len, &value);
 	if (rc)
 		return rc;
 
 	if (!value)
 		return -EINVAL;
 
-	root = d_inode(f->f_path.dentry->d_parent);
+	root = d_inode(iocb->ki_filp->f_path.dentry->d_parent);
 	inode_lock(root);
 	p = (struct ipe_policy *)root->i_private;
 	if (!p) {
@@ -391,32 +373,32 @@ static ssize_t delete_policy(struct file *f, const char __user *data,
 }
 
 static const struct file_operations content_fops = {
-	.read = read_policy,
+	.read_iter = read_policy,
 };
 
 static const struct file_operations pkcs7_fops = {
-	.read = read_pkcs7,
+	.read_iter = read_pkcs7,
 };
 
 static const struct file_operations name_fops = {
-	.read = read_name,
+	.read_iter = read_name,
 };
 
 static const struct file_operations ver_fops = {
-	.read = read_version,
+	.read_iter = read_version,
 };
 
 static const struct file_operations active_fops = {
-	.write = setactive,
-	.read = getactive,
+	.write_iter = setactive,
+	.read_iter = getactive,
 };
 
 static const struct file_operations update_fops = {
-	.write = update_policy,
+	.write_iter = update_policy_iter,
 };
 
 static const struct file_operations delete_fops = {
-	.write = delete_policy,
+	.write_iter = delete_policy,
 };
 
 /*

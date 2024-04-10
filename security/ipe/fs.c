@@ -17,25 +17,23 @@ struct dentry *policy_root __ro_after_init;
 
 /**
  * setaudit() - Write handler for the securityfs node, "ipe/success_audit"
- * @f: Supplies a file structure representing the securityfs node.
- * @data: Supplies a buffer passed to the write syscall.
- * @len: Supplies the length of @data.
- * @offset: unused.
+ * @iocb: Metadata about IO
+ * @from: Supplies a buffer passed to the write syscall.
  *
  * Return:
  * * Length of buffer written	- Success
  * * %-EPERM			- Insufficient permission
  */
-static ssize_t setaudit(struct file *f, const char __user *data,
-			size_t len, loff_t *offset)
+static ssize_t setaudit(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	int rc = 0;
 	bool value;
 
-	if (!file_ns_capable(f, &init_user_ns, CAP_MAC_ADMIN))
+	if (!file_ns_capable(iocb->ki_filp, &init_user_ns, CAP_MAC_ADMIN))
 		return -EPERM;
 
-	rc = kstrtobool_from_user(data, len, &value);
+	rc = kstrtobool_from_iter(from, len, &value);
 	if (rc)
 		return rc;
 
@@ -46,45 +44,40 @@ static ssize_t setaudit(struct file *f, const char __user *data,
 
 /**
  * getaudit() - Read handler for the securityfs node, "ipe/success_audit"
- * @f: Supplies a file structure representing the securityfs node.
- * @data: Supplies a buffer passed to the read syscall.
- * @len: Supplies the length of @data.
- * @offset: unused.
+ * @iocb: Metadata about IO
+ * @to: Supplies a buffer passed to the read syscall.
  *
  * Return: Length of buffer written
  */
-static ssize_t getaudit(struct file *f, char __user *data,
-			size_t len, loff_t *offset)
+static ssize_t getaudit(struct kiocb *iocb, struct iov_iter *to)
 {
 	const char *result;
 
 	result = ((READ_ONCE(success_audit)) ? "1" : "0");
 
-	return simple_read_from_buffer(data, len, offset, result, 1);
+	return simple_copy_to_iter(result, &iocb->ki_pos, 1, to);
 }
 
 /**
  * setenforce() - Write handler for the securityfs node, "ipe/enforce"
- * @f: Supplies a file structure representing the securityfs node.
- * @data: Supplies a buffer passed to the write syscall.
- * @len: Supplies the length of @data.
- * @offset: unused.
+ * @iocb: Metadata for IO
+ * @from: Supplies a buffer passed to the write syscall.
  *
  * Return:
  * * Length of buffer written	- Success
  * * %-EPERM			- Insufficient permission
  */
-static ssize_t setenforce(struct file *f, const char __user *data,
-			  size_t len, loff_t *offset)
+static ssize_t setenforce(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	int rc = 0;
 	bool new_value, old_value;
 
-	if (!file_ns_capable(f, &init_user_ns, CAP_MAC_ADMIN))
+	if (!file_ns_capable(iocb->ki_filp, &init_user_ns, CAP_MAC_ADMIN))
 		return -EPERM;
 
 	old_value = READ_ONCE(enforce);
-	rc = kstrtobool_from_user(data, len, &new_value);
+	rc = kstrtobool_from_iter(from, len, &new_value);
 	if (rc)
 		return rc;
 
@@ -98,21 +91,18 @@ static ssize_t setenforce(struct file *f, const char __user *data,
 
 /**
  * getenforce() - Read handler for the securityfs node, "ipe/enforce"
- * @f: Supplies a file structure representing the securityfs node.
- * @data: Supplies a buffer passed to the read syscall.
- * @len: Supplies the length of @data.
- * @offset: unused.
+ * @iocb: Metadata for IO
+ * @to: Supplies a buffer passed to the read syscall.
  *
  * Return: Length of buffer written
  */
-static ssize_t getenforce(struct file *f, char __user *data,
-			  size_t len, loff_t *offset)
+static ssize_t getenforce(struct kiocb *iocb, struct iov_iter *to)
 {
 	const char *result;
 
 	result = ((READ_ONCE(enforce)) ? "1" : "0");
 
-	return simple_read_from_buffer(data, len, offset, result, 1);
+	return simple_copy_to_iter(result, &iocb->ki_pos, 1, to);
 }
 
 /**
@@ -172,19 +162,20 @@ out:
 	}
 	return (rc < 0) ? rc : len;
 }
+FOPS_WRITE_ITER_HELPER(new_policy);
 
 static const struct file_operations np_fops = {
-	.write = new_policy,
+	.write_iter = new_policy_iter,
 };
 
 static const struct file_operations audit_fops = {
-	.write = setaudit,
-	.read = getaudit,
+	.write_iter = setaudit,
+	.read_iter = getaudit,
 };
 
 static const struct file_operations enforce_fops = {
-	.write = setenforce,
-	.read = getenforce,
+	.write_iter = setenforce,
+	.read_iter = getenforce,
 };
 
 /**
