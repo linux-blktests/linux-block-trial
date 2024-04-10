@@ -58,8 +58,7 @@ struct carl9170_debugfs_fops {
 	enum carl9170_device_state req_dev_state;
 };
 
-static ssize_t carl9170_debugfs_read(struct file *file, char __user *userbuf,
-				     size_t count, loff_t *ppos)
+static ssize_t carl9170_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	const struct carl9170_debugfs_fops *dfops;
 	struct ar9170 *ar;
@@ -67,14 +66,14 @@ static ssize_t carl9170_debugfs_read(struct file *file, char __user *userbuf,
 	ssize_t ret = 0;
 	int err = 0;
 
-	if (!count)
+	if (!iov_iter_count(to))
 		return 0;
 
-	ar = file->private_data;
+	ar = iocb->ki_filp->private_data;
 
 	if (!ar)
 		return -ENODEV;
-	dfops = debugfs_get_aux(file);
+	dfops = debugfs_get_aux(iocb->ki_filp);
 
 	if (!dfops->read)
 		return -ENOSYS;
@@ -95,8 +94,7 @@ static ssize_t carl9170_debugfs_read(struct file *file, char __user *userbuf,
 	res_buf = dfops->read(ar, buf, dfops->read_bufsize, &ret);
 
 	if (ret > 0)
-		err = simple_read_from_buffer(userbuf, count, ppos,
-					      res_buf, ret);
+		err = simple_copy_to_iter(res_buf, &iocb->ki_pos, ret, to);
 	else
 		err = ret;
 
@@ -108,11 +106,12 @@ out_free:
 	return err;
 }
 
-static ssize_t carl9170_debugfs_write(struct file *file,
-	const char __user *userbuf, size_t count, loff_t *ppos)
+static ssize_t carl9170_debugfs_write(struct kiocb *iocb,
+	struct iov_iter *from)
 {
 	const struct carl9170_debugfs_fops *dfops;
 	struct ar9170 *ar;
+	size_t count = iov_iter_count(from);
 	char *buf = NULL;
 	int err = 0;
 
@@ -122,11 +121,11 @@ static ssize_t carl9170_debugfs_write(struct file *file,
 	if (count > PAGE_SIZE)
 		return -E2BIG;
 
-	ar = file->private_data;
+	ar = iocb->ki_filp->private_data;
 
 	if (!ar)
 		return -ENODEV;
-	dfops = debugfs_get_aux(file);
+	dfops = debugfs_get_aux(iocb->ki_filp);
 
 	if (!dfops->write)
 		return -ENOSYS;
@@ -135,7 +134,7 @@ static ssize_t carl9170_debugfs_write(struct file *file,
 	if (!buf)
 		return -ENOMEM;
 
-	if (copy_from_user(buf, userbuf, count)) {
+	if (!copy_from_iter_full(buf, count, from)) {
 		err = -EFAULT;
 		goto out_free;
 	}
@@ -163,8 +162,8 @@ out_free:
 }
 
 static struct debugfs_short_fops debugfs_fops = {
-	.read	= carl9170_debugfs_read,
-	.write	= carl9170_debugfs_write,
+	.read_iter	= carl9170_debugfs_read,
+	.write_iter	= carl9170_debugfs_write,
 };
 
 #define __DEBUGFS_DECLARE_FILE(name, _read, _write, _read_bufsize,	\

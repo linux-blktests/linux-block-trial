@@ -120,20 +120,18 @@ EXPORT_SYMBOL(il_update_stats);
 
 /* file operation */
 #define DEBUGFS_READ_FUNC(name)                                         \
-static ssize_t il_dbgfs_##name##_read(struct file *file,               \
-					char __user *user_buf,          \
-					size_t count, loff_t *ppos);
+static ssize_t il_dbgfs_##name##_read(struct kiocb *iocb,              \
+					struct iov_iter *to);
 
 #define DEBUGFS_WRITE_FUNC(name)                                        \
-static ssize_t il_dbgfs_##name##_write(struct file *file,              \
-					const char __user *user_buf,    \
-					size_t count, loff_t *ppos);
+static ssize_t il_dbgfs_##name##_write(struct kiocb *iocb,             \
+					struct iov_iter *from);
 
 
 #define DEBUGFS_READ_FILE_OPS(name)				\
 	DEBUGFS_READ_FUNC(name);				\
 static const struct file_operations il_dbgfs_##name##_ops = {	\
-	.read = il_dbgfs_##name##_read,				\
+	.read_iter = il_dbgfs_##name##_read,			\
 	.open = simple_open,					\
 	.llseek = generic_file_llseek,				\
 };
@@ -141,7 +139,7 @@ static const struct file_operations il_dbgfs_##name##_ops = {	\
 #define DEBUGFS_WRITE_FILE_OPS(name)				\
 	DEBUGFS_WRITE_FUNC(name);				\
 static const struct file_operations il_dbgfs_##name##_ops = {	\
-	.write = il_dbgfs_##name##_write,			\
+	.write_iter = il_dbgfs_##name##_write,			\
 	.open = simple_open,					\
 	.llseek = generic_file_llseek,				\
 };
@@ -150,8 +148,8 @@ static const struct file_operations il_dbgfs_##name##_ops = {	\
 	DEBUGFS_READ_FUNC(name);				\
 	DEBUGFS_WRITE_FUNC(name);				\
 static const struct file_operations il_dbgfs_##name##_ops = {	\
-	.write = il_dbgfs_##name##_write,			\
-	.read = il_dbgfs_##name##_read,				\
+	.write_iter = il_dbgfs_##name##_write,			\
+	.read_iter = il_dbgfs_##name##_read,			\
 	.open = simple_open,					\
 	.llseek = generic_file_llseek,				\
 };
@@ -197,11 +195,10 @@ il_get_ctrl_string(int cmd)
 }
 
 static ssize_t
-il_dbgfs_tx_stats_read(struct file *file, char __user *user_buf, size_t count,
-		       loff_t *ppos)
+il_dbgfs_tx_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
 
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	char *buf;
 	int pos = 0;
 
@@ -231,24 +228,23 @@ il_dbgfs_tx_stats_read(struct file *file, char __user *user_buf, size_t count,
 	pos +=
 	    scnprintf(buf + pos, bufsz - pos, "\tbytes: %llu\n",
 		      il->tx_stats.data_bytes);
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
 static ssize_t
-il_dbgfs_clear_traffic_stats_write(struct file *file,
-				   const char __user *user_buf, size_t count,
-				   loff_t *ppos)
+il_dbgfs_clear_traffic_stats_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct il_priv *il = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct il_priv *il = iocb->ki_filp->private_data;
 	u32 clear_flag;
 	char buf[8];
 	int buf_size;
 
 	memset(buf, 0, sizeof(buf));
 	buf_size = min(count, sizeof(buf) - 1);
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 	if (sscanf(buf, "%x", &clear_flag) != 1)
 		return -EFAULT;
@@ -258,11 +254,10 @@ il_dbgfs_clear_traffic_stats_write(struct file *file,
 }
 
 static ssize_t
-il_dbgfs_rx_stats_read(struct file *file, char __user *user_buf, size_t count,
-		       loff_t *ppos)
+il_dbgfs_rx_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
 
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	char *buf;
 	int pos = 0;
 	int cnt;
@@ -293,7 +288,7 @@ il_dbgfs_rx_stats_read(struct file *file, char __user *user_buf, size_t count,
 	    scnprintf(buf + pos, bufsz - pos, "\tbytes: %llu\n",
 		      il->rx_stats.data_bytes);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
@@ -302,15 +297,14 @@ il_dbgfs_rx_stats_read(struct file *file, char __user *user_buf, size_t count,
 #define BYTE2_MASK 0x0000ffff;
 #define BYTE3_MASK 0x00ffffff;
 static ssize_t
-il_dbgfs_sram_read(struct file *file, char __user *user_buf, size_t count,
-		   loff_t *ppos)
+il_dbgfs_sram_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	u32 val;
 	char *buf;
 	ssize_t ret;
 	int i;
 	int pos = 0;
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	size_t bufsz;
 
 	/* default is to dump the entire data segment */
@@ -355,23 +349,23 @@ il_dbgfs_sram_read(struct file *file, char __user *user_buf, size_t count,
 	}
 	pos += scnprintf(buf + pos, bufsz - pos, "\n");
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
 static ssize_t
-il_dbgfs_sram_write(struct file *file, const char __user *user_buf,
-		    size_t count, loff_t *ppos)
+il_dbgfs_sram_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct il_priv *il = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct il_priv *il = iocb->ki_filp->private_data;
 	char buf[64];
 	int buf_size;
 	u32 offset, len;
 
 	memset(buf, 0, sizeof(buf));
 	buf_size = min(count, sizeof(buf) - 1);
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 
 	if (sscanf(buf, "%x,%x", &offset, &len) == 2) {
@@ -386,10 +380,9 @@ il_dbgfs_sram_write(struct file *file, const char __user *user_buf,
 }
 
 static ssize_t
-il_dbgfs_stations_read(struct file *file, char __user *user_buf, size_t count,
-		       loff_t *ppos)
+il_dbgfs_stations_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	struct il_station_entry *station;
 	int max_sta = il->hw_params.max_stations;
 	char *buf;
@@ -444,17 +437,16 @@ il_dbgfs_stations_read(struct file *file, char __user *user_buf, size_t count,
 		pos += scnprintf(buf + pos, bufsz - pos, "\n");
 	}
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
 static ssize_t
-il_dbgfs_nvm_read(struct file *file, char __user *user_buf, size_t count,
-		  loff_t *ppos)
+il_dbgfs_nvm_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	ssize_t ret;
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int pos = 0, ofs = 0, buf_size = 0;
 	const u8 *ptr;
 	char *buf;
@@ -488,16 +480,15 @@ il_dbgfs_nvm_read(struct file *file, char __user *user_buf, size_t count,
 				 ofs, ptr + ofs);
 	}
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
 static ssize_t
-il_dbgfs_channels_read(struct file *file, char __user *user_buf, size_t count,
-		       loff_t *ppos)
+il_dbgfs_channels_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	struct ieee80211_channel *channels = NULL;
 	const struct ieee80211_supported_band *supp_band = NULL;
 	int pos = 0, i, bufsz = PAGE_SIZE;
@@ -567,17 +558,16 @@ il_dbgfs_channels_read(struct file *file, char __user *user_buf, size_t count,
 				      flags & IEEE80211_CHAN_NO_IR ?
 				      "passive only" : "active/passive");
 	}
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
 static ssize_t
-il_dbgfs_status_read(struct file *file, char __user *user_buf, size_t count,
-		     loff_t *ppos)
+il_dbgfs_status_read(struct kiocb *iocb, struct iov_iter *to)
 {
 
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	char buf[512];
 	int pos = 0;
 	const size_t bufsz = sizeof(buf);
@@ -630,15 +620,14 @@ il_dbgfs_status_read(struct file *file, char __user *user_buf, size_t count,
 	pos +=
 	    scnprintf(buf + pos, bufsz - pos, "S_FW_ERROR:\t %d\n",
 		      test_bit(S_FW_ERROR, &il->status));
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 static ssize_t
-il_dbgfs_interrupt_read(struct file *file, char __user *user_buf, size_t count,
-			loff_t *ppos)
+il_dbgfs_interrupt_read(struct kiocb *iocb, struct iov_iter *to)
 {
 
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int pos = 0;
 	int cnt = 0;
 	char *buf;
@@ -707,23 +696,23 @@ il_dbgfs_interrupt_read(struct file *file, char __user *user_buf, size_t count,
 	    scnprintf(buf + pos, bufsz - pos, "Unexpected INTA:\t\t %u\n",
 		      il->isr_stats.unhandled);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
 static ssize_t
-il_dbgfs_interrupt_write(struct file *file, const char __user *user_buf,
-			 size_t count, loff_t *ppos)
+il_dbgfs_interrupt_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct il_priv *il = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct il_priv *il = iocb->ki_filp->private_data;
 	char buf[8];
 	int buf_size;
 	u32 reset_flag;
 
 	memset(buf, 0, sizeof(buf));
 	buf_size = min(count, sizeof(buf) - 1);
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 	if (sscanf(buf, "%x", &reset_flag) != 1)
 		return -EFAULT;
@@ -734,10 +723,9 @@ il_dbgfs_interrupt_write(struct file *file, const char __user *user_buf,
 }
 
 static ssize_t
-il_dbgfs_qos_read(struct file *file, char __user *user_buf, size_t count,
-		  loff_t *ppos)
+il_dbgfs_qos_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int pos = 0, i;
 	char buf[256];
 	const size_t bufsz = sizeof(buf);
@@ -755,21 +743,21 @@ il_dbgfs_qos_read(struct file *file, char __user *user_buf, size_t count,
 			      il->qos_data.def_qos_parm.ac[i].edca_txop);
 	}
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 static ssize_t
-il_dbgfs_disable_ht40_write(struct file *file, const char __user *user_buf,
-			    size_t count, loff_t *ppos)
+il_dbgfs_disable_ht40_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct il_priv *il = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct il_priv *il = iocb->ki_filp->private_data;
 	char buf[8];
 	int buf_size;
 	int ht40;
 
 	memset(buf, 0, sizeof(buf));
 	buf_size = min(count, sizeof(buf) - 1);
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 	if (sscanf(buf, "%d", &ht40) != 1)
 		return -EFAULT;
@@ -785,10 +773,9 @@ il_dbgfs_disable_ht40_write(struct file *file, const char __user *user_buf,
 }
 
 static ssize_t
-il_dbgfs_disable_ht40_read(struct file *file, char __user *user_buf,
-			   size_t count, loff_t *ppos)
+il_dbgfs_disable_ht40_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	char buf[100];
 	int pos = 0;
 	const size_t bufsz = sizeof(buf);
@@ -796,7 +783,7 @@ il_dbgfs_disable_ht40_read(struct file *file, char __user *user_buf,
 	pos +=
 	    scnprintf(buf + pos, bufsz - pos, "11n 40MHz Mode: %s\n",
 		      il->disable_ht40 ? "Disabled" : "Enabled");
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 DEBUGFS_READ_WRITE_FILE_OPS(sram);
@@ -809,11 +796,10 @@ DEBUGFS_READ_FILE_OPS(qos);
 DEBUGFS_READ_WRITE_FILE_OPS(disable_ht40);
 
 static ssize_t
-il_dbgfs_tx_queue_read(struct file *file, char __user *user_buf, size_t count,
-		       loff_t *ppos)
+il_dbgfs_tx_queue_read(struct kiocb *iocb, struct iov_iter *to)
 {
 
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	struct il_tx_queue *txq;
 	struct il_queue *q;
 	char *buf;
@@ -850,17 +836,16 @@ il_dbgfs_tx_queue_read(struct file *file, char __user *user_buf, size_t count,
 			      "        stop-count: %d\n",
 			      atomic_read(&il->queue_stop_count[cnt]));
 	}
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
 static ssize_t
-il_dbgfs_rx_queue_read(struct file *file, char __user *user_buf, size_t count,
-		       loff_t *ppos)
+il_dbgfs_rx_queue_read(struct kiocb *iocb, struct iov_iter *to)
 {
 
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	struct il_rx_queue *rxq = &il->rxq;
 	char buf[256];
 	int pos = 0;
@@ -881,42 +866,38 @@ il_dbgfs_rx_queue_read(struct file *file, char __user *user_buf, size_t count,
 		    scnprintf(buf + pos, bufsz - pos,
 			      "closed_rb_num: Not Allocated\n");
 	}
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 static ssize_t
-il_dbgfs_ucode_rx_stats_read(struct file *file, char __user *user_buf,
-			     size_t count, loff_t *ppos)
+il_dbgfs_ucode_rx_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 
-	return il->debugfs_ops->rx_stats_read(file, user_buf, count, ppos);
+	return il->debugfs_ops->rx_stats_read(iocb, to);
 }
 
 static ssize_t
-il_dbgfs_ucode_tx_stats_read(struct file *file, char __user *user_buf,
-			     size_t count, loff_t *ppos)
+il_dbgfs_ucode_tx_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 
-	return il->debugfs_ops->tx_stats_read(file, user_buf, count, ppos);
+	return il->debugfs_ops->tx_stats_read(iocb, to);
 }
 
 static ssize_t
-il_dbgfs_ucode_general_stats_read(struct file *file, char __user *user_buf,
-				  size_t count, loff_t *ppos)
+il_dbgfs_ucode_general_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 
-	return il->debugfs_ops->general_stats_read(file, user_buf, count, ppos);
+	return il->debugfs_ops->general_stats_read(iocb, to);
 }
 
 static ssize_t
-il_dbgfs_sensitivity_read(struct file *file, char __user *user_buf,
-			  size_t count, loff_t *ppos)
+il_dbgfs_sensitivity_read(struct kiocb *iocb, struct iov_iter *to)
 {
 
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int pos = 0;
 	int cnt = 0;
 	char *buf;
@@ -1005,17 +986,16 @@ il_dbgfs_sensitivity_read(struct file *file, char __user *user_buf,
 	    scnprintf(buf + pos, bufsz - pos, "nrg_th_ofdm:\t\t\t %u\n",
 		      data->nrg_th_ofdm);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
 static ssize_t
-il_dbgfs_chain_noise_read(struct file *file, char __user *user_buf,
-			  size_t count, loff_t *ppos)
+il_dbgfs_chain_noise_read(struct kiocb *iocb, struct iov_iter *to)
 {
 
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int pos = 0;
 	int cnt = 0;
 	char *buf;
@@ -1076,16 +1056,15 @@ il_dbgfs_chain_noise_read(struct file *file, char __user *user_buf,
 	    scnprintf(buf + pos, bufsz - pos, "state:\t\t\t\t %u\n",
 		      data->state);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
 static ssize_t
-il_dbgfs_power_save_status_read(struct file *file, char __user *user_buf,
-				size_t count, loff_t *ppos)
+il_dbgfs_power_save_status_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	char buf[60];
 	int pos = 0;
 	const size_t bufsz = sizeof(buf);
@@ -1102,22 +1081,21 @@ il_dbgfs_power_save_status_read(struct file *file, char __user *user_buf,
 		      (pwrsave_status == CSR_GP_REG_PHY_POWER_SAVE) ? "PHY" :
 		      "error");
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 static ssize_t
-il_dbgfs_clear_ucode_stats_write(struct file *file,
-				 const char __user *user_buf, size_t count,
-				 loff_t *ppos)
+il_dbgfs_clear_ucode_stats_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct il_priv *il = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct il_priv *il = iocb->ki_filp->private_data;
 	char buf[8];
 	int buf_size;
 	int clear;
 
 	memset(buf, 0, sizeof(buf));
 	buf_size = min(count, sizeof(buf) - 1);
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 	if (sscanf(buf, "%d", &clear) != 1)
 		return -EFAULT;
@@ -1131,37 +1109,34 @@ il_dbgfs_clear_ucode_stats_write(struct file *file,
 }
 
 static ssize_t
-il_dbgfs_rxon_flags_read(struct file *file, char __user *user_buf,
-			 size_t count, loff_t *ppos)
+il_dbgfs_rxon_flags_read(struct kiocb *iocb, struct iov_iter *to)
 {
 
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int len = 0;
 	char buf[20];
 
 	len = sprintf(buf, "0x%04X\n", le32_to_cpu(il->active.flags));
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static ssize_t
-il_dbgfs_rxon_filter_flags_read(struct file *file, char __user *user_buf,
-				size_t count, loff_t *ppos)
+il_dbgfs_rxon_filter_flags_read(struct kiocb *iocb, struct iov_iter *to)
 {
 
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int len = 0;
 	char buf[20];
 
 	len =
 	    sprintf(buf, "0x%04X\n", le32_to_cpu(il->active.filter_flags));
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static ssize_t
-il_dbgfs_fh_reg_read(struct file *file, char __user *user_buf, size_t count,
-		     loff_t *ppos)
+il_dbgfs_fh_reg_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	char *buf;
 	int pos = 0;
 	ssize_t ret = -EFAULT;
@@ -1170,8 +1145,8 @@ il_dbgfs_fh_reg_read(struct file *file, char __user *user_buf, size_t count,
 		ret = pos = il->ops->dump_fh(il, &buf, true);
 		if (buf) {
 			ret =
-			    simple_read_from_buffer(user_buf, count, ppos, buf,
-						    pos);
+			    simple_copy_to_iter(buf, &iocb->ki_pos,
+				    pos, to);
 			kfree(buf);
 		}
 	}
@@ -1180,11 +1155,10 @@ il_dbgfs_fh_reg_read(struct file *file, char __user *user_buf, size_t count,
 }
 
 static ssize_t
-il_dbgfs_missed_beacon_read(struct file *file, char __user *user_buf,
-			    size_t count, loff_t *ppos)
+il_dbgfs_missed_beacon_read(struct kiocb *iocb, struct iov_iter *to)
 {
 
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int pos = 0;
 	char buf[12];
 	const size_t bufsz = sizeof(buf);
@@ -1193,21 +1167,21 @@ il_dbgfs_missed_beacon_read(struct file *file, char __user *user_buf,
 	    scnprintf(buf + pos, bufsz - pos, "%d\n",
 		      il->missed_beacon_threshold);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 static ssize_t
-il_dbgfs_missed_beacon_write(struct file *file, const char __user *user_buf,
-			     size_t count, loff_t *ppos)
+il_dbgfs_missed_beacon_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct il_priv *il = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct il_priv *il = iocb->ki_filp->private_data;
 	char buf[8];
 	int buf_size;
 	int missed;
 
 	memset(buf, 0, sizeof(buf));
 	buf_size = min(count, sizeof(buf) - 1);
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 	if (sscanf(buf, "%d", &missed) != 1)
 		return -EINVAL;
@@ -1222,11 +1196,10 @@ il_dbgfs_missed_beacon_write(struct file *file, const char __user *user_buf,
 }
 
 static ssize_t
-il_dbgfs_force_reset_read(struct file *file, char __user *user_buf,
-			  size_t count, loff_t *ppos)
+il_dbgfs_force_reset_read(struct kiocb *iocb, struct iov_iter *to)
 {
 
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int pos = 0;
 	char buf[300];
 	const size_t bufsz = sizeof(buf);
@@ -1249,16 +1222,15 @@ il_dbgfs_force_reset_read(struct file *file, char __user *user_buf,
 	    scnprintf(buf + pos, bufsz - pos, "\treset duration: %lu\n",
 		      force_reset->reset_duration);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 static ssize_t
-il_dbgfs_force_reset_write(struct file *file, const char __user *user_buf,
-			   size_t count, loff_t *ppos)
+il_dbgfs_force_reset_write(struct kiocb *iocb, struct iov_iter *from)
 {
-
+	size_t count = iov_iter_count(from);
 	int ret;
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 
 	ret = il_force_reset(il, true);
 
@@ -1266,18 +1238,18 @@ il_dbgfs_force_reset_write(struct file *file, const char __user *user_buf,
 }
 
 static ssize_t
-il_dbgfs_wd_timeout_write(struct file *file, const char __user *user_buf,
-			  size_t count, loff_t *ppos)
+il_dbgfs_wd_timeout_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	char buf[8];
 	int buf_size;
 	int timeout;
 
 	memset(buf, 0, sizeof(buf));
 	buf_size = min(count, sizeof(buf) - 1);
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 	if (sscanf(buf, "%d", &timeout) != 1)
 		return -EINVAL;

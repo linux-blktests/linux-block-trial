@@ -333,19 +333,18 @@ struct nsim_dev_hwstats_fops {
 };
 
 static ssize_t
-nsim_dev_hwstats_do_write(struct file *file,
-			  const char __user *data,
-			  size_t count, loff_t *ppos)
+nsim_dev_hwstats_do_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct nsim_dev_hwstats *hwstats = file->private_data;
+	struct nsim_dev_hwstats *hwstats = iocb->ki_filp->private_data;
 	const struct nsim_dev_hwstats_fops *hwsfops;
+	size_t count = iov_iter_count(from);
 	struct list_head *hwsdev_list;
 	int ifindex;
 	int err;
 
-	hwsfops = debugfs_get_aux(file);
+	hwsfops = debugfs_get_aux(iocb->ki_filp);
 
-	err = kstrtoint_from_user(data, count, 0, &ifindex);
+	err = kstrtoint_from_iter(from, count, 0, &ifindex);
 	if (err)
 		return err;
 
@@ -377,7 +376,7 @@ nsim_dev_hwstats_do_write(struct file *file,
 }
 
 static struct debugfs_short_fops debugfs_ops = {
-	.write = nsim_dev_hwstats_do_write,
+	.write_iter = nsim_dev_hwstats_do_write,
 	.llseek = generic_file_llseek,
 };
 

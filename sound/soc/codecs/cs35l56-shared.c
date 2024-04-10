@@ -13,6 +13,7 @@
 #include <linux/firmware/cirrus/wmfw.h>
 #include <linux/fs.h>
 #include <linux/gpio/consumer.h>
+#include <linux/uio.h>
 #include <linux/kstrtox.h>
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
@@ -1139,20 +1140,20 @@ err_pm_put:
 }
 
 ssize_t cs35l56_calibrate_debugfs_write(struct cs35l56_base *cs35l56_base,
-					const char __user *from, size_t count,
-					loff_t *ppos)
+					struct kiocb *iocb, struct iov_iter *from)
 {
 	static const char * const options[] = { "factory", "store_uefi" };
+	size_t count = iov_iter_count(from);
 	char buf[11] = { 0 };
 	int num_amps, ret;
 
 	if (!IS_ENABLED(CONFIG_SND_SOC_CS35L56_CAL_DEBUGFS_COMMON))
 		return -ENXIO;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return -EINVAL;
 
-	ret = simple_write_to_buffer(buf, sizeof(buf) - 1, ppos, from, count);
+	ret = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf) - 1, from);
 	if (ret < 0)
 		return ret;
 
@@ -1186,23 +1187,23 @@ ssize_t cs35l56_calibrate_debugfs_write(struct cs35l56_base *cs35l56_base,
 EXPORT_SYMBOL_NS_GPL(cs35l56_calibrate_debugfs_write, "SND_SOC_CS35L56_SHARED");
 
 ssize_t cs35l56_cal_ambient_debugfs_write(struct cs35l56_base *cs35l56_base,
-					  const char __user *from, size_t count,
-					  loff_t *ppos)
+					  struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	unsigned long val;
 	int ret;
 
 	if (!IS_ENABLED(CONFIG_SND_SOC_CS35L56_CAL_DEBUGFS_COMMON))
 		return -ENXIO;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return -EINVAL;
 
 	ret = pm_runtime_resume_and_get(cs35l56_base->dev);
 	if (ret)
 		return ret;
 
-	ret = kstrtoul_from_user(from, count, 10, &val);
+	ret = kstrtoul_from_iter(from, count, 10, &val);
 	if (ret < 0)
 		goto out;
 
@@ -1220,8 +1221,7 @@ out:
 EXPORT_SYMBOL_NS_GPL(cs35l56_cal_ambient_debugfs_write, "SND_SOC_CS35L56_SHARED");
 
 ssize_t cs35l56_cal_data_debugfs_read(struct cs35l56_base *cs35l56_base,
-				      char __user *to, size_t count,
-				      loff_t *ppos)
+				      struct kiocb *iocb, struct iov_iter *to)
 {
 	if (!IS_ENABLED(CONFIG_SND_SOC_CS35L56_CAL_DEBUGFS_COMMON))
 		return -ENXIO;
@@ -1229,15 +1229,15 @@ ssize_t cs35l56_cal_data_debugfs_read(struct cs35l56_base *cs35l56_base,
 	if (!cs35l56_base->cal_data_valid)
 		return 0;
 
-	return simple_read_from_buffer(to, count, ppos, &cs35l56_base->cal_data,
-				       sizeof(cs35l56_base->cal_data));
+	return simple_copy_to_iter(&cs35l56_base->cal_data, &iocb->ki_pos,
+				   sizeof(cs35l56_base->cal_data), to);
 }
 EXPORT_SYMBOL_NS_GPL(cs35l56_cal_data_debugfs_read, "SND_SOC_CS35L56_SHARED");
 
 ssize_t cs35l56_cal_data_debugfs_write(struct cs35l56_base *cs35l56_base,
-				       const char __user *from, size_t count,
-				       loff_t *ppos)
+				       struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct cirrus_amp_cal_data cal_data;
 	int ret;
 
@@ -1245,10 +1245,10 @@ ssize_t cs35l56_cal_data_debugfs_write(struct cs35l56_base *cs35l56_base,
 		return -ENXIO;
 
 	/* Only allow a full blob to be written */
-	if (*ppos || (count != sizeof(cal_data)))
+	if (iocb->ki_pos || (count != sizeof(cal_data)))
 		return -EMSGSIZE;
 
-	ret = simple_write_to_buffer(&cal_data, sizeof(cal_data), ppos, from, count);
+	ret = simple_copy_from_iter(&cal_data, &iocb->ki_pos, sizeof(cal_data), from);
 	if (ret)
 		return ret;
 

@@ -1877,9 +1877,8 @@ EXPORT_SYMBOL_GPL(iwl_mei_unregister_complete);
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 
 static ssize_t
-iwl_mei_dbgfs_send_start_message_write(struct file *file,
-				       const char __user *user_buf,
-				       size_t count, loff_t *ppos)
+iwl_mei_dbgfs_send_start_message_write(struct kiocb *iocb,
+				       struct iov_iter *from)
 {
 	int ret;
 
@@ -1894,26 +1893,25 @@ iwl_mei_dbgfs_send_start_message_write(struct file *file,
 
 out:
 	mutex_unlock(&iwl_mei_mutex);
-	return ret ?: count;
+	return ret ?: iov_iter_count(from);
 }
 
 static const struct file_operations iwl_mei_dbgfs_send_start_message_ops = {
-	.write = iwl_mei_dbgfs_send_start_message_write,
+	.write_iter = iwl_mei_dbgfs_send_start_message_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t iwl_mei_dbgfs_req_ownership_write(struct file *file,
-						 const char __user *user_buf,
-						 size_t count, loff_t *ppos)
+static ssize_t iwl_mei_dbgfs_req_ownership_write(struct kiocb *iocb,
+						 struct iov_iter *from)
 {
 	iwl_mei_get_ownership();
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations iwl_mei_dbgfs_req_ownership_ops = {
-	.write = iwl_mei_dbgfs_req_ownership_write,
+	.write_iter = iwl_mei_dbgfs_req_ownership_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };

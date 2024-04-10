@@ -16,13 +16,12 @@ struct minstrel_debugfs_info {
 	char buf[];
 };
 
-static ssize_t
-minstrel_stats_read(struct file *file, char __user *buf, size_t len, loff_t *ppos)
+static ssize_t minstrel_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct minstrel_debugfs_info *ms;
 
-	ms = file->private_data;
-	return simple_read_from_buffer(buf, len, ppos, ms->buf, ms->len);
+	ms = iocb->ki_filp->private_data;
+	return simple_copy_to_iter(ms->buf, &iocb->ki_pos, ms->len, to);
 }
 
 static int
@@ -185,7 +184,7 @@ minstrel_ht_stats_open(struct inode *inode, struct file *file)
 static const struct file_operations minstrel_ht_stat_fops = {
 	.owner = THIS_MODULE,
 	.open = minstrel_ht_stats_open,
-	.read = minstrel_stats_read,
+	.read_iter = minstrel_stats_read,
 	.release = minstrel_stats_release,
 };
 
@@ -320,7 +319,7 @@ minstrel_ht_stats_csv_open(struct inode *inode, struct file *file)
 static const struct file_operations minstrel_ht_stat_csv_fops = {
 	.owner = THIS_MODULE,
 	.open = minstrel_ht_stats_csv_open,
-	.read = minstrel_stats_read,
+	.read_iter = minstrel_stats_read,
 	.release = minstrel_stats_release,
 };
 

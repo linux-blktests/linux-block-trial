@@ -242,18 +242,16 @@ ieee80211_rate_control_ops_get(const char *name)
 }
 
 #ifdef CONFIG_MAC80211_DEBUGFS
-static ssize_t rcname_read(struct file *file, char __user *userbuf,
-			   size_t count, loff_t *ppos)
+static ssize_t rcname_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct rate_control_ref *ref = file->private_data;
+	struct rate_control_ref *ref = iocb->ki_filp->private_data;
 	int len = strlen(ref->ops->name);
 
-	return simple_read_from_buffer(userbuf, count, ppos,
-				       ref->ops->name, len);
+	return simple_copy_to_iter(ref->ops->name, &iocb->ki_pos, len, to);
 }
 
 const struct debugfs_short_fops rcname_ops = {
-	.read = rcname_read,
+	.read_iter = rcname_read,
 	.llseek = default_llseek,
 };
 #endif

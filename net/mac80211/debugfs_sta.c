@@ -19,26 +19,28 @@
 /* sta attributes */
 
 #define STA_READ(name, field, format_string)				\
-static ssize_t sta_ ##name## _read(struct file *file,			\
-				   char __user *userbuf,		\
-				   size_t count, loff_t *ppos)		\
+static ssize_t sta_ ##name## _read(struct kiocb *iocb,			\
+				   struct iov_iter *to)			\
 {									\
-	struct sta_info *sta = file->private_data;			\
-	return mac80211_format_buffer(userbuf, count, ppos, 		\
-				      format_string, sta->field);	\
+	struct sta_info *sta = iocb->ki_filp->private_data;		\
+	char buf[100];							\
+	int res;							\
+									\
+	res = scnprintf(buf, sizeof(buf), format_string, sta->field);	\
+	return simple_copy_to_iter(buf, &iocb->ki_pos, res, to);	\
 }
 #define STA_READ_D(name, field) STA_READ(name, field, "%d\n")
 
 #define STA_OPS(name)							\
 static const struct debugfs_short_fops sta_ ##name## _ops = {		\
-	.read = sta_##name##_read,					\
+	.read_iter = sta_##name##_read,					\
 	.llseek = generic_file_llseek,					\
 }
 
 #define STA_OPS_RW(name)						\
 static const struct debugfs_short_fops sta_ ##name## _ops = {		\
-	.read = sta_##name##_read,					\
-	.write = sta_##name##_write,					\
+	.read_iter = sta_##name##_read,					\
+	.write_iter = sta_##name##_write,				\
 	.llseek = generic_file_llseek,					\
 }
 
@@ -81,12 +83,11 @@ static const char * const sta_flag_names[] = {
 #undef FLAG
 };
 
-static ssize_t sta_flags_read(struct file *file, char __user *userbuf,
-			      size_t count, loff_t *ppos)
+static ssize_t sta_flags_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[16 * NUM_WLAN_STA_FLAGS], *pos = buf;
 	char *end = buf + sizeof(buf) - 1;
-	struct sta_info *sta = file->private_data;
+	struct sta_info *sta = iocb->ki_filp->private_data;
 	unsigned int flg;
 
 	BUILD_BUG_ON(ARRAY_SIZE(sta_flag_names) != NUM_WLAN_STA_FLAGS);
@@ -97,15 +98,14 @@ static ssize_t sta_flags_read(struct file *file, char __user *userbuf,
 					 sta_flag_names[flg]);
 	}
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, strlen(buf));
+	return simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 }
 STA_OPS(flags);
 
-static ssize_t sta_num_ps_buf_frames_read(struct file *file,
-					  char __user *userbuf,
-					  size_t count, loff_t *ppos)
+static ssize_t sta_num_ps_buf_frames_read(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
-	struct sta_info *sta = file->private_data;
+	struct sta_info *sta = iocb->ki_filp->private_data;
 	char buf[17*IEEE80211_NUM_ACS], *p = buf;
 	int ac;
 
@@ -113,30 +113,28 @@ static ssize_t sta_num_ps_buf_frames_read(struct file *file,
 		p += scnprintf(p, sizeof(buf)+buf-p, "AC%d: %d\n", ac,
 			       skb_queue_len(&sta->ps_tx_buf[ac]) +
 			       skb_queue_len(&sta->tx_filtered[ac]));
-	return simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, p - buf, to);
 }
 STA_OPS(num_ps_buf_frames);
 
-static ssize_t sta_last_seq_ctrl_read(struct file *file, char __user *userbuf,
-				      size_t count, loff_t *ppos)
+static ssize_t sta_last_seq_ctrl_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[15*IEEE80211_NUM_TIDS], *p = buf;
 	int i;
-	struct sta_info *sta = file->private_data;
+	struct sta_info *sta = iocb->ki_filp->private_data;
 	for (i = 0; i < IEEE80211_NUM_TIDS; i++)
 		p += scnprintf(p, sizeof(buf)+buf-p, "%x ",
 			       le16_to_cpu(sta->last_seq_ctrl[i]));
 	p += scnprintf(p, sizeof(buf)+buf-p, "\n");
-	return simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, p - buf, to);
 }
 STA_OPS(last_seq_ctrl);
 
 #define AQM_TXQ_ENTRY_LEN 130
 
-static ssize_t sta_aqm_read(struct file *file, char __user *userbuf,
-			size_t count, loff_t *ppos)
+static ssize_t sta_aqm_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct sta_info *sta = file->private_data;
+	struct sta_info *sta = iocb->ki_filp->private_data;
 	struct ieee80211_local *local = sta->local;
 	size_t bufsz = AQM_TXQ_ENTRY_LEN * (IEEE80211_NUM_TIDS + 2);
 	char *buf = kzalloc(bufsz, GFP_KERNEL), *p = buf;
@@ -179,16 +177,15 @@ static ssize_t sta_aqm_read(struct file *file, char __user *userbuf,
 
 	spin_unlock_bh(&local->fq.lock);
 
-	rv = simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+	rv = simple_copy_to_iter(buf, &iocb->ki_pos, p - buf, to);
 	kfree(buf);
 	return rv;
 }
 STA_OPS(aqm);
 
-static ssize_t sta_airtime_read(struct file *file, char __user *userbuf,
-				size_t count, loff_t *ppos)
+static ssize_t sta_airtime_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct sta_info *sta = file->private_data;
+	struct sta_info *sta = iocb->ki_filp->private_data;
 	struct ieee80211_local *local = sta->sdata->local;
 	size_t bufsz = 400;
 	char *buf = kzalloc(bufsz, GFP_KERNEL), *p = buf;
@@ -214,16 +211,16 @@ static ssize_t sta_airtime_read(struct file *file, char __user *userbuf,
 		rx_airtime, tx_airtime, sta->airtime_weight,
 		deficit[0], deficit[1], deficit[2], deficit[3]);
 
-	rv = simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+	rv = simple_copy_to_iter(buf, &iocb->ki_pos, p - buf, to);
 	kfree(buf);
 	return rv;
 }
 
-static ssize_t sta_airtime_write(struct file *file, const char __user *userbuf,
-				 size_t count, loff_t *ppos)
+static ssize_t sta_airtime_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct sta_info *sta = file->private_data;
+	struct sta_info *sta = iocb->ki_filp->private_data;
 	struct ieee80211_local *local = sta->sdata->local;
+	size_t count = iov_iter_count(from);
 	int ac;
 
 	for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
@@ -238,10 +235,9 @@ static ssize_t sta_airtime_write(struct file *file, const char __user *userbuf,
 }
 STA_OPS_RW(airtime);
 
-static ssize_t sta_aql_read(struct file *file, char __user *userbuf,
-				size_t count, loff_t *ppos)
+static ssize_t sta_aql_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct sta_info *sta = file->private_data;
+	struct sta_info *sta = iocb->ki_filp->private_data;
 	struct ieee80211_local *local = sta->sdata->local;
 	size_t bufsz = 400;
 	char *buf = kzalloc(bufsz, GFP_KERNEL), *p = buf;
@@ -268,22 +264,22 @@ static ssize_t sta_aql_read(struct file *file, char __user *userbuf,
 		q_limit_l[0], q_limit_h[0], q_limit_l[1], q_limit_h[1],
 		q_limit_l[2], q_limit_h[2], q_limit_l[3], q_limit_h[3]);
 
-	rv = simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+	rv = simple_copy_to_iter(buf, &iocb->ki_pos, p - buf, to);
 	kfree(buf);
 	return rv;
 }
 
-static ssize_t sta_aql_write(struct file *file, const char __user *userbuf,
-				 size_t count, loff_t *ppos)
+static ssize_t sta_aql_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct sta_info *sta = file->private_data;
+	struct sta_info *sta = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	u32 ac, q_limit_l, q_limit_h;
 	char _buf[100] = {}, *buf = _buf;
 
 	if (count > sizeof(_buf))
 		return -EINVAL;
 
-	if (copy_from_user(buf, userbuf, count))
+	if (!copy_from_iter_full(buf, count, from))
 		return -EFAULT;
 
 	buf[sizeof(_buf) - 1] = '\0';
@@ -302,7 +298,7 @@ static ssize_t sta_aql_write(struct file *file, const char __user *userbuf,
 STA_OPS_RW(aql);
 
 
-static ssize_t sta_agg_status_do_read(struct wiphy *wiphy, struct file *file,
+static ssize_t sta_agg_status_do_read(struct wiphy *wiphy,
 				      char *buf, size_t bufsz, void *data)
 {
 	struct sta_info *sta = data;
@@ -343,10 +339,9 @@ static ssize_t sta_agg_status_do_read(struct wiphy *wiphy, struct file *file,
 	return p - buf;
 }
 
-static ssize_t sta_agg_status_read(struct file *file, char __user *userbuf,
-				   size_t count, loff_t *ppos)
+static ssize_t sta_agg_status_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct sta_info *sta = file->private_data;
+	struct sta_info *sta = iocb->ki_filp->private_data;
 	struct wiphy *wiphy = sta->local->hw.wiphy;
 	size_t bufsz = 71 + IEEE80211_NUM_TIDS * 40;
 	char *buf = kmalloc(bufsz, GFP_KERNEL);
@@ -355,15 +350,15 @@ static ssize_t sta_agg_status_read(struct file *file, char __user *userbuf,
 	if (!buf)
 		return -ENOMEM;
 
-	ret = wiphy_locked_debugfs_read(wiphy, file, buf, bufsz,
-					userbuf, count, ppos,
+	ret = wiphy_locked_debugfs_read(wiphy, iocb, buf, bufsz,
+					to,
 					sta_agg_status_do_read, sta);
 	kfree(buf);
 
 	return ret;
 }
 
-static ssize_t sta_agg_status_do_write(struct wiphy *wiphy, struct file *file,
+static ssize_t sta_agg_status_do_write(struct wiphy *wiphy,
 				       char *buf, size_t count, void *data)
 {
 	struct sta_info *sta = data;
@@ -424,43 +419,44 @@ static ssize_t sta_agg_status_do_write(struct wiphy *wiphy, struct file *file,
 	return ret ?: count;
 }
 
-static ssize_t sta_agg_status_write(struct file *file,
-				    const char __user *userbuf,
-				    size_t count, loff_t *ppos)
+static ssize_t sta_agg_status_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct sta_info *sta = file->private_data;
+	struct sta_info *sta = iocb->ki_filp->private_data;
 	struct wiphy *wiphy = sta->local->hw.wiphy;
 	char _buf[26];
 
-	return wiphy_locked_debugfs_write(wiphy, file, _buf, sizeof(_buf),
-					  userbuf, count,
+	return wiphy_locked_debugfs_write(wiphy, iocb, _buf, sizeof(_buf),
+					  from,
 					  sta_agg_status_do_write, sta);
 }
-STA_OPS_RW(agg_status);
+
+static const struct debugfs_short_fops sta_agg_status_ops = {
+	.read_iter = sta_agg_status_read,
+	.write_iter = sta_agg_status_write,
+	.llseek = generic_file_llseek,
+};
 
 /* link sta attributes */
 #define LINK_STA_OPS(name)						\
 static const struct debugfs_short_fops link_sta_ ##name## _ops = {		\
-	.read = link_sta_##name##_read,					\
+	.read_iter = link_sta_##name##_read,				\
 	.llseek = generic_file_llseek,					\
 }
 
-static ssize_t link_sta_addr_read(struct file *file, char __user *userbuf,
-				  size_t count, loff_t *ppos)
+static ssize_t link_sta_addr_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct link_sta_info *link_sta = file->private_data;
+	struct link_sta_info *link_sta = iocb->ki_filp->private_data;
 	u8 mac[MAC_ADDR_STR_LEN + 2];
 
 	snprintf(mac, sizeof(mac), "%pM\n", link_sta->pub->addr);
 
-	return simple_read_from_buffer(userbuf, count, ppos, mac,
-				       MAC_ADDR_STR_LEN + 1);
+	return simple_copy_to_iter(mac, &iocb->ki_pos,
+				   MAC_ADDR_STR_LEN + 1, to);
 }
 
 LINK_STA_OPS(addr);
 
-static ssize_t link_sta_ht_capa_read(struct file *file, char __user *userbuf,
-				     size_t count, loff_t *ppos)
+static ssize_t link_sta_ht_capa_read(struct kiocb *iocb, struct iov_iter *to)
 {
 #define PRINT_HT_CAP(_cond, _str) \
 	do { \
@@ -470,7 +466,7 @@ static ssize_t link_sta_ht_capa_read(struct file *file, char __user *userbuf,
 	char *buf, *p;
 	int i;
 	ssize_t bufsz = 512;
-	struct link_sta_info *link_sta = file->private_data;
+	struct link_sta_info *link_sta = iocb->ki_filp->private_data;
 	struct ieee80211_sta_ht_cap *htc = &link_sta->pub->ht_cap;
 	ssize_t ret;
 
@@ -544,17 +540,16 @@ static ssize_t link_sta_ht_capa_read(struct file *file, char __user *userbuf,
 				htc->mcs.tx_params);
 	}
 
-	ret = simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, p - buf, to);
 	kfree(buf);
 	return ret;
 }
 LINK_STA_OPS(ht_capa);
 
-static ssize_t link_sta_vht_capa_read(struct file *file, char __user *userbuf,
-				      size_t count, loff_t *ppos)
+static ssize_t link_sta_vht_capa_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *buf, *p;
-	struct link_sta_info *link_sta = file->private_data;
+	struct link_sta_info *link_sta = iocb->ki_filp->private_data;
 	struct ieee80211_sta_vht_cap *vhtc = &link_sta->pub->vht_cap;
 	ssize_t ret;
 	ssize_t bufsz = 512;
@@ -658,18 +653,17 @@ static ssize_t link_sta_vht_capa_read(struct file *file, char __user *userbuf,
 #undef PFLAG
 	}
 
-	ret = simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, p - buf, to);
 	kfree(buf);
 	return ret;
 }
 LINK_STA_OPS(vht_capa);
 
-static ssize_t link_sta_he_capa_read(struct file *file, char __user *userbuf,
-				     size_t count, loff_t *ppos)
+static ssize_t link_sta_he_capa_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *buf, *p;
 	size_t buf_sz = PAGE_SIZE;
-	struct link_sta_info *link_sta = file->private_data;
+	struct link_sta_info *link_sta = iocb->ki_filp->private_data;
 	struct ieee80211_sta_he_cap *hec = &link_sta->pub->he_cap;
 	struct ieee80211_he_mcs_nss_supp *nss = &hec->he_mcs_nss_supp;
 	u8 ppe_size;
@@ -1031,18 +1025,17 @@ static ssize_t link_sta_he_capa_read(struct file *file, char __user *userbuf,
 	p += scnprintf(p, buf_sz + buf - p, "\n");
 
 out:
-	ret = simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, p - buf, to);
 	kfree(buf);
 	return ret;
 }
 LINK_STA_OPS(he_capa);
 
-static ssize_t link_sta_eht_capa_read(struct file *file, char __user *userbuf,
-				      size_t count, loff_t *ppos)
+static ssize_t link_sta_eht_capa_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *buf, *p;
 	size_t buf_sz = PAGE_SIZE;
-	struct link_sta_info *link_sta = file->private_data;
+	struct link_sta_info *link_sta = iocb->ki_filp->private_data;
 	struct ieee80211_sta_eht_cap *bec = &link_sta->pub->eht_cap;
 	struct ieee80211_eht_cap_elem_fixed *fixed = &bec->eht_cap_elem;
 	struct ieee80211_eht_mcs_nss_supp *nss = &bec->eht_mcs_nss_supp;
@@ -1215,7 +1208,7 @@ static ssize_t link_sta_eht_capa_read(struct file *file, char __user *userbuf,
 	}
 
 out:
-	ret = simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, p - buf, to);
 	kfree(buf);
 	return ret;
 }

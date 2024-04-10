@@ -68,8 +68,8 @@ static const struct file_operations __fops = {				\
 typedef struct vfsmount *(*debugfs_automount_t)(struct dentry *, void *);
 
 struct debugfs_short_fops {
-	ssize_t (*read)(struct file *, char __user *, size_t, loff_t *);
-	ssize_t (*write)(struct file *, const char __user *, size_t, loff_t *);
+	ssize_t (*read_iter)(struct kiocb *, struct iov_iter *);
+	ssize_t (*write_iter)(struct kiocb *, struct iov_iter *);
 	loff_t (*llseek) (struct file *, loff_t, int);
 };
 
@@ -167,14 +167,8 @@ void *debugfs_get_aux(const struct file *file);
 int debugfs_file_get(struct dentry *dentry);
 void debugfs_file_put(struct dentry *dentry);
 
-ssize_t debugfs_attr_read(struct file *file, char __user *buf,
-			size_t len, loff_t *ppos);
 ssize_t debugfs_attr_read_iter(struct kiocb *iocb, struct iov_iter *to);
-ssize_t debugfs_attr_write(struct file *file, const char __user *buf,
-			size_t len, loff_t *ppos);
 ssize_t debugfs_attr_write_iter(struct kiocb *iocb, struct iov_iter *from);
-ssize_t debugfs_attr_write_signed(struct file *file, const char __user *buf,
-			size_t len, loff_t *ppos);
 ssize_t debugfs_attr_write_iter_signed(struct kiocb *iocb, struct iov_iter *from);
 
 int debugfs_change_name(struct dentry *dentry, const char *fmt, ...) __printf(2, 3);

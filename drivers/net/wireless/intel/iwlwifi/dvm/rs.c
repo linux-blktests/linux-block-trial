@@ -3032,20 +3032,20 @@ static void rs_dbgfs_set_mcs(struct iwl_lq_sta *lq_sta,
 	}
 }
 
-static ssize_t rs_sta_dbgfs_scale_table_write(struct file *file,
-			const char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t rs_sta_dbgfs_scale_table_write(struct kiocb *iocb,
+					      struct iov_iter *from)
 {
-	struct iwl_lq_sta *lq_sta = file->private_data;
+	struct iwl_lq_sta *lq_sta = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct iwl_priv *priv;
 	char buf[64];
 	size_t buf_size;
 	u32 parsed_rate;
 
-
 	priv = lq_sta->drv;
 	memset(buf, 0, sizeof(buf));
 	buf_size = min(count, sizeof(buf) -  1);
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 
 	if (sscanf(buf, "%x", &parsed_rate) == 1)
@@ -3058,8 +3058,8 @@ static ssize_t rs_sta_dbgfs_scale_table_write(struct file *file,
 	return count;
 }
 
-static ssize_t rs_sta_dbgfs_scale_table_read(struct file *file,
-			char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t rs_sta_dbgfs_scale_table_read(struct kiocb *iocb,
+					     struct iov_iter *to)
 {
 	char *buff;
 	int desc = 0;
@@ -3084,7 +3084,7 @@ static ssize_t rs_sta_dbgfs_scale_table_read(struct file *file,
 		{ "60", "64QAM 5/6"},
 	};
 
-	struct iwl_lq_sta *lq_sta = file->private_data;
+	struct iwl_lq_sta *lq_sta = iocb->ki_filp->private_data;
 	struct iwl_priv *priv;
 	struct iwl_scale_tbl_info *tbl = &(lq_sta->lq_info[lq_sta->active_tbl]);
 
@@ -3155,26 +3155,26 @@ static ssize_t rs_sta_dbgfs_scale_table_read(struct file *file,
 		}
 	}
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buff, desc);
+	ret = simple_copy_to_iter(buff, &iocb->ki_pos, desc, to);
 	kfree(buff);
 	return ret;
 }
 
 static const struct file_operations rs_sta_dbgfs_scale_table_ops = {
-	.write = rs_sta_dbgfs_scale_table_write,
-	.read = rs_sta_dbgfs_scale_table_read,
+	.write_iter = rs_sta_dbgfs_scale_table_write,
+	.read_iter = rs_sta_dbgfs_scale_table_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
-static ssize_t rs_sta_dbgfs_stats_table_read(struct file *file,
-			char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t rs_sta_dbgfs_stats_table_read(struct kiocb *iocb,
+					     struct iov_iter *to)
 {
 	char *buff;
 	int desc = 0;
 	int i, j;
 	ssize_t ret;
 
-	struct iwl_lq_sta *lq_sta = file->private_data;
+	struct iwl_lq_sta *lq_sta = iocb->ki_filp->private_data;
 
 	buff = kmalloc(1024, GFP_KERNEL);
 	if (!buff)
@@ -3199,21 +3199,21 @@ static ssize_t rs_sta_dbgfs_stats_table_read(struct file *file,
 				lq_sta->lq_info[i].win[j].success_ratio);
 		}
 	}
-	ret = simple_read_from_buffer(user_buf, count, ppos, buff, desc);
+	ret = simple_copy_to_iter(buff, &iocb->ki_pos, desc, to);
 	kfree(buff);
 	return ret;
 }
 
 static const struct file_operations rs_sta_dbgfs_stats_table_ops = {
-	.read = rs_sta_dbgfs_stats_table_read,
+	.read_iter = rs_sta_dbgfs_stats_table_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t rs_sta_dbgfs_rate_scale_data_read(struct file *file,
-			char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t rs_sta_dbgfs_rate_scale_data_read(struct kiocb *iocb,
+						 struct iov_iter *to)
 {
-	struct iwl_lq_sta *lq_sta = file->private_data;
+	struct iwl_lq_sta *lq_sta = iocb->ki_filp->private_data;
 	struct iwl_scale_tbl_info *tbl = &lq_sta->lq_info[lq_sta->active_tbl];
 	char buff[120];
 	int desc = 0;
@@ -3227,11 +3227,11 @@ static ssize_t rs_sta_dbgfs_rate_scale_data_read(struct file *file,
 				"Bit Rate= %d Mb/s\n",
 				iwl_rates[lq_sta->last_txrate_idx].ieee >> 1);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buff, desc);
+	return simple_copy_to_iter(buff, &iocb->ki_pos, desc, to);
 }
 
 static const struct file_operations rs_sta_dbgfs_rate_scale_data_ops = {
-	.read = rs_sta_dbgfs_rate_scale_data_read,
+	.read_iter = rs_sta_dbgfs_rate_scale_data_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };

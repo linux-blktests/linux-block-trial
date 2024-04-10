@@ -15,26 +15,27 @@
 #include "debugfs_key.h"
 
 #define KEY_READ(name, prop, format_string)				\
-static ssize_t key_##name##_read(struct file *file,			\
-				 char __user *userbuf,			\
-				 size_t count, loff_t *ppos)		\
+static ssize_t key_##name##_read(struct kiocb *iocb,			\
+				 struct iov_iter *to)			\
 {									\
-	struct ieee80211_key *key = file->private_data;			\
-	return mac80211_format_buffer(userbuf, count, ppos, 		\
-				      format_string, key->prop);	\
+	char buf[100];							\
+	int res;							\
+	struct ieee80211_key *key = iocb->ki_filp->private_data;	\
+	res = scnprintf(buf, sizeof(buf), format_string, key->prop);	\
+	return simple_copy_to_iter(buf, &iocb->ki_pos, res, to);	\
 }
 #define KEY_READ_X(name) KEY_READ(name, name, "0x%x\n")
 
 #define KEY_OPS(name)							\
 static const struct debugfs_short_fops key_ ##name## _ops = {		\
-	.read = key_##name##_read,					\
+	.read_iter = key_##name##_read,					\
 	.llseek = generic_file_llseek,					\
 }
 
 #define KEY_OPS_W(name)							\
 static const struct debugfs_short_fops key_ ##name## _ops = {		\
-	.read = key_##name##_read,					\
-	.write = key_##name##_write,					\
+	.read_iter = key_##name##_read,					\
+	.write_iter = key_##name##_write,				\
 	.llseek = generic_file_llseek,					\
 }
 
@@ -48,7 +49,7 @@ static const struct debugfs_short_fops key_ ##name## _ops = {		\
 
 #define KEY_CONF_OPS(name)						\
 static const struct debugfs_short_fops key_ ##name## _ops = {		\
-	.read = key_conf_##name##_read,					\
+	.read_iter = key_conf_##name##_read,				\
 	.llseek = generic_file_llseek,					\
 }
 
@@ -63,24 +64,22 @@ KEY_FILE(flags, X);
 KEY_READ(ifindex, sdata->name, "%s\n");
 KEY_OPS(ifindex);
 
-static ssize_t key_algorithm_read(struct file *file,
-				  char __user *userbuf,
-				  size_t count, loff_t *ppos)
+static ssize_t key_algorithm_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[15];
-	struct ieee80211_key *key = file->private_data;
+	struct ieee80211_key *key = iocb->ki_filp->private_data;
 	u32 c = key->conf.cipher;
 
 	sprintf(buf, "%.2x-%.2x-%.2x:%d\n",
 		c >> 24, (c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff);
-	return simple_read_from_buffer(userbuf, count, ppos, buf, strlen(buf));
+	return simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 }
 KEY_OPS(algorithm);
 
-static ssize_t key_tx_spec_write(struct file *file, const char __user *userbuf,
-				 size_t count, loff_t *ppos)
+static ssize_t key_tx_spec_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ieee80211_key *key = file->private_data;
+	struct ieee80211_key *key = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	u64 pn;
 	int ret;
 
@@ -99,7 +98,7 @@ static ssize_t key_tx_spec_write(struct file *file, const char __user *userbuf,
 	case WLAN_CIPHER_SUITE_BIP_GMAC_256:
 	case WLAN_CIPHER_SUITE_GCMP:
 	case WLAN_CIPHER_SUITE_GCMP_256:
-		ret = kstrtou64_from_user(userbuf, count, 16, &pn);
+		ret = kstrtou64_from_iter(from, count, 16, &pn);
 		if (ret)
 			return ret;
 		/* PN is a 48-bit counter */
@@ -112,13 +111,12 @@ static ssize_t key_tx_spec_write(struct file *file, const char __user *userbuf,
 	}
 }
 
-static ssize_t key_tx_spec_read(struct file *file, char __user *userbuf,
-				size_t count, loff_t *ppos)
+static ssize_t key_tx_spec_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	u64 pn;
 	char buf[20];
 	int len;
-	struct ieee80211_key *key = file->private_data;
+	struct ieee80211_key *key = iocb->ki_filp->private_data;
 
 	switch (key->conf.cipher) {
 	case WLAN_CIPHER_SUITE_WEP40:
@@ -147,14 +145,13 @@ static ssize_t key_tx_spec_read(struct file *file, char __user *userbuf,
 	default:
 		return 0;
 	}
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 KEY_OPS_W(tx_spec);
 
-static ssize_t key_rx_spec_read(struct file *file, char __user *userbuf,
-				size_t count, loff_t *ppos)
+static ssize_t key_rx_spec_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ieee80211_key *key = file->private_data;
+	struct ieee80211_key *key = iocb->ki_filp->private_data;
 	char buf[14*IEEE80211_NUM_TIDS+1], *p = buf;
 	int i, len;
 	const u8 *rpn;
@@ -215,14 +212,13 @@ static ssize_t key_rx_spec_read(struct file *file, char __user *userbuf,
 	default:
 		return 0;
 	}
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 KEY_OPS(rx_spec);
 
-static ssize_t key_replays_read(struct file *file, char __user *userbuf,
-				size_t count, loff_t *ppos)
+static ssize_t key_replays_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ieee80211_key *key = file->private_data;
+	struct ieee80211_key *key = iocb->ki_filp->private_data;
 	char buf[20];
 	int len;
 
@@ -248,14 +244,13 @@ static ssize_t key_replays_read(struct file *file, char __user *userbuf,
 	default:
 		return 0;
 	}
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 KEY_OPS(replays);
 
-static ssize_t key_icverrors_read(struct file *file, char __user *userbuf,
-				  size_t count, loff_t *ppos)
+static ssize_t key_icverrors_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ieee80211_key *key = file->private_data;
+	struct ieee80211_key *key = iocb->ki_filp->private_data;
 	char buf[20];
 	int len;
 
@@ -273,14 +268,13 @@ static ssize_t key_icverrors_read(struct file *file, char __user *userbuf,
 	default:
 		return 0;
 	}
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 KEY_OPS(icverrors);
 
-static ssize_t key_mic_failures_read(struct file *file, char __user *userbuf,
-				     size_t count, loff_t *ppos)
+static ssize_t key_mic_failures_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ieee80211_key *key = file->private_data;
+	struct ieee80211_key *key = iocb->ki_filp->private_data;
 	char buf[20];
 	int len;
 
@@ -289,14 +283,13 @@ static ssize_t key_mic_failures_read(struct file *file, char __user *userbuf,
 
 	len = scnprintf(buf, sizeof(buf), "%u\n", key->u.tkip.mic_failures);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 KEY_OPS(mic_failures);
 
-static ssize_t key_key_read(struct file *file, char __user *userbuf,
-			    size_t count, loff_t *ppos)
+static ssize_t key_key_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ieee80211_key *key = file->private_data;
+	struct ieee80211_key *key = iocb->ki_filp->private_data;
 	int i, bufsize = 2 * key->conf.keylen + 2;
 	char *buf = kmalloc(bufsize, GFP_KERNEL);
 	char *p = buf;
@@ -308,7 +301,7 @@ static ssize_t key_key_read(struct file *file, char __user *userbuf,
 	for (i = 0; i < key->conf.keylen; i++)
 		p += scnprintf(p, bufsize + buf - p, "%02x", key->conf.key[i]);
 	p += scnprintf(p, bufsize+buf-p, "\n");
-	res = simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+	res = simple_copy_to_iter(buf, &iocb->ki_pos, p - buf, to);
 	kfree(buf);
 	return res;
 }

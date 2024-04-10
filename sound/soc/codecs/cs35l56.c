@@ -26,6 +26,7 @@
 #include <linux/slab.h>
 #include <linux/soundwire/sdw.h>
 #include <linux/types.h>
+#include <linux/uio.h>
 #include <linux/workqueue.h>
 #include <sound/cs-amp-lib.h>
 #include <sound/pcm.h>
@@ -931,11 +932,10 @@ static void cs35l56_power_down_after_cal(struct cs35l56_private *cs35l56)
 	snd_soc_dapm_sync(dapm);
 }
 
-static ssize_t cs35l56_debugfs_calibrate_write(struct file *file,
-					       const char __user *from,
-					       size_t count, loff_t *ppos)
+static ssize_t cs35l56_debugfs_calibrate_write(struct kiocb *iocb,
+						struct iov_iter *from)
 {
-	struct cs35l56_base *cs35l56_base = file->private_data;
+	struct cs35l56_base *cs35l56_base = iocb->ki_filp->private_data;
 	struct cs35l56_private *cs35l56 = cs35l56_private_from_base(cs35l56_base);
 	struct snd_soc_dapm_context *dapm;
 	ssize_t ret;
@@ -945,7 +945,7 @@ static ssize_t cs35l56_debugfs_calibrate_write(struct file *file,
 		return PTR_ERR(dapm);
 
 	snd_soc_dapm_mutex_lock(dapm);
-	ret = cs35l56_calibrate_debugfs_write(&cs35l56->base, from, count, ppos);
+	ret = cs35l56_calibrate_debugfs_write(&cs35l56->base, iocb, from);
 	snd_soc_dapm_mutex_unlock(dapm);
 
 	cs35l56_power_down_after_cal(cs35l56);
@@ -953,11 +953,10 @@ static ssize_t cs35l56_debugfs_calibrate_write(struct file *file,
 	return ret;
 }
 
-static ssize_t cs35l56_debugfs_cal_temperature_write(struct file *file,
-						     const char __user *from,
-						     size_t count, loff_t *ppos)
+static ssize_t cs35l56_debugfs_cal_temperature_write(struct kiocb *iocb,
+						      struct iov_iter *from)
 {
-	struct cs35l56_base *cs35l56_base = file->private_data;
+	struct cs35l56_base *cs35l56_base = iocb->ki_filp->private_data;
 	struct cs35l56_private *cs35l56 = cs35l56_private_from_base(cs35l56_base);
 	struct snd_soc_dapm_context *dapm;
 	ssize_t ret;
@@ -966,17 +965,16 @@ static ssize_t cs35l56_debugfs_cal_temperature_write(struct file *file,
 	if (IS_ERR(dapm))
 		return PTR_ERR(dapm);
 
-	ret = cs35l56_cal_ambient_debugfs_write(&cs35l56->base, from, count, ppos);
+	ret = cs35l56_cal_ambient_debugfs_write(&cs35l56->base, iocb, from);
 	cs35l56_power_down_after_cal(cs35l56);
 
 	return ret;
 }
 
-static ssize_t cs35l56_debugfs_cal_data_read(struct file *file,
-					     char __user *to,
-					     size_t count, loff_t *ppos)
+static ssize_t cs35l56_debugfs_cal_data_read(struct kiocb *iocb,
+					     struct iov_iter *to)
 {
-	struct cs35l56_base *cs35l56_base = file->private_data;
+	struct cs35l56_base *cs35l56_base = iocb->ki_filp->private_data;
 	struct cs35l56_private *cs35l56 = cs35l56_private_from_base(cs35l56_base);
 	struct snd_soc_dapm_context *dapm;
 	ssize_t ret;
@@ -985,7 +983,7 @@ static ssize_t cs35l56_debugfs_cal_data_read(struct file *file,
 	if (IS_ERR(dapm))
 		return PTR_ERR(dapm);
 
-	ret = cs35l56_cal_data_debugfs_read(&cs35l56->base, to, count, ppos);
+	ret = cs35l56_cal_data_debugfs_read(&cs35l56->base, iocb, to);
 	cs35l56_power_down_after_cal(cs35l56);
 
 	return ret;
@@ -1021,15 +1019,15 @@ static int cs35l56_new_cal_data_apply(struct cs35l56_private *cs35l56)
 	return ret;
 }
 
-static ssize_t cs35l56_debugfs_cal_data_write(struct file *file,
-					      const char __user *from,
-					      size_t count, loff_t *ppos)
+static ssize_t cs35l56_debugfs_cal_data_write(struct kiocb *iocb,
+					       struct iov_iter *from)
 {
-	struct cs35l56_base *cs35l56_base = file->private_data;
+	struct cs35l56_base *cs35l56_base = iocb->ki_filp->private_data;
 	struct cs35l56_private *cs35l56 = cs35l56_private_from_base(cs35l56_base);
+	size_t count = iov_iter_count(from);
 	int ret;
 
-	ret = cs35l56_cal_data_debugfs_write(&cs35l56->base, from, count, ppos);
+	ret = cs35l56_cal_data_debugfs_write(&cs35l56->base, iocb, from);
 	if (ret == -ENODATA)
 		return count;	/* Ignore writes of empty cal blobs */
 	else if (ret < 0)
@@ -1044,14 +1042,14 @@ static ssize_t cs35l56_debugfs_cal_data_write(struct file *file,
 
 static const struct cs35l56_cal_debugfs_fops cs35l56_cal_debugfs_fops = {
 	.calibrate = {
-		.write = cs35l56_debugfs_calibrate_write,
+		.write_iter = cs35l56_debugfs_calibrate_write,
 	},
 	.cal_temperature = {
-		.write = cs35l56_debugfs_cal_temperature_write,
+		.write_iter = cs35l56_debugfs_cal_temperature_write,
 	},
 	.cal_data = {
-		.read = cs35l56_debugfs_cal_data_read,
-		.write = cs35l56_debugfs_cal_data_write,
+		.read_iter = cs35l56_debugfs_cal_data_read,
+		.write_iter = cs35l56_debugfs_cal_data_write,
 	},
 };
 

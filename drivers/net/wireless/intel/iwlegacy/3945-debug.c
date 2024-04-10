@@ -31,10 +31,9 @@ il3945_stats_flag(struct il_priv *il, char *buf, int bufsz)
 }
 
 static ssize_t
-il3945_ucode_rx_stats_read(struct file *file, char __user *user_buf,
-			   size_t count, loff_t *ppos)
+il3945_ucode_rx_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int pos = 0;
 	char *buf;
 	int bufsz =
@@ -290,16 +289,15 @@ il3945_ucode_rx_stats_read(struct file *file, char __user *user_buf,
 		      delta_general->non_channel_beacons,
 		      max_general->non_channel_beacons);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
 static ssize_t
-il3945_ucode_tx_stats_read(struct file *file, char __user *user_buf,
-			   size_t count, loff_t *ppos)
+il3945_ucode_tx_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int pos = 0;
 	char *buf;
 	int bufsz = (sizeof(struct iwl39_stats_tx) * 48) + 250;
@@ -380,16 +378,15 @@ il3945_ucode_tx_stats_read(struct file *file, char __user *user_buf,
 		      le32_to_cpu(tx->actual_ack_cnt), accum_tx->actual_ack_cnt,
 		      delta_tx->actual_ack_cnt, max_tx->actual_ack_cnt);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
 static ssize_t
-il3945_ucode_general_stats_read(struct file *file, char __user *user_buf,
-				size_t count, loff_t *ppos)
+il3945_ucode_general_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int pos = 0;
 	char *buf;
 	int bufsz = sizeof(struct iwl39_stats_general) * 10 + 300;
@@ -481,7 +478,7 @@ il3945_ucode_general_stats_read(struct file *file, char __user *user_buf,
 		      "  %-30s %10u  %10u  %10u  %10u\n", "probe_time:",
 		      le32_to_cpu(div->probe_time), accum_div->probe_time,
 		      delta_div->probe_time, max_div->probe_time);
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }

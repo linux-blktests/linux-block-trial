@@ -34,10 +34,10 @@ static int _iwl_dbgfs_##name##_open(struct inode *inode,		\
 }
 
 #define FWRT_DEBUGFS_READ_WRAPPER(name)					\
-static ssize_t _iwl_dbgfs_##name##_read(struct file *file,		\
-					char __user *user_buf,		\
-					size_t count, loff_t *ppos)	\
+static ssize_t _iwl_dbgfs_##name##_read(struct kiocb *iocb,		\
+					struct iov_iter *to)		\
 {									\
+	struct file *file = iocb->ki_filp;				\
 	struct dbgfs_##name##_data *data = file->private_data;		\
 									\
 	if (!data->read_done) {						\
@@ -49,8 +49,8 @@ static ssize_t _iwl_dbgfs_##name##_read(struct file *file,		\
 									\
 	if (data->rlen < 0)						\
 		return data->rlen;					\
-	return simple_read_from_buffer(user_buf, count, ppos,		\
-				       data->rbuf, data->rlen);		\
+	return simple_copy_to_iter(data->rbuf, &iocb->ki_pos,		\
+					data->rlen, to);		\
 }
 
 static int _iwl_dbgfs_release(struct inode *inode, struct file *file)
@@ -64,35 +64,34 @@ static int _iwl_dbgfs_release(struct inode *inode, struct file *file)
 FWRT_DEBUGFS_OPEN_WRAPPER(name, buflen, argtype)			\
 FWRT_DEBUGFS_READ_WRAPPER(name)						\
 static const struct file_operations iwl_dbgfs_##name##_ops = {		\
-	.read = _iwl_dbgfs_##name##_read,				\
+	.read_iter = _iwl_dbgfs_##name##_read,				\
 	.open = _iwl_dbgfs_##name##_open,				\
 	.llseek = generic_file_llseek,					\
 	.release = _iwl_dbgfs_release,					\
 }
 
 #define FWRT_DEBUGFS_WRITE_WRAPPER(name, buflen, argtype)		\
-static ssize_t _iwl_dbgfs_##name##_write(struct file *file,		\
-					 const char __user *user_buf,	\
-					 size_t count, loff_t *ppos)	\
+static ssize_t _iwl_dbgfs_##name##_write(struct kiocb *iocb,		\
+					 struct iov_iter *from)		\
 {									\
 	argtype *arg =							\
-		((struct dbgfs_##name##_data *)file->private_data)->arg;\
+		((struct dbgfs_##name##_data *)iocb->ki_filp->private_data)->arg;\
 	char buf[buflen] = {};						\
-	size_t buf_size = min(count, sizeof(buf) -  1);			\
+	size_t buf_size = min(iov_iter_count(from), sizeof(buf) -  1);	\
 									\
-	if (copy_from_user(buf, user_buf, buf_size))			\
+	if (!copy_from_iter_full(buf, buf_size, from))			\
 		return -EFAULT;						\
 									\
 	return iwl_dbgfs_##name##_write(arg, buf, buf_size);		\
-}
+}									\
 
 #define _FWRT_DEBUGFS_READ_WRITE_FILE_OPS(name, buflen, argtype)	\
 FWRT_DEBUGFS_OPEN_WRAPPER(name, buflen, argtype)			\
 FWRT_DEBUGFS_WRITE_WRAPPER(name, buflen, argtype)			\
 FWRT_DEBUGFS_READ_WRAPPER(name)						\
 static const struct file_operations iwl_dbgfs_##name##_ops = {		\
-	.write = _iwl_dbgfs_##name##_write,				\
-	.read = _iwl_dbgfs_##name##_read,				\
+	.write_iter = _iwl_dbgfs_##name##_write,			\
+	.read_iter = _iwl_dbgfs_##name##_read,				\
 	.open = _iwl_dbgfs_##name##_open,				\
 	.llseek = generic_file_llseek,					\
 	.release = _iwl_dbgfs_release,					\
@@ -102,7 +101,7 @@ static const struct file_operations iwl_dbgfs_##name##_ops = {		\
 FWRT_DEBUGFS_OPEN_WRAPPER(name, buflen, argtype)			\
 FWRT_DEBUGFS_WRITE_WRAPPER(name, buflen, argtype)			\
 static const struct file_operations iwl_dbgfs_##name##_ops = {		\
-	.write = _iwl_dbgfs_##name##_write,				\
+	.write_iter = _iwl_dbgfs_##name##_write,			\
 	.open = _iwl_dbgfs_##name##_open,				\
 	.llseek = generic_file_llseek,					\
 	.release = _iwl_dbgfs_release,					\
@@ -435,7 +434,7 @@ static int iwl_dbgfs_fw_info_open(struct inode *inode, struct file *filp)
 static const struct file_operations iwl_dbgfs_fw_info_ops = {
 	.owner = THIS_MODULE,
 	.open = iwl_dbgfs_fw_info_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = seq_release_private,
 };

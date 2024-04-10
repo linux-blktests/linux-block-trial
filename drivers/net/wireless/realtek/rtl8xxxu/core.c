@@ -1899,17 +1899,16 @@ static void rtl8xxxu_dump_efuse(struct rtl8xxxu_priv *priv)
 		       priv->efuse_wifi.raw, EFUSE_MAP_LEN, true);
 }
 
-static ssize_t read_file_efuse(struct file *file, char __user *user_buf,
-			       size_t count, loff_t *ppos)
+static ssize_t read_file_efuse(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct rtl8xxxu_priv *priv = file_inode(file)->i_private;
+	struct rtl8xxxu_priv *priv = file_inode(iocb->ki_filp)->i_private;
 
-	return simple_read_from_buffer(user_buf, count, ppos,
-				       priv->efuse_wifi.raw, EFUSE_MAP_LEN);
+	return simple_copy_to_iter(priv->efuse_wifi.raw, &iocb->ki_pos,
+				   EFUSE_MAP_LEN, to);
 }
 
 static const struct debugfs_short_fops fops_efuse = {
-	.read = read_file_efuse,
+	.read_iter = read_file_efuse,
 };
 
 static void rtl8xxxu_debugfs_init(struct rtl8xxxu_priv *priv)

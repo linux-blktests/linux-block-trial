@@ -38,10 +38,9 @@ il4965_stats_flag(struct il_priv *il, char *buf, int bufsz)
 }
 
 static ssize_t
-il4965_ucode_rx_stats_read(struct file *file, char __user *user_buf,
-			   size_t count, loff_t *ppos)
+il4965_ucode_rx_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int pos = 0;
 	char *buf;
 	int bufsz =
@@ -444,16 +443,15 @@ il4965_ucode_rx_stats_read(struct file *file, char __user *user_buf,
 		      le32_to_cpu(ht->unsupport_mcs), accum_ht->unsupport_mcs,
 		      delta_ht->unsupport_mcs, max_ht->unsupport_mcs);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
 static ssize_t
-il4965_ucode_tx_stats_read(struct file *file, char __user *user_buf,
-			   size_t count, loff_t *ppos)
+il4965_ucode_tx_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int pos = 0;
 	char *buf;
 	int bufsz = (sizeof(struct stats_tx) * 48) + 250;
@@ -610,16 +608,15 @@ il4965_ucode_tx_stats_read(struct file *file, char __user *user_buf,
 		      accum_tx->agg.rx_ba_rsp_cnt, delta_tx->agg.rx_ba_rsp_cnt,
 		      max_tx->agg.rx_ba_rsp_cnt);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
 static ssize_t
-il4965_ucode_general_stats_read(struct file *file, char __user *user_buf,
-				size_t count, loff_t *ppos)
+il4965_ucode_general_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct il_priv *il = file->private_data;
+	struct il_priv *il = iocb->ki_filp->private_data;
 	int pos = 0;
 	char *buf;
 	int bufsz = sizeof(struct stats_general) * 10 + 300;
@@ -722,7 +719,7 @@ il4965_ucode_general_stats_read(struct file *file, char __user *user_buf,
 		      accum_general->num_of_sos_states,
 		      delta_general->num_of_sos_states,
 		      max_general->num_of_sos_states);
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }

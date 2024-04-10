@@ -12,37 +12,35 @@
 #include "debugfs.h"
 
 #define DEBUGFS_READONLY_FILE(name, buflen, fmt, value...)		\
-static ssize_t name## _read(struct file *file, char __user *userbuf,	\
-			    size_t count, loff_t *ppos)			\
+static ssize_t name## _read(struct kiocb *iocb, struct iov_iter *to)	\
 {									\
-	struct wiphy *wiphy = file->private_data;			\
+	struct wiphy *wiphy = iocb->ki_filp->private_data;		\
 	char buf[buflen];						\
 	int res;							\
 									\
 	res = scnprintf(buf, buflen, fmt "\n", ##value);		\
-	return simple_read_from_buffer(userbuf, count, ppos, buf, res);	\
+	return simple_copy_to_iter(buf, &iocb->ki_pos, res, to);	\
 }									\
 									\
 static const struct file_operations name## _ops = {			\
-	.read = name## _read,						\
+	.read_iter = name## _read,					\
 	.open = simple_open,						\
 	.llseek = generic_file_llseek,					\
 }
 
 #define DEBUGFS_RADIO_READONLY_FILE(name, buflen, fmt, value...)	\
-static ssize_t name## _read(struct file *file, char __user *userbuf,	\
-			    size_t count, loff_t *ppos)			\
+static ssize_t name## _read(struct kiocb *iocb, struct iov_iter *to)	\
 {									\
-	struct wiphy_radio_cfg *radio_cfg = file->private_data;		\
+	struct wiphy_radio_cfg *radio_cfg = iocb->ki_filp->private_data;\
 	char buf[buflen];						\
 	int res;							\
 									\
 	res = scnprintf(buf, buflen, fmt "\n", ##value);		\
-	return simple_read_from_buffer(userbuf, count, ppos, buf, res);	\
+	return simple_copy_to_iter(buf, &iocb->ki_pos, res, to);	\
 }									\
 									\
 static const struct file_operations name## _ops = {			\
-	.read = name## _read,						\
+	.read_iter = name## _read,					\
 	.open = simple_open,						\
 	.llseek = generic_file_llseek,					\
 }
@@ -81,11 +79,9 @@ static int ht_print_chan(struct ieee80211_channel *chan,
 				' ' : '+');
 }
 
-static ssize_t ht40allow_map_read(struct file *file,
-				  char __user *user_buf,
-				  size_t count, loff_t *ppos)
+static ssize_t ht40allow_map_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct wiphy *wiphy = file->private_data;
+	struct wiphy *wiphy = iocb->ki_filp->private_data;
 	char *buf;
 	unsigned int offset = 0, buf_size = PAGE_SIZE, i;
 	enum nl80211_band band;
@@ -105,15 +101,13 @@ static ssize_t ht40allow_map_read(struct file *file,
 						buf, buf_size, offset);
 	}
 
-	r = simple_read_from_buffer(user_buf, count, ppos, buf, offset);
-
+	r = simple_copy_to_iter(buf, &iocb->ki_pos, offset, to);
 	kfree(buf);
-
 	return r;
 }
 
 static const struct file_operations ht40allow_map_ops = {
-	.read = ht40allow_map_read,
+	.read_iter = ht40allow_map_read_iter,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
@@ -147,12 +141,10 @@ void cfg80211_debugfs_rdev_add(struct cfg80211_registered_device *rdev)
 struct debugfs_read_work {
 	struct wiphy_work work;
 	ssize_t (*handler)(struct wiphy *wiphy,
-			   struct file *file,
 			   char *buf,
 			   size_t count,
 			   void *data);
 	struct wiphy *wiphy;
-	struct file *file;
 	char *buf;
 	size_t bufsize;
 	void *data;
@@ -165,7 +157,7 @@ static void wiphy_locked_debugfs_read_work(struct wiphy *wiphy,
 {
 	struct debugfs_read_work *w = container_of(work, typeof(*w), work);
 
-	w->ret = w->handler(w->wiphy, w->file, w->buf, w->bufsize, w->data);
+	w->ret = w->handler(w->wiphy, w->buf, w->bufsize, w->data);
 	complete(&w->completion);
 }
 
@@ -178,12 +170,10 @@ static void wiphy_locked_debugfs_read_cancel(struct dentry *dentry,
 	complete(&w->completion);
 }
 
-ssize_t wiphy_locked_debugfs_read(struct wiphy *wiphy, struct file *file,
+ssize_t wiphy_locked_debugfs_read(struct wiphy *wiphy, struct kiocb *iocb,
 				  char *buf, size_t bufsize,
-				  char __user *userbuf, size_t count,
-				  loff_t *ppos,
+				  struct iov_iter *to,
 				  ssize_t (*handler)(struct wiphy *wiphy,
-						     struct file *file,
 						     char *buf,
 						     size_t bufsize,
 						     void *data),
@@ -192,7 +182,6 @@ ssize_t wiphy_locked_debugfs_read(struct wiphy *wiphy, struct file *file,
 	struct debugfs_read_work work = {
 		.handler = handler,
 		.wiphy = wiphy,
-		.file = file,
 		.buf = buf,
 		.bufsize = bufsize,
 		.data = data,
@@ -210,9 +199,9 @@ ssize_t wiphy_locked_debugfs_read(struct wiphy *wiphy, struct file *file,
 	wiphy_work_init(&work.work, wiphy_locked_debugfs_read_work);
 	wiphy_work_queue(wiphy, &work.work);
 
-	debugfs_enter_cancellation(file, &cancellation);
+	debugfs_enter_cancellation(iocb->ki_filp, &cancellation);
 	wait_for_completion(&work.completion);
-	debugfs_leave_cancellation(file, &cancellation);
+	debugfs_leave_cancellation(iocb->ki_filp, &cancellation);
 
 	if (work.ret < 0)
 		return work.ret;
@@ -220,19 +209,17 @@ ssize_t wiphy_locked_debugfs_read(struct wiphy *wiphy, struct file *file,
 	if (WARN_ON(work.ret > bufsize))
 		return -EINVAL;
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, work.ret);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, work.ret, to);
 }
 EXPORT_SYMBOL_GPL(wiphy_locked_debugfs_read);
 
 struct debugfs_write_work {
 	struct wiphy_work work;
 	ssize_t (*handler)(struct wiphy *wiphy,
-			   struct file *file,
 			   char *buf,
 			   size_t count,
 			   void *data);
 	struct wiphy *wiphy;
-	struct file *file;
 	char *buf;
 	size_t count;
 	void *data;
@@ -245,7 +232,7 @@ static void wiphy_locked_debugfs_write_work(struct wiphy *wiphy,
 {
 	struct debugfs_write_work *w = container_of(work, typeof(*w), work);
 
-	w->ret = w->handler(w->wiphy, w->file, w->buf, w->count, w->data);
+	w->ret = w->handler(w->wiphy, w->buf, w->count, w->data);
 	complete(&w->completion);
 }
 
@@ -259,10 +246,9 @@ static void wiphy_locked_debugfs_write_cancel(struct dentry *dentry,
 }
 
 ssize_t wiphy_locked_debugfs_write(struct wiphy *wiphy,
-				   struct file *file, char *buf, size_t bufsize,
-				   const char __user *userbuf, size_t count,
+				   struct kiocb *iocb, char *buf, size_t bufsize,
+				   struct iov_iter *from,
 				   ssize_t (*handler)(struct wiphy *wiphy,
-						      struct file *file,
 						      char *buf,
 						      size_t count,
 						      void *data),
@@ -271,9 +257,8 @@ ssize_t wiphy_locked_debugfs_write(struct wiphy *wiphy,
 	struct debugfs_write_work work = {
 		.handler = handler,
 		.wiphy = wiphy,
-		.file = file,
 		.buf = buf,
-		.count = count,
+		.count = bufsize,
 		.data = data,
 		.ret = -ENODEV,
 		.completion = COMPLETION_INITIALIZER_ONSTACK(work.completion),
@@ -282,6 +267,7 @@ ssize_t wiphy_locked_debugfs_write(struct wiphy *wiphy,
 		.cancel = wiphy_locked_debugfs_write_cancel,
 		.cancel_data = &work,
 	};
+	size_t count = iov_iter_count(from);
 
 	/* mostly used for strings so enforce NUL-termination for safety */
 	if (count >= bufsize)
@@ -289,15 +275,15 @@ ssize_t wiphy_locked_debugfs_write(struct wiphy *wiphy,
 
 	memset(buf, 0, bufsize);
 
-	if (copy_from_user(buf, userbuf, count))
+	if (!copy_from_iter_full(buf, count, from))
 		return -EFAULT;
 
 	wiphy_work_init(&work.work, wiphy_locked_debugfs_write_work);
 	wiphy_work_queue(wiphy, &work.work);
 
-	debugfs_enter_cancellation(file, &cancellation);
+	debugfs_enter_cancellation(iocb->ki_filp, &cancellation);
 	wait_for_completion(&work.completion);
-	debugfs_leave_cancellation(file, &cancellation);
+	debugfs_leave_cancellation(iocb->ki_filp, &cancellation);
 
 	return work.ret;
 }

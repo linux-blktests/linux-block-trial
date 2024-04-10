@@ -130,7 +130,7 @@ static u16 rtw89_rate_info_bw_to_mhz(enum rate_info_bw bw)
 	return 0;
 }
 
-static ssize_t rtw89_debugfs_file_read_helper(struct wiphy *wiphy, struct file *file,
+static ssize_t rtw89_debugfs_file_read_helper(struct wiphy *wiphy,
 					      char *buf, size_t bufsz, void *data)
 {
 	struct rtw89_debugfs_priv *debugfs_priv = data;
@@ -143,10 +143,9 @@ static ssize_t rtw89_debugfs_file_read_helper(struct wiphy *wiphy, struct file *
 	return n;
 }
 
-static ssize_t rtw89_debugfs_file_read(struct file *file, char __user *userbuf,
-				       size_t count, loff_t *ppos)
+static ssize_t rtw89_debugfs_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct rtw89_debugfs_priv *debugfs_priv = file->private_data;
+	struct rtw89_debugfs_priv *debugfs_priv = iocb->ki_filp->private_data;
 	struct rtw89_debugfs_priv_opt *opt = &debugfs_priv->opt;
 	struct rtw89_dev *rtwdev = debugfs_priv->rtwdev;
 	size_t bufsz = opt->rsize ? opt->rsize : PAGE_SIZE;
@@ -160,14 +159,14 @@ static ssize_t rtw89_debugfs_file_read(struct file *file, char __user *userbuf,
 	if (!buf)
 		return -ENOMEM;
 
-	if (*ppos) {
+	if (iocb->ki_pos) {
 		n = debugfs_priv->rused;
 		goto out;
 	}
 
 	if (opt->rlock) {
-		n = wiphy_locked_debugfs_read(rtwdev->hw->wiphy, file, buf, bufsz,
-					      userbuf, count, ppos,
+		n = wiphy_locked_debugfs_read(rtwdev->hw->wiphy, iocb, buf, bufsz,
+					      to,
 					      rtw89_debugfs_file_read_helper,
 					      debugfs_priv);
 		debugfs_priv->rused = n;
@@ -175,15 +174,15 @@ static ssize_t rtw89_debugfs_file_read(struct file *file, char __user *userbuf,
 		return n;
 	}
 
-	n = rtw89_debugfs_file_read_helper(rtwdev->hw->wiphy, file, buf, bufsz,
-					   debugfs_priv);
+	n = rtw89_debugfs_file_read_helper(rtwdev->hw->wiphy,
+					   buf, bufsz, debugfs_priv);
 	debugfs_priv->rused = n;
 
 out:
-	return simple_read_from_buffer(userbuf, count, ppos, buf, n);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, n, to);
 }
 
-static ssize_t rtw89_debugfs_file_write_helper(struct wiphy *wiphy, struct file *file,
+static ssize_t rtw89_debugfs_file_write_helper(struct wiphy *wiphy,
 					       char *buf, size_t count, void *data)
 {
 	struct rtw89_debugfs_priv *debugfs_priv = data;
@@ -192,13 +191,12 @@ static ssize_t rtw89_debugfs_file_write_helper(struct wiphy *wiphy, struct file 
 	return debugfs_priv->cb_write(rtwdev, debugfs_priv, buf, count);
 }
 
-static ssize_t rtw89_debugfs_file_write(struct file *file,
-					const char __user *userbuf,
-					size_t count, loff_t *loff)
+static ssize_t rtw89_debugfs_file_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct rtw89_debugfs_priv *debugfs_priv = file->private_data;
+	struct rtw89_debugfs_priv *debugfs_priv = iocb->ki_filp->private_data;
 	struct rtw89_debugfs_priv_opt *opt = &debugfs_priv->opt;
 	struct rtw89_dev *rtwdev = debugfs_priv->rtwdev;
+	size_t count = iov_iter_count(from);
 	char *buf __free(kfree) = kmalloc(count + 1, GFP_KERNEL);
 	ssize_t n;
 
@@ -207,14 +205,14 @@ static ssize_t rtw89_debugfs_file_write(struct file *file,
 
 	if (opt->wlock) {
 		n = wiphy_locked_debugfs_write(rtwdev->hw->wiphy,
-					       file, buf, count + 1,
-					       userbuf, count,
+					       iocb, buf, count + 1,
+					       from,
 					       rtw89_debugfs_file_write_helper,
 					       debugfs_priv);
 		return n;
 	}
 
-	if (copy_from_user(buf, userbuf, count))
+	if (!copy_from_iter_full(buf, count, from))
 		return -EFAULT;
 
 	buf[count] = '\0';
@@ -223,18 +221,18 @@ static ssize_t rtw89_debugfs_file_write(struct file *file,
 }
 
 static const struct debugfs_short_fops file_ops_single_r = {
-	.read = rtw89_debugfs_file_read,
+	.read_iter = rtw89_debugfs_file_read,
 	.llseek = generic_file_llseek,
 };
 
 static const struct debugfs_short_fops file_ops_common_rw = {
-	.read = rtw89_debugfs_file_read,
-	.write = rtw89_debugfs_file_write,
+	.read_iter = rtw89_debugfs_file_read,
+	.write_iter = rtw89_debugfs_file_write,
 	.llseek = generic_file_llseek,
 };
 
 static const struct debugfs_short_fops file_ops_single_w = {
-	.write = rtw89_debugfs_file_write,
+	.write_iter = rtw89_debugfs_file_write,
 	.llseek = generic_file_llseek,
 };
 

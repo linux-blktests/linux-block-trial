@@ -797,14 +797,13 @@ out:
 #ifdef CONFIG_MAC80211_DEBUGFS
 
 static ssize_t
-il3945_sta_dbgfs_stats_table_read(struct file *file, char __user *user_buf,
-				  size_t count, loff_t *ppos)
+il3945_sta_dbgfs_stats_table_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *buff;
 	int desc = 0;
 	int j;
 	ssize_t ret;
-	struct il3945_rs_sta *lq_sta = file->private_data;
+	struct il3945_rs_sta *lq_sta = iocb->ki_filp->private_data;
 
 	buff = kmalloc(1024, GFP_KERNEL);
 	if (!buff)
@@ -823,13 +822,13 @@ il3945_sta_dbgfs_stats_table_read(struct file *file, char __user *user_buf,
 			    lq_sta->win[j].success_counter,
 			    lq_sta->win[j].success_ratio);
 	}
-	ret = simple_read_from_buffer(user_buf, count, ppos, buff, desc);
+	ret = simple_copy_to_iter(buff, &iocb->ki_pos, desc, to);
 	kfree(buff);
 	return ret;
 }
 
 static const struct file_operations rs_sta_dbgfs_stats_table_ops = {
-	.read = il3945_sta_dbgfs_stats_table_read,
+	.read_iter = il3945_sta_dbgfs_stats_table_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };

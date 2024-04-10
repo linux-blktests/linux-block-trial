@@ -3726,10 +3726,11 @@ static void rs_program_fix_rate(struct iwl_mvm *mvm,
 	}
 }
 
-static ssize_t rs_sta_dbgfs_scale_table_write(struct file *file,
-			const char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t rs_sta_dbgfs_scale_table_write(struct kiocb *iocb,
+					      struct iov_iter *from)
 {
-	struct iwl_lq_sta *lq_sta = file->private_data;
+	struct iwl_lq_sta *lq_sta = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct iwl_mvm *mvm;
 	char buf[64];
 	size_t buf_size;
@@ -3738,7 +3739,7 @@ static ssize_t rs_sta_dbgfs_scale_table_write(struct file *file,
 	mvm = lq_sta->pers.drv;
 	memset(buf, 0, sizeof(buf));
 	buf_size = min(count, sizeof(buf) -  1);
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 
 	if (sscanf(buf, "%x", &parsed_rate) == 1)
@@ -3751,8 +3752,8 @@ static ssize_t rs_sta_dbgfs_scale_table_write(struct file *file,
 	return count;
 }
 
-static ssize_t rs_sta_dbgfs_scale_table_read(struct file *file,
-			char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t rs_sta_dbgfs_scale_table_read(struct kiocb *iocb,
+					     struct iov_iter *to)
 {
 	char *buff;
 	int desc = 0;
@@ -3760,7 +3761,7 @@ static ssize_t rs_sta_dbgfs_scale_table_read(struct file *file,
 	ssize_t ret;
 	static const size_t bufsz = 2048;
 
-	struct iwl_lq_sta *lq_sta = file->private_data;
+	struct iwl_lq_sta *lq_sta = iocb->ki_filp->private_data;
 	struct iwl_mvm_sta *mvmsta =
 		container_of(lq_sta, struct iwl_mvm_sta, deflink.lq_sta.rs_drv);
 	struct iwl_mvm *mvm;
@@ -3846,19 +3847,19 @@ static ssize_t rs_sta_dbgfs_scale_table_read(struct file *file,
 			buff[desc++] = '\n';
 	}
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buff, desc);
+	ret = simple_copy_to_iter(buff, &iocb->ki_pos, desc, to);
 	kfree(buff);
 	return ret;
 }
 
 static const struct file_operations rs_sta_dbgfs_scale_table_ops = {
-	.write = rs_sta_dbgfs_scale_table_write,
-	.read = rs_sta_dbgfs_scale_table_read,
+	.write_iter = rs_sta_dbgfs_scale_table_write,
+	.read_iter = rs_sta_dbgfs_scale_table_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
-static ssize_t rs_sta_dbgfs_stats_table_read(struct file *file,
-			char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t rs_sta_dbgfs_stats_table_read(struct kiocb *iocb,
+					     struct iov_iter *to)
 {
 	char *buff;
 	int desc = 0;
@@ -3866,7 +3867,7 @@ static ssize_t rs_sta_dbgfs_stats_table_read(struct file *file,
 	ssize_t ret;
 	struct iwl_scale_tbl_info *tbl;
 	struct rs_rate *rate;
-	struct iwl_lq_sta *lq_sta = file->private_data;
+	struct iwl_lq_sta *lq_sta = iocb->ki_filp->private_data;
 
 	buff = kmalloc(1024, GFP_KERNEL);
 	if (!buff)
@@ -3894,20 +3895,19 @@ static ssize_t rs_sta_dbgfs_stats_table_read(struct file *file,
 				tbl->win[j].success_ratio);
 		}
 	}
-	ret = simple_read_from_buffer(user_buf, count, ppos, buff, desc);
+	ret = simple_copy_to_iter(buff, &iocb->ki_pos, desc, to);
 	kfree(buff);
 	return ret;
 }
 
 static const struct file_operations rs_sta_dbgfs_stats_table_ops = {
-	.read = rs_sta_dbgfs_stats_table_read,
+	.read_iter = rs_sta_dbgfs_stats_table_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t rs_sta_dbgfs_drv_tx_stats_read(struct file *file,
-					      char __user *user_buf,
-					      size_t count, loff_t *ppos)
+static ssize_t rs_sta_dbgfs_drv_tx_stats_read(struct kiocb *iocb,
+					      struct iov_iter *to)
 {
 	static const char * const column_name[] = {
 		[RS_COLUMN_LEGACY_ANT_A] = "LEGACY_ANT_A",
@@ -3943,7 +3943,7 @@ static ssize_t rs_sta_dbgfs_drv_tx_stats_read(struct file *file,
 	char *buff, *pos, *endpos;
 	int col, rate;
 	ssize_t ret;
-	struct iwl_lq_sta *lq_sta = file->private_data;
+	struct iwl_lq_sta *lq_sta = iocb->ki_filp->private_data;
 	struct rs_rate_stats *stats;
 	static const size_t bufsz = 1024;
 
@@ -3973,33 +3973,31 @@ static ssize_t rs_sta_dbgfs_drv_tx_stats_read(struct file *file,
 		pos += scnprintf(pos, endpos - pos, "\n");
 	}
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buff, pos - buff);
+	ret = simple_copy_to_iter(buff, &iocb->ki_pos, pos - buff, to);
 	kfree(buff);
 	return ret;
 }
 
-static ssize_t rs_sta_dbgfs_drv_tx_stats_write(struct file *file,
-					       const char __user *user_buf,
-					       size_t count, loff_t *ppos)
+static ssize_t rs_sta_dbgfs_drv_tx_stats_write(struct kiocb *iocb,
+					       struct iov_iter *from)
 {
-	struct iwl_lq_sta *lq_sta = file->private_data;
+	struct iwl_lq_sta *lq_sta = iocb->ki_filp->private_data;
 	memset(lq_sta->pers.tx_stats, 0, sizeof(lq_sta->pers.tx_stats));
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations rs_sta_dbgfs_drv_tx_stats_ops = {
-	.read = rs_sta_dbgfs_drv_tx_stats_read,
-	.write = rs_sta_dbgfs_drv_tx_stats_write,
+	.read_iter = rs_sta_dbgfs_drv_tx_stats_read,
+	.write_iter = rs_sta_dbgfs_drv_tx_stats_write,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t iwl_dbgfs_ss_force_read(struct file *file,
-				       char __user *user_buf,
-				       size_t count, loff_t *ppos)
+static ssize_t iwl_dbgfs_ss_force_read(struct kiocb *iocb,
+				       struct iov_iter *to)
 {
-	struct iwl_lq_sta *lq_sta = file->private_data;
+	struct iwl_lq_sta *lq_sta = iocb->ki_filp->private_data;
 	char buf[12];
 	int bufsz = sizeof(buf);
 	int pos = 0;
@@ -4012,7 +4010,7 @@ static ssize_t iwl_dbgfs_ss_force_read(struct file *file,
 
 	pos += scnprintf(buf+pos, bufsz-pos, "%s\n",
 			 ss_force_name[lq_sta->pers.ss_force]);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 static ssize_t iwl_dbgfs_ss_force_write(struct iwl_lq_sta *lq_sta, char *buf,

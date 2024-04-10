@@ -13,6 +13,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/regmap.h>
 #include <linux/slab.h>
+#include <linux/uio.h>
 #include <sound/core.h>
 #include <sound/cs-amp-lib.h>
 #include <sound/hda_codec.h>
@@ -696,11 +697,10 @@ static void cs35l56_hda_dsp_work(struct work_struct *work)
 	cs35l56_hda_fw_load(cs35l56);
 }
 
-static ssize_t cs35l56_hda_debugfs_calibrate_write(struct file *file,
-						   const char __user *from,
-						   size_t count, loff_t *ppos)
+static ssize_t cs35l56_hda_debugfs_calibrate_write(struct kiocb *iocb,
+						    struct iov_iter *from)
 {
-	struct cs35l56_base *cs35l56_base = file->private_data;
+	struct cs35l56_base *cs35l56_base = iocb->ki_filp->private_data;
 	ssize_t ret;
 
 	PM_RUNTIME_ACQUIRE_IF_ENABLED_AUTOSUSPEND(cs35l56_base->dev, pm);
@@ -708,14 +708,13 @@ static ssize_t cs35l56_hda_debugfs_calibrate_write(struct file *file,
 	if (ret)
 		return ret;
 
-	return cs35l56_calibrate_debugfs_write(cs35l56_base, from, count, ppos);
+	return cs35l56_calibrate_debugfs_write(cs35l56_base, iocb, from);
 }
 
-static ssize_t cs35l56_hda_debugfs_cal_temperature_write(struct file *file,
-							 const char __user *from,
-							 size_t count, loff_t *ppos)
+static ssize_t cs35l56_hda_debugfs_cal_temperature_write(struct kiocb *iocb,
+							  struct iov_iter *from)
 {
-	struct cs35l56_base *cs35l56_base = file->private_data;
+	struct cs35l56_base *cs35l56_base = iocb->ki_filp->private_data;
 	ssize_t ret;
 
 	PM_RUNTIME_ACQUIRE_IF_ENABLED_AUTOSUSPEND(cs35l56_base->dev, pm);
@@ -723,14 +722,13 @@ static ssize_t cs35l56_hda_debugfs_cal_temperature_write(struct file *file,
 	if (ret)
 		return ret;
 
-	return cs35l56_cal_ambient_debugfs_write(cs35l56_base, from, count, ppos);
+	return cs35l56_cal_ambient_debugfs_write(cs35l56_base, iocb, from);
 }
 
-static ssize_t cs35l56_hda_debugfs_cal_data_read(struct file *file,
-						 char __user *to,
-						 size_t count, loff_t *ppos)
+static ssize_t cs35l56_hda_debugfs_cal_data_read(struct kiocb *iocb,
+						  struct iov_iter *to)
 {
-	struct cs35l56_base *cs35l56_base = file->private_data;
+	struct cs35l56_base *cs35l56_base = iocb->ki_filp->private_data;
 	ssize_t ret;
 
 	PM_RUNTIME_ACQUIRE_IF_ENABLED_AUTOSUSPEND(cs35l56_base->dev, pm);
@@ -738,18 +736,18 @@ static ssize_t cs35l56_hda_debugfs_cal_data_read(struct file *file,
 	if (ret)
 		return ret;
 
-	return cs35l56_cal_data_debugfs_read(cs35l56_base, to, count, ppos);
+	return cs35l56_cal_data_debugfs_read(cs35l56_base, iocb, to);
 }
 
-static ssize_t cs35l56_hda_debugfs_cal_data_write(struct file *file,
-						  const char __user *from,
-						  size_t count, loff_t *ppos)
+static ssize_t cs35l56_hda_debugfs_cal_data_write(struct kiocb *iocb,
+						   struct iov_iter *from)
 {
-	struct cs35l56_base *cs35l56_base = file->private_data;
+	struct cs35l56_base *cs35l56_base = iocb->ki_filp->private_data;
 	struct cs35l56_hda *cs35l56 = cs35l56_hda_from_base(cs35l56_base);
+	size_t count = iov_iter_count(from);
 	ssize_t ret;
 
-	ret = cs35l56_cal_data_debugfs_write(cs35l56_base, from, count, ppos);
+	ret = cs35l56_cal_data_debugfs_write(cs35l56_base, iocb, from);
 	if (ret == -ENODATA)
 		return count;	/* Ignore writes of empty cal blobs */
 
@@ -772,14 +770,14 @@ static ssize_t cs35l56_hda_debugfs_cal_data_write(struct file *file,
 
 static const struct cs35l56_cal_debugfs_fops cs35l56_hda_cal_debugfs_fops = {
 	.calibrate = {
-		.write = cs35l56_hda_debugfs_calibrate_write,
+		.write_iter = cs35l56_hda_debugfs_calibrate_write,
 	},
 	.cal_temperature = {
-		.write = cs35l56_hda_debugfs_cal_temperature_write,
+		.write_iter = cs35l56_hda_debugfs_cal_temperature_write,
 	},
 	.cal_data = {
-		.read = cs35l56_hda_debugfs_cal_data_read,
-		.write = cs35l56_hda_debugfs_cal_data_write,
+		.read_iter = cs35l56_hda_debugfs_cal_data_read,
+		.write_iter = cs35l56_hda_debugfs_cal_data_write,
 	},
 };
 

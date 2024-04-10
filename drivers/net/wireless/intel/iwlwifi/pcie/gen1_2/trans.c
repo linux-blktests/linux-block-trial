@@ -2712,22 +2712,22 @@ void iwl_pcie_dump_csr(struct iwl_trans *trans)
 /* file operation */
 #define DEBUGFS_READ_FILE_OPS(name)					\
 static const struct file_operations iwl_dbgfs_##name##_ops = {		\
-	.read = iwl_dbgfs_##name##_read,				\
+	.read_iter = iwl_dbgfs_##name##_read,				\
 	.open = simple_open,						\
 	.llseek = generic_file_llseek,					\
 };
 
 #define DEBUGFS_WRITE_FILE_OPS(name)                                    \
 static const struct file_operations iwl_dbgfs_##name##_ops = {          \
-	.write = iwl_dbgfs_##name##_write,                              \
+	.write_iter = iwl_dbgfs_##name##_write,				\
 	.open = simple_open,						\
 	.llseek = generic_file_llseek,					\
 };
 
 #define DEBUGFS_READ_WRITE_FILE_OPS(name)				\
 static const struct file_operations iwl_dbgfs_##name##_ops = {		\
-	.write = iwl_dbgfs_##name##_write,				\
-	.read = iwl_dbgfs_##name##_read,				\
+	.write_iter = iwl_dbgfs_##name##_write,				\
+	.read_iter = iwl_dbgfs_##name##_read,				\
 	.open = simple_open,						\
 	.llseek = generic_file_llseek,					\
 };
@@ -2823,11 +2823,10 @@ static int iwl_dbgfs_tx_queue_open(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t iwl_dbgfs_rx_queue_read(struct file *file,
-				       char __user *user_buf,
-				       size_t count, loff_t *ppos)
+static ssize_t iwl_dbgfs_rx_queue_read(struct kiocb *iocb,
+				       struct iov_iter *to)
 {
-	struct iwl_trans *trans = file->private_data;
+	struct iwl_trans *trans = iocb->ki_filp->private_data;
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	char *buf;
 	int pos = 0, i, ret;
@@ -2869,17 +2868,16 @@ static ssize_t iwl_dbgfs_rx_queue_read(struct file *file,
 		}
 		spin_unlock_bh(&rxq->lock);
 	}
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 
 	return ret;
 }
 
-static ssize_t iwl_dbgfs_interrupt_read(struct file *file,
-					char __user *user_buf,
-					size_t count, loff_t *ppos)
+static ssize_t iwl_dbgfs_interrupt_read(struct kiocb *iocb,
+					struct iov_iter *to)
 {
-	struct iwl_trans *trans = file->private_data;
+	struct iwl_trans *trans = iocb->ki_filp->private_data;
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	struct isr_statistics *isr_stats = &trans_pcie->isr_stats;
 
@@ -2928,22 +2926,31 @@ static ssize_t iwl_dbgfs_interrupt_read(struct file *file,
 	pos += scnprintf(buf + pos, bufsz - pos, "Unexpected INTA:\t\t %u\n",
 		isr_stats->unhandled);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 	kfree(buf);
 	return ret;
 }
 
-static ssize_t iwl_dbgfs_interrupt_write(struct file *file,
-					 const char __user *user_buf,
-					 size_t count, loff_t *ppos)
+static ssize_t iwl_dbgfs_interrupt_write(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct iwl_trans *trans = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct iwl_trans *trans = iocb->ki_filp->private_data;
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	struct isr_statistics *isr_stats = &trans_pcie->isr_stats;
 	u32 reset_flag;
 	int ret;
 
-	ret = kstrtou32_from_user(user_buf, count, 16, &reset_flag);
+	{
+		char buf[12];
+
+		if (count >= sizeof(buf))
+			return -EINVAL;
+		if (!copy_from_iter_full(buf, count, from))
+			return -EFAULT;
+		buf[count] = '\0';
+		ret = kstrtou32(buf, 16, &reset_flag);
+	}
 	if (ret)
 		return ret;
 	if (reset_flag == 0)
@@ -2952,22 +2959,21 @@ static ssize_t iwl_dbgfs_interrupt_write(struct file *file,
 	return count;
 }
 
-static ssize_t iwl_dbgfs_csr_write(struct file *file,
-				   const char __user *user_buf,
-				   size_t count, loff_t *ppos)
+static ssize_t iwl_dbgfs_csr_write(struct kiocb *iocb,
+				   struct iov_iter *from)
 {
-	struct iwl_trans *trans = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct iwl_trans *trans = iocb->ki_filp->private_data;
 
 	iwl_pcie_dump_csr(trans);
 
 	return count;
 }
 
-static ssize_t iwl_dbgfs_fh_reg_read(struct file *file,
-				     char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t iwl_dbgfs_fh_reg_read(struct kiocb *iocb,
+				     struct iov_iter *to)
 {
-	struct iwl_trans *trans = file->private_data;
+	struct iwl_trans *trans = iocb->ki_filp->private_data;
 	char *buf = NULL;
 	ssize_t ret;
 
@@ -2976,16 +2982,15 @@ static ssize_t iwl_dbgfs_fh_reg_read(struct file *file,
 		return ret;
 	if (!buf)
 		return -EINVAL;
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, ret);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, ret, to);
 	kfree(buf);
 	return ret;
 }
 
-static ssize_t iwl_dbgfs_rfkill_read(struct file *file,
-				     char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t iwl_dbgfs_rfkill_read(struct kiocb *iocb,
+				     struct iov_iter *to)
 {
-	struct iwl_trans *trans = file->private_data;
+	struct iwl_trans *trans = iocb->ki_filp->private_data;
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	char buf[100];
 	int pos;
@@ -2995,19 +3000,24 @@ static ssize_t iwl_dbgfs_rfkill_read(struct file *file,
 			!(iwl_read32(trans, CSR_GP_CNTRL) &
 				CSR_GP_CNTRL_REG_FLAG_HW_RF_KILL_SW));
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
-static ssize_t iwl_dbgfs_rfkill_write(struct file *file,
-				      const char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t iwl_dbgfs_rfkill_write(struct kiocb *iocb,
+				      struct iov_iter *from)
 {
-	struct iwl_trans *trans = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct iwl_trans *trans = iocb->ki_filp->private_data;
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	bool new_value;
 	int ret;
+	char buf[8] = {};
 
-	ret = kstrtobool_from_user(user_buf, count, &new_value);
+	if (count >= sizeof(buf))
+		return -EINVAL;
+	if (!copy_from_iter_full(buf, count, from))
+		return -EFAULT;
+	ret = kstrtobool(buf, &new_value);
 	if (ret)
 		return ret;
 	if (new_value == trans_pcie->debug_rfkill)
@@ -3050,29 +3060,31 @@ static int iwl_dbgfs_monitor_data_release(struct inode *inode,
 	return 0;
 }
 
-static bool iwl_write_to_user_buf(char __user *user_buf, ssize_t count,
+static bool iwl_write_to_user_buf(struct iov_iter *to, ssize_t count,
 				  void *buf, ssize_t *size,
 				  ssize_t *bytes_copied)
 {
 	ssize_t buf_size_left = count - *bytes_copied;
+	size_t copied;
 
 	buf_size_left = buf_size_left - (buf_size_left % sizeof(u32));
 	if (*size > buf_size_left)
 		*size = buf_size_left;
 
-	*size -= copy_to_user(user_buf, buf, *size);
+	copied = copy_to_iter(buf, *size, to);
+	*size = copied;
 	*bytes_copied += *size;
 
-	if (buf_size_left == *size)
+	if (buf_size_left == copied)
 		return true;
 	return false;
 }
 
-static ssize_t iwl_dbgfs_monitor_data_read(struct file *file,
-					   char __user *user_buf,
-					   size_t count, loff_t *ppos)
+static ssize_t iwl_dbgfs_monitor_data_read(struct kiocb *iocb,
+					   struct iov_iter *to)
 {
-	struct iwl_trans *trans = file->private_data;
+	size_t count = iov_iter_count(to);
+	struct iwl_trans *trans = iocb->ki_filp->private_data;
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 	u8 *cpu_addr = (void *)trans->dbg.fw_mon.block, *curr_buf;
 	struct cont_rec *data = &trans_pcie->fw_mon_data;
@@ -3106,7 +3118,7 @@ static ssize_t iwl_dbgfs_monitor_data_read(struct file *file,
 	if (data->prev_wrap_cnt == wrap_cnt) {
 		size = write_ptr - data->prev_wr_ptr;
 		curr_buf = cpu_addr + data->prev_wr_ptr;
-		b_full = iwl_write_to_user_buf(user_buf, count,
+		b_full = iwl_write_to_user_buf(to, count,
 					       curr_buf, &size,
 					       &bytes_copied);
 		data->prev_wr_ptr += size;
@@ -3115,14 +3127,14 @@ static ssize_t iwl_dbgfs_monitor_data_read(struct file *file,
 		   write_ptr < data->prev_wr_ptr) {
 		size = trans->dbg.fw_mon.size - data->prev_wr_ptr;
 		curr_buf = cpu_addr + data->prev_wr_ptr;
-		b_full = iwl_write_to_user_buf(user_buf, count,
+		b_full = iwl_write_to_user_buf(to, count,
 					       curr_buf, &size,
 					       &bytes_copied);
 		data->prev_wr_ptr += size;
 
 		if (!b_full) {
 			size = write_ptr;
-			b_full = iwl_write_to_user_buf(user_buf, count,
+			b_full = iwl_write_to_user_buf(to, count,
 						       cpu_addr, &size,
 						       &bytes_copied);
 			data->prev_wr_ptr = size;
@@ -3139,7 +3151,7 @@ static ssize_t iwl_dbgfs_monitor_data_read(struct file *file,
 				 "monitor data is out of sync, start copying from the beginning\n");
 
 		size = write_ptr;
-		b_full = iwl_write_to_user_buf(user_buf, count,
+		b_full = iwl_write_to_user_buf(to, count,
 					       cpu_addr, &size,
 					       &bytes_copied);
 		data->prev_wr_ptr = size;
@@ -3151,26 +3163,24 @@ static ssize_t iwl_dbgfs_monitor_data_read(struct file *file,
 	return bytes_copied;
 }
 
-static ssize_t iwl_dbgfs_rf_read(struct file *file,
-				 char __user *user_buf,
-				 size_t count, loff_t *ppos)
+static ssize_t iwl_dbgfs_rf_read(struct kiocb *iocb,
+				 struct iov_iter *to)
 {
-	struct iwl_trans *trans = file->private_data;
+	struct iwl_trans *trans = iocb->ki_filp->private_data;
 	struct iwl_trans_pcie *trans_pcie = IWL_TRANS_GET_PCIE_TRANS(trans);
 
 	if (!trans_pcie->rf_name[0])
 		return -ENODEV;
 
-	return simple_read_from_buffer(user_buf, count, ppos,
-				       trans_pcie->rf_name,
-				       strlen(trans_pcie->rf_name));
+	return simple_copy_to_iter(trans_pcie->rf_name, &iocb->ki_pos,
+				    strlen(trans_pcie->rf_name), to);
 }
 
-static ssize_t iwl_dbgfs_reset_write(struct file *file,
-				     const char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t iwl_dbgfs_reset_write(struct kiocb *iocb,
+				     struct iov_iter *from)
 {
-	struct iwl_trans *trans = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct iwl_trans *trans = iocb->ki_filp->private_data;
 	static const char * const modes[] = {
 		[IWL_RESET_MODE_SW_RESET] = "sw",
 		[IWL_RESET_MODE_REPROBE] = "reprobe",
@@ -3186,7 +3196,7 @@ static ssize_t iwl_dbgfs_reset_write(struct file *file,
 	if (count > sizeof(buf) - 1)
 		return -EINVAL;
 
-	if (copy_from_user(buf, user_buf, count))
+	if (!copy_from_iter_full(buf, count, from))
 		return -EFAULT;
 
 	mode = sysfs_match_string(modes, buf);
@@ -3222,13 +3232,13 @@ DEBUGFS_WRITE_FILE_OPS(reset);
 static const struct file_operations iwl_dbgfs_tx_queue_ops = {
 	.owner = THIS_MODULE,
 	.open = iwl_dbgfs_tx_queue_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = seq_release_private,
 };
 
 static const struct file_operations iwl_dbgfs_monitor_data_ops = {
-	.read = iwl_dbgfs_monitor_data_read,
+	.read_iter = iwl_dbgfs_monitor_data_read,
 	.open = iwl_dbgfs_monitor_data_open,
 	.release = iwl_dbgfs_monitor_data_release,
 };

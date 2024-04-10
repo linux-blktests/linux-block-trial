@@ -1527,13 +1527,10 @@ il_free_pages(struct il_priv *il, unsigned long page)
 
 #ifdef CONFIG_IWLEGACY_DEBUGFS
 struct il_debugfs_ops {
-	ssize_t(*rx_stats_read) (struct file *file, char __user *user_buf,
-				 size_t count, loff_t *ppos);
-	ssize_t(*tx_stats_read) (struct file *file, char __user *user_buf,
-				 size_t count, loff_t *ppos);
-	ssize_t(*general_stats_read) (struct file *file,
-				      char __user *user_buf, size_t count,
-				      loff_t *ppos);
+	ssize_t(*rx_stats_read) (struct kiocb *iocb, struct iov_iter *to);
+	ssize_t(*tx_stats_read) (struct kiocb *iocb, struct iov_iter *to);
+	ssize_t(*general_stats_read) (struct kiocb *iocb,
+				      struct iov_iter *to);
 };
 #endif
 

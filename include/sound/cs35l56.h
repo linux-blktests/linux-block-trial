@@ -424,17 +424,13 @@ int cs35l56_get_calibration(struct cs35l56_base *cs35l56_base);
 int cs35l56_stash_calibration(struct cs35l56_base *cs35l56_base,
 			      const struct cirrus_amp_cal_data *data);
 ssize_t cs35l56_calibrate_debugfs_write(struct cs35l56_base *cs35l56_base,
-					const char __user *from, size_t count,
-					loff_t *ppos);
+					struct kiocb *iocb, struct iov_iter *from);
 ssize_t cs35l56_cal_ambient_debugfs_write(struct cs35l56_base *cs35l56_base,
-					  const char __user *from, size_t count,
-					  loff_t *ppos);
+					  struct kiocb *iocb, struct iov_iter *from);
 ssize_t cs35l56_cal_data_debugfs_read(struct cs35l56_base *cs35l56_base,
-				      char __user *to, size_t count,
-				      loff_t *ppos);
+				      struct kiocb *iocb, struct iov_iter *to);
 ssize_t cs35l56_cal_data_debugfs_write(struct cs35l56_base *cs35l56_base,
-				       const char __user *from, size_t count,
-				       loff_t *ppos);
+				       struct kiocb *iocb, struct iov_iter *from);
 void cs35l56_create_cal_debugfs(struct cs35l56_base *cs35l56_base,
 				const struct cs35l56_cal_debugfs_fops *fops);
 void cs35l56_remove_cal_debugfs(struct cs35l56_base *cs35l56_base);

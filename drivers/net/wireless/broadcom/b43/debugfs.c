@@ -486,8 +486,7 @@ out:
 
 #undef fappend
 
-static ssize_t b43_debugfs_read(struct file *file, char __user *userbuf,
-				size_t count, loff_t *ppos)
+static ssize_t b43_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct b43_wldev *dev;
 	const struct b43_debugfs_fops *dfops;
@@ -498,9 +497,9 @@ static ssize_t b43_debugfs_read(struct file *file, char __user *userbuf,
 	const size_t buforder = get_order(bufsize);
 	int err = 0;
 
-	if (!count)
+	if (!iov_iter_count(to))
 		return 0;
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 	if (!dev)
 		return -ENODEV;
 
@@ -510,7 +509,7 @@ static ssize_t b43_debugfs_read(struct file *file, char __user *userbuf,
 		goto out_unlock;
 	}
 
-	dfops = debugfs_get_aux(file);
+	dfops = debugfs_get_aux(iocb->ki_filp);
 	if (!dfops->read) {
 		err = -ENOSYS;
 		goto out_unlock;
@@ -534,10 +533,9 @@ static ssize_t b43_debugfs_read(struct file *file, char __user *userbuf,
 		dfile->buffer = buf;
 	}
 
-	ret = simple_read_from_buffer(userbuf, count, ppos,
-				      dfile->buffer,
-				      dfile->data_len);
-	if (*ppos >= dfile->data_len) {
+	ret = simple_copy_to_iter(dfile->buffer, &iocb->ki_pos,
+				  dfile->data_len, to);
+	if (iocb->ki_pos >= dfile->data_len) {
 		free_pages((unsigned long)dfile->buffer, buforder);
 		dfile->buffer = NULL;
 		dfile->data_len = 0;
@@ -548,20 +546,19 @@ out_unlock:
 	return err ? err : ret;
 }
 
-static ssize_t b43_debugfs_write(struct file *file,
-				 const char __user *userbuf,
-				 size_t count, loff_t *ppos)
+static ssize_t b43_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct b43_wldev *dev;
 	const struct b43_debugfs_fops *dfops;
 	char *buf;
+	size_t count = iov_iter_count(from);
 	int err = 0;
 
 	if (!count)
 		return 0;
 	if (count > PAGE_SIZE)
 		return -E2BIG;
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 	if (!dev)
 		return -ENODEV;
 
@@ -571,7 +568,7 @@ static ssize_t b43_debugfs_write(struct file *file,
 		goto out_unlock;
 	}
 
-	dfops = debugfs_get_aux(file);
+	dfops = debugfs_get_aux(iocb->ki_filp);
 	if (!dfops->write) {
 		err = -ENOSYS;
 		goto out_unlock;
@@ -582,7 +579,7 @@ static ssize_t b43_debugfs_write(struct file *file,
 		err = -ENOMEM;
 		goto out_unlock;
 	}
-	if (copy_from_user(buf, userbuf, count)) {
+	if (!copy_from_iter_full(buf, count, from)) {
 		err = -EFAULT;
 		goto out_freepage;
 	}
@@ -600,8 +597,8 @@ out_unlock:
 
 
 static struct debugfs_short_fops debugfs_ops = {
-	.read	= b43_debugfs_read,
-	.write	= b43_debugfs_write,
+	.read_iter	= b43_debugfs_read,
+	.write_iter	= b43_debugfs_write,
 	.llseek = generic_file_llseek,
 };
 

@@ -2522,11 +2522,10 @@ il4965_rs_dbgfs_set_mcs(struct il_lq_sta *lq_sta, u32 * rate_n_flags, int idx)
 }
 
 static ssize_t
-il4965_rs_sta_dbgfs_scale_table_write(struct file *file,
-				      const char __user *user_buf,
-				      size_t count, loff_t *ppos)
+il4965_rs_sta_dbgfs_scale_table_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct il_lq_sta *lq_sta = file->private_data;
+	struct il_lq_sta *lq_sta = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct il_priv *il;
 	char buf[64];
 	size_t buf_size;
@@ -2535,7 +2534,7 @@ il4965_rs_sta_dbgfs_scale_table_write(struct file *file,
 	il = lq_sta->drv;
 	memset(buf, 0, sizeof(buf));
 	buf_size = min(count, sizeof(buf) - 1);
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 
 	if (sscanf(buf, "%x", &parsed_rate) == 1)
@@ -2559,8 +2558,7 @@ il4965_rs_sta_dbgfs_scale_table_write(struct file *file,
 }
 
 static ssize_t
-il4965_rs_sta_dbgfs_scale_table_read(struct file *file, char __user *user_buf,
-				     size_t count, loff_t *ppos)
+il4965_rs_sta_dbgfs_scale_table_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *buff;
 	int desc = 0;
@@ -2568,7 +2566,7 @@ il4965_rs_sta_dbgfs_scale_table_read(struct file *file, char __user *user_buf,
 	int idx = 0;
 	ssize_t ret;
 
-	struct il_lq_sta *lq_sta = file->private_data;
+	struct il_lq_sta *lq_sta = iocb->ki_filp->private_data;
 	struct il_priv *il;
 	struct il_scale_tbl_info *tbl = &(lq_sta->lq_info[lq_sta->active_tbl]);
 
@@ -2654,28 +2652,27 @@ il4965_rs_sta_dbgfs_scale_table_read(struct file *file, char __user *user_buf,
 		}
 	}
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buff, desc);
+	ret = simple_copy_to_iter(buff, &iocb->ki_pos, desc, to);
 	kfree(buff);
 	return ret;
 }
 
 static const struct file_operations rs_sta_dbgfs_scale_table_ops = {
-	.write = il4965_rs_sta_dbgfs_scale_table_write,
-	.read = il4965_rs_sta_dbgfs_scale_table_read,
+	.write_iter = il4965_rs_sta_dbgfs_scale_table_write,
+	.read_iter = il4965_rs_sta_dbgfs_scale_table_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
 static ssize_t
-il4965_rs_sta_dbgfs_stats_table_read(struct file *file, char __user *user_buf,
-				     size_t count, loff_t *ppos)
+il4965_rs_sta_dbgfs_stats_table_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *buff;
 	int desc = 0;
 	int i, j;
 	ssize_t ret;
 
-	struct il_lq_sta *lq_sta = file->private_data;
+	struct il_lq_sta *lq_sta = iocb->ki_filp->private_data;
 
 	buff = kmalloc(1024, GFP_KERNEL);
 	if (!buff)
@@ -2700,25 +2697,23 @@ il4965_rs_sta_dbgfs_stats_table_read(struct file *file, char __user *user_buf,
 				    lq_sta->lq_info[i].win[j].success_ratio);
 		}
 	}
-	ret = simple_read_from_buffer(user_buf, count, ppos, buff, desc);
+	ret = simple_copy_to_iter(buff, &iocb->ki_pos, desc, to);
 	kfree(buff);
 	return ret;
 }
 
 static const struct file_operations rs_sta_dbgfs_stats_table_ops = {
-	.read = il4965_rs_sta_dbgfs_stats_table_read,
+	.read_iter = il4965_rs_sta_dbgfs_stats_table_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
 static ssize_t
-il4965_rs_sta_dbgfs_rate_scale_data_read(struct file *file,
-					 char __user *user_buf, size_t count,
-					 loff_t *ppos)
+il4965_rs_sta_dbgfs_rate_scale_data_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buff[120];
 	int desc = 0;
-	struct il_lq_sta *lq_sta = file->private_data;
+	struct il_lq_sta *lq_sta = iocb->ki_filp->private_data;
 	struct il_scale_tbl_info *tbl = &lq_sta->lq_info[lq_sta->active_tbl];
 
 	if (is_Ht(tbl->lq_type))
@@ -2730,11 +2725,11 @@ il4965_rs_sta_dbgfs_rate_scale_data_read(struct file *file,
 		    sprintf(buff + desc, "Bit Rate= %d Mb/s\n",
 			    il_rates[lq_sta->last_txrate_idx].ieee >> 1);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buff, desc);
+	return simple_copy_to_iter(buff, &iocb->ki_pos, desc, to);
 }
 
 static const struct file_operations rs_sta_dbgfs_rate_scale_data_ops = {
-	.read = il4965_rs_sta_dbgfs_rate_scale_data_read,
+	.read_iter = il4965_rs_sta_dbgfs_rate_scale_data_read,
 	.open = simple_open,
 	.llseek = default_llseek,
 };

@@ -10358,23 +10358,19 @@ void cfg80211_nan_cluster_joined(struct wireless_dev *wdev,
 /**
  * wiphy_locked_debugfs_read - do a locked read in debugfs
  * @wiphy: the wiphy to use
- * @file: the file being read
+ * @iocb: metadata for the IO
  * @buf: the buffer to fill and then read from
  * @bufsize: size of the buffer
- * @userbuf: the user buffer to copy to
- * @count: read count
- * @ppos: read position
+ * @to: the user buffer to copy to
  * @handler: the read handler to call (under wiphy lock)
  * @data: additional data to pass to the read handler
  *
  * Return: the number of characters read, or a negative errno
  */
-ssize_t wiphy_locked_debugfs_read(struct wiphy *wiphy, struct file *file,
+ssize_t wiphy_locked_debugfs_read(struct wiphy *wiphy, struct kiocb *iocb,
 				  char *buf, size_t bufsize,
-				  char __user *userbuf, size_t count,
-				  loff_t *ppos,
+				  struct iov_iter *to,
 				  ssize_t (*handler)(struct wiphy *wiphy,
-						     struct file *file,
 						     char *buf,
 						     size_t bufsize,
 						     void *data),
@@ -10383,23 +10379,21 @@ ssize_t wiphy_locked_debugfs_read(struct wiphy *wiphy, struct file *file,
 /**
  * wiphy_locked_debugfs_write - do a locked write in debugfs
  * @wiphy: the wiphy to use
- * @file: the file being written to
+ * @iocb: metadata for the IO
  * @buf: the buffer to copy the user data to
  * @bufsize: size of the buffer
- * @userbuf: the user buffer to copy from
- * @count: read count
+ * @from: the user buffer to copy from
  * @handler: the write handler to call (under wiphy lock)
  * @data: additional data to pass to the write handler
  *
  * Return: the number of characters written, or a negative errno
  */
-ssize_t wiphy_locked_debugfs_write(struct wiphy *wiphy, struct file *file,
+ssize_t wiphy_locked_debugfs_write(struct wiphy *wiphy, struct kiocb *iocb,
 				   char *buf, size_t bufsize,
-				   const char __user *userbuf, size_t count,
+				   struct iov_iter *from,
 				   ssize_t (*handler)(struct wiphy *wiphy,
-						      struct file *file,
 						      char *buf,
-						      size_t count,
+						      size_t bufsize,
 						      void *data),
 				   void *data);
 #endif
