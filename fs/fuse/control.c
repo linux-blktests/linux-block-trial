@@ -32,60 +32,58 @@ static struct fuse_conn *fuse_ctl_file_conn_get(struct file *file)
 	return fc;
 }
 
-static ssize_t fuse_conn_abort_write(struct file *file, const char __user *buf,
-				     size_t count, loff_t *ppos)
+static ssize_t fuse_conn_abort_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct fuse_conn *fc = fuse_ctl_file_conn_get(file);
+	struct fuse_conn *fc = fuse_ctl_file_conn_get(iocb->ki_filp);
 	if (fc) {
 		if (fc->abort_err)
 			fc->aborted = true;
 		fuse_abort_conn(fc);
 		fuse_conn_put(fc);
 	}
-	return count;
+	return iov_iter_count(from);
 }
 
-static ssize_t fuse_conn_waiting_read(struct file *file, char __user *buf,
-				      size_t len, loff_t *ppos)
+static ssize_t fuse_conn_waiting_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char tmp[32];
 	size_t size;
 
-	if (!*ppos) {
+	if (!iocb->ki_pos) {
 		long value;
-		struct fuse_conn *fc = fuse_ctl_file_conn_get(file);
+		struct fuse_conn *fc = fuse_ctl_file_conn_get(iocb->ki_filp);
 		if (!fc)
 			return 0;
 
 		value = atomic_read(&fc->num_waiting);
-		file->private_data = (void *)value;
+		iocb->ki_filp->private_data = (void *)value;
 		fuse_conn_put(fc);
 	}
-	size = sprintf(tmp, "%ld\n", (long)file->private_data);
-	return simple_read_from_buffer(buf, len, ppos, tmp, size);
+	size = sprintf(tmp, "%ld\n", (long)iocb->ki_filp->private_data);
+	return simple_copy_to_iter(tmp, &iocb->ki_pos, size, to);
 }
 
-static ssize_t fuse_conn_limit_read(struct file *file, char __user *buf,
-				    size_t len, loff_t *ppos, unsigned val)
+static ssize_t fuse_conn_limit_read(struct kiocb *iocb, struct iov_iter *to,
+				    unsigned val)
 {
 	char tmp[32];
 	size_t size = sprintf(tmp, "%u\n", val);
 
-	return simple_read_from_buffer(buf, len, ppos, tmp, size);
+	return simple_copy_to_iter(tmp, &iocb->ki_pos, size, to);
 }
 
-static ssize_t fuse_conn_limit_write(struct file *file, const char __user *buf,
-				     size_t count, loff_t *ppos, unsigned *val,
-				     unsigned global_limit)
+static ssize_t fuse_conn_limit_write(struct kiocb *iocb, struct iov_iter *from,
+				     unsigned *val, unsigned global_limit)
 {
 	unsigned long t;
 	unsigned limit = (1 << 16) - 1;
+	size_t count = iov_iter_count(from);
 	int err;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return -EINVAL;
 
-	err = kstrtoul_from_user(buf, count, 0, &t);
+	err = kstrtoul_from_iter(from, count, 0, &t);
 	if (err)
 		return err;
 
@@ -100,34 +98,31 @@ static ssize_t fuse_conn_limit_write(struct file *file, const char __user *buf,
 	return count;
 }
 
-static ssize_t fuse_conn_max_background_read(struct file *file,
-					     char __user *buf, size_t len,
-					     loff_t *ppos)
+static ssize_t fuse_conn_max_background_read(struct kiocb *iocb,
+					     struct iov_iter *to)
 {
 	struct fuse_conn *fc;
 	unsigned val;
 
-	fc = fuse_ctl_file_conn_get(file);
+	fc = fuse_ctl_file_conn_get(iocb->ki_filp);
 	if (!fc)
 		return 0;
 
 	val = READ_ONCE(fc->max_background);
 	fuse_conn_put(fc);
 
-	return fuse_conn_limit_read(file, buf, len, ppos, val);
+	return fuse_conn_limit_read(iocb, to, val);
 }
 
-static ssize_t fuse_conn_max_background_write(struct file *file,
-					      const char __user *buf,
-					      size_t count, loff_t *ppos)
+static ssize_t fuse_conn_max_background_write(struct kiocb *iocb,
+					      struct iov_iter *from)
 {
 	unsigned val;
 	ssize_t ret;
 
-	ret = fuse_conn_limit_write(file, buf, count, ppos, &val,
-				    max_user_bgreq);
+	ret = fuse_conn_limit_write(iocb, from, &val, max_user_bgreq);
 	if (ret > 0) {
-		struct fuse_conn *fc = fuse_ctl_file_conn_get(file);
+		struct fuse_conn *fc = fuse_ctl_file_conn_get(iocb->ki_filp);
 		if (fc) {
 			spin_lock(&fc->bg_lock);
 			fc->max_background = val;
@@ -142,36 +137,33 @@ static ssize_t fuse_conn_max_background_write(struct file *file,
 	return ret;
 }
 
-static ssize_t fuse_conn_congestion_threshold_read(struct file *file,
-						   char __user *buf, size_t len,
-						   loff_t *ppos)
+static ssize_t fuse_conn_congestion_threshold_read(struct kiocb *iocb,
+						   struct iov_iter *to)
 {
 	struct fuse_conn *fc;
 	unsigned val;
 
-	fc = fuse_ctl_file_conn_get(file);
+	fc = fuse_ctl_file_conn_get(iocb->ki_filp);
 	if (!fc)
 		return 0;
 
 	val = READ_ONCE(fc->congestion_threshold);
 	fuse_conn_put(fc);
 
-	return fuse_conn_limit_read(file, buf, len, ppos, val);
+	return fuse_conn_limit_read(iocb, to, val);
 }
 
-static ssize_t fuse_conn_congestion_threshold_write(struct file *file,
-						    const char __user *buf,
-						    size_t count, loff_t *ppos)
+static ssize_t fuse_conn_congestion_threshold_write(struct kiocb *iocb,
+						    struct iov_iter *from)
 {
 	unsigned val;
 	struct fuse_conn *fc;
 	ssize_t ret;
 
-	ret = fuse_conn_limit_write(file, buf, count, ppos, &val,
-				    max_user_congthresh);
+	ret = fuse_conn_limit_write(iocb, from, &val, max_user_congthresh);
 	if (ret <= 0)
 		goto out;
-	fc = fuse_ctl_file_conn_get(file);
+	fc = fuse_ctl_file_conn_get(iocb->ki_filp);
 	if (!fc)
 		goto out;
 
@@ -183,24 +175,24 @@ out:
 
 static const struct file_operations fuse_ctl_abort_ops = {
 	.open = nonseekable_open,
-	.write = fuse_conn_abort_write,
+	.write_iter = fuse_conn_abort_write,
 };
 
 static const struct file_operations fuse_ctl_waiting_ops = {
 	.open = nonseekable_open,
-	.read = fuse_conn_waiting_read,
+	.read_iter = fuse_conn_waiting_read,
 };
 
 static const struct file_operations fuse_conn_max_background_ops = {
 	.open = nonseekable_open,
-	.read = fuse_conn_max_background_read,
-	.write = fuse_conn_max_background_write,
+	.read_iter = fuse_conn_max_background_read,
+	.write_iter = fuse_conn_max_background_write,
 };
 
 static const struct file_operations fuse_conn_congestion_threshold_ops = {
 	.open = nonseekable_open,
-	.read = fuse_conn_congestion_threshold_read,
-	.write = fuse_conn_congestion_threshold_write,
+	.read_iter = fuse_conn_congestion_threshold_read,
+	.write_iter = fuse_conn_congestion_threshold_write,
 };
 
 static struct dentry *fuse_ctl_add_dentry(struct dentry *parent,
