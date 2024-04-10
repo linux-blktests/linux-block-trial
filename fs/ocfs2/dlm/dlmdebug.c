@@ -284,12 +284,14 @@ static int debug_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t debug_read(struct file *file, char __user *buf,
-			  size_t nbytes, loff_t *ppos)
+static ssize_t debug_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return simple_read_from_buffer(buf, nbytes, ppos, file->private_data,
-				       i_size_read(file->f_mapping->host));
+	struct file *file = iocb->ki_filp;
+
+	return simple_copy_to_iter(file->private_data, &iocb->ki_pos,
+				       i_size_read(file->f_mapping->host), to);
 }
+
 /* end - util funcs */
 
 /* begin - purge list funcs */
@@ -343,7 +345,7 @@ bail:
 static const struct file_operations debug_purgelist_fops = {
 	.open =		debug_purgelist_open,
 	.release =	debug_release,
-	.read =		debug_read,
+	.read_iter =	debug_read,
 	.llseek =	generic_file_llseek,
 };
 /* end - purge list funcs */
@@ -400,7 +402,7 @@ bail:
 static const struct file_operations debug_mle_fops = {
 	.open =		debug_mle_open,
 	.release =	debug_release,
-	.read =		debug_read,
+	.read_iter =	debug_read,
 	.llseek =	generic_file_llseek,
 };
 
@@ -791,7 +793,7 @@ bail:
 static const struct file_operations debug_state_fops = {
 	.open =		debug_state_open,
 	.release =	debug_release,
-	.read =		debug_read,
+	.read_iter =	debug_read,
 	.llseek =	generic_file_llseek,
 };
 /* end  - debug state funcs */

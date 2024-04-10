@@ -527,6 +527,7 @@ static ssize_t ocfs2_control_write(struct file *file,
 
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ocfs2_control_write);
 
 /*
  * This is a naive version.  If we ever have a new protocol, we'll expand
@@ -549,6 +550,7 @@ static ssize_t ocfs2_control_read(struct file *file,
 
 	return ret;
 }
+FOPS_READ_ITER_HELPER(ocfs2_control_read);
 
 static int ocfs2_control_release(struct inode *inode, struct file *file)
 {
@@ -609,8 +611,8 @@ static int ocfs2_control_open(struct inode *inode, struct file *file)
 static const struct file_operations ocfs2_control_fops = {
 	.open    = ocfs2_control_open,
 	.release = ocfs2_control_release,
-	.read    = ocfs2_control_read,
-	.write   = ocfs2_control_write,
+	.read_iter = ocfs2_control_read_iter,
+	.write_iter = ocfs2_control_write_iter,
 	.owner   = THIS_MODULE,
 	.llseek  = default_llseek,
 };
