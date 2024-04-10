@@ -309,6 +309,7 @@ out_unlock_daemon:
 	mutex_unlock(&daemon->mux);
 	return rc;
 }
+FOPS_READ_ITER_HELPER(ecryptfs_miscdev_read);
 
 /**
  * ecryptfs_miscdev_response - miscdevess response to message previously sent to daemon
@@ -342,65 +343,57 @@ out:
 
 /**
  * ecryptfs_miscdev_write - handle write to daemon miscdev handle
- * @file: File for misc dev handle
- * @buf: Buffer containing user data
- * @count: Amount of data in @buf
- * @ppos: Pointer to offset in file (ignored)
+ * @iocb: Metadata for IO
+ * @from: Buffer containing user data
  *
  * Returns the number of bytes read from @buf
  */
 static ssize_t
-ecryptfs_miscdev_write(struct file *file, const char __user *buf,
-		       size_t count, loff_t *ppos)
+ecryptfs_miscdev_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	__be32 counter_nbo;
 	u32 seq;
 	size_t packet_size, packet_size_length;
 	char *data;
-	unsigned char packet_size_peek[ECRYPTFS_MAX_PKT_LEN_SIZE];
+	size_t count = iov_iter_count(from);
 	ssize_t rc;
 
 	if (count == 0) {
 		return 0;
-	} else if (count == MIN_NON_MSG_PKT_SIZE) {
-		/* Likely a harmless MSG_HELO or MSG_QUIT - no packet length */
-		goto memdup;
-	} else if (count < MIN_MSG_PKT_SIZE || count > MAX_MSG_PKT_SIZE) {
+	} else if (count != MIN_NON_MSG_PKT_SIZE &&
+		   (count < MIN_MSG_PKT_SIZE || count > MAX_MSG_PKT_SIZE)) {
 		printk(KERN_WARNING "%s: Acceptable packet size range is "
 		       "[%d-%zu], but amount of data written is [%zu].\n",
 		       __func__, MIN_MSG_PKT_SIZE, MAX_MSG_PKT_SIZE, count);
 		return -EINVAL;
 	}
 
-	if (copy_from_user(packet_size_peek, &buf[PKT_LEN_OFFSET],
-			   sizeof(packet_size_peek))) {
-		printk(KERN_WARNING "%s: Error while inspecting packet size\n",
-		       __func__);
-		return -EFAULT;
-	}
-
-	rc = ecryptfs_parse_packet_length(packet_size_peek, &packet_size,
-					  &packet_size_length);
-	if (rc) {
-		printk(KERN_WARNING "%s: Error parsing packet length; "
-		       "rc = [%zd]\n", __func__, rc);
-		return rc;
-	}
-
-	if ((PKT_TYPE_SIZE + PKT_CTR_SIZE + packet_size_length + packet_size)
-	    != count) {
-		printk(KERN_WARNING "%s: Invalid packet size [%zu]\n", __func__,
-		       packet_size);
-		return -EINVAL;
-	}
-
-memdup:
-	data = memdup_user(buf, count);
+	data = iterdup(from, count);
 	if (IS_ERR(data)) {
 		printk(KERN_ERR "%s: memdup_user returned error [%ld]\n",
 		       __func__, PTR_ERR(data));
 		return PTR_ERR(data);
 	}
+
+	if (count > MIN_NON_MSG_PKT_SIZE) {
+		rc = ecryptfs_parse_packet_length(
+				(unsigned char *)&data[PKT_LEN_OFFSET],
+				&packet_size, &packet_size_length);
+		if (rc) {
+			printk(KERN_WARNING "%s: Error parsing packet length; "
+			       "rc = [%zd]\n", __func__, rc);
+			goto out_free;
+		}
+
+		if ((PKT_TYPE_SIZE + PKT_CTR_SIZE + packet_size_length
+		     + packet_size) != count) {
+			printk(KERN_WARNING "%s: Invalid packet size [%zu]\n",
+			       __func__, packet_size);
+			rc = -EINVAL;
+			goto out_free;
+		}
+	}
+
 	switch (data[PKT_TYPE_OFFSET]) {
 	case ECRYPTFS_MSG_RESPONSE:
 		if (count < (MIN_MSG_PKT_SIZE
@@ -416,7 +409,7 @@ memdup:
 		}
 		memcpy(&counter_nbo, &data[PKT_CTR_OFFSET], PKT_CTR_SIZE);
 		seq = be32_to_cpu(counter_nbo);
-		rc = ecryptfs_miscdev_response(file->private_data,
+		rc = ecryptfs_miscdev_response(iocb->ki_filp->private_data,
 				&data[PKT_LEN_OFFSET + packet_size_length],
 				packet_size, seq);
 		if (rc) {
@@ -442,13 +435,12 @@ out_free:
 	return rc;
 }
 
-
 static const struct file_operations ecryptfs_miscdev_fops = {
 	.owner   = THIS_MODULE,
 	.open    = ecryptfs_miscdev_open,
 	.poll    = ecryptfs_miscdev_poll,
-	.read    = ecryptfs_miscdev_read,
-	.write   = ecryptfs_miscdev_write,
+	.read_iter    = ecryptfs_miscdev_read_iter,
+	.write_iter   = ecryptfs_miscdev_write,
 	.release = ecryptfs_miscdev_release,
 	.llseek  = noop_llseek,
 };
