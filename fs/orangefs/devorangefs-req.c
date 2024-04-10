@@ -155,18 +155,18 @@ out:
 }
 
 /* Function for read() callers into the device */
-static ssize_t orangefs_devreq_read(struct file *file,
-				 char __user *buf,
-				 size_t count, loff_t *offset)
+static ssize_t orangefs_devreq_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct orangefs_kernel_op_s *op, *temp;
 	__s32 proto_ver = ORANGEFS_KERNEL_PROTO_VERSION;
 	static __s32 magic = ORANGEFS_DEVREQ_MAGIC;
 	struct orangefs_kernel_op_s *cur_op;
+	size_t count = iov_iter_count(to);
 	unsigned long ret;
 
 	/* We do not support blocking IO. */
-	if (!(file->f_flags & O_NONBLOCK)) {
+	if (!((iocb->ki_filp->f_flags & O_NONBLOCK) &&
+	     (iocb->ki_flags & IOCB_NOWAIT))) {
 		gossip_err("%s: blocking read from client-core.\n",
 			   __func__);
 		return -EINVAL;
@@ -278,20 +278,17 @@ restart:
 	spin_unlock(&cur_op->lock);
 
 	/* Push the upcall out. */
-	ret = copy_to_user(buf, &proto_ver, sizeof(__s32));
+	ret = !copy_to_iter_full(&proto_ver, sizeof(__s32), to);
 	if (ret != 0)
 		goto error;
-	ret = copy_to_user(buf + sizeof(__s32), &magic, sizeof(__s32));
+	ret = !copy_to_iter_full(&magic, sizeof(__s32), to);
 	if (ret != 0)
 		goto error;
-	ret = copy_to_user(buf + 2 * sizeof(__s32),
-		&cur_op->tag,
-		sizeof(__u64));
+	ret = !copy_to_iter_full(&cur_op->tag, sizeof(__u64), to);
 	if (ret != 0)
 		goto error;
-	ret = copy_to_user(buf + 2 * sizeof(__s32) + sizeof(__u64),
-		&cur_op->upcall,
-		sizeof(struct orangefs_upcall_s));
+	ret = !copy_to_iter_full(&cur_op->upcall,
+				 sizeof(struct orangefs_upcall_s), to);
 	if (ret != 0)
 		goto error;
 
@@ -768,7 +765,7 @@ static int orangefs_dev_major;
 
 static const struct file_operations orangefs_devreq_file_operations = {
 	.owner = THIS_MODULE,
-	.read = orangefs_devreq_read,
+	.read_iter = orangefs_devreq_read,
 	.write_iter = orangefs_devreq_write_iter,
 	.open = orangefs_devreq_open,
 	.release = orangefs_devreq_release,
