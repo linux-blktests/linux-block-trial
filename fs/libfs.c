@@ -1424,44 +1424,6 @@ int simple_attr_release(struct inode *inode, struct file *file)
 EXPORT_SYMBOL_GPL(simple_attr_release);	/* GPL-only?  This?  Really? */
 
 /* read from the buffer that is filled with the get function */
-ssize_t simple_attr_read(struct file *file, char __user *buf,
-			 size_t len, loff_t *ppos)
-{
-	struct simple_attr *attr;
-	size_t size;
-	ssize_t ret;
-
-	attr = file->private_data;
-
-	if (!attr->get)
-		return -EACCES;
-
-	ret = mutex_lock_interruptible(&attr->mutex);
-	if (ret)
-		return ret;
-
-	if (*ppos && attr->get_buf[0]) {
-		/* continued read */
-		size = strlen(attr->get_buf);
-	} else {
-		/* first read */
-		u64 val;
-		ret = attr->get(attr->data, &val);
-		if (ret)
-			goto out;
-
-		size = scnprintf(attr->get_buf, sizeof(attr->get_buf),
-				 attr->fmt, (unsigned long long)val);
-	}
-
-	ret = simple_read_from_buffer(buf, len, ppos, attr->get_buf, size);
-out:
-	mutex_unlock(&attr->mutex);
-	return ret;
-}
-EXPORT_SYMBOL_GPL(simple_attr_read);
-
-/* read from the buffer that is filled with the get function */
 ssize_t simple_attr_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct simple_attr *attr;
@@ -1547,57 +1509,6 @@ ssize_t simple_attr_write_iter_signed(struct kiocb *iocb, struct iov_iter *from)
 	return __simple_write_iter(iocb, from, true);
 }
 EXPORT_SYMBOL_GPL(simple_attr_write_iter_signed);
-
-/* interpret the buffer as a number to call the set function with */
-static ssize_t simple_attr_write_xsigned(struct file *file, const char __user *buf,
-			  size_t len, loff_t *ppos, bool is_signed)
-{
-	struct simple_attr *attr;
-	unsigned long long val;
-	size_t size;
-	ssize_t ret;
-
-	attr = file->private_data;
-	if (!attr->set)
-		return -EACCES;
-
-	ret = mutex_lock_interruptible(&attr->mutex);
-	if (ret)
-		return ret;
-
-	ret = -EFAULT;
-	size = min(sizeof(attr->set_buf) - 1, len);
-	if (copy_from_user(attr->set_buf, buf, size))
-		goto out;
-
-	attr->set_buf[size] = '\0';
-	if (is_signed)
-		ret = kstrtoll(attr->set_buf, 0, &val);
-	else
-		ret = kstrtoull(attr->set_buf, 0, &val);
-	if (ret)
-		goto out;
-	ret = attr->set(attr->data, val);
-	if (ret == 0)
-		ret = len; /* on success, claim we got the whole input */
-out:
-	mutex_unlock(&attr->mutex);
-	return ret;
-}
-
-ssize_t simple_attr_write(struct file *file, const char __user *buf,
-			  size_t len, loff_t *ppos)
-{
-	return simple_attr_write_xsigned(file, buf, len, ppos, false);
-}
-EXPORT_SYMBOL_GPL(simple_attr_write);
-
-ssize_t simple_attr_write_signed(struct file *file, const char __user *buf,
-			  size_t len, loff_t *ppos)
-{
-	return simple_attr_write_xsigned(file, buf, len, ppos, true);
-}
-EXPORT_SYMBOL_GPL(simple_attr_write_signed);
 
 /**
  * generic_encode_ino32_fh - generic export_operations->encode_fh function
