@@ -490,10 +490,10 @@ static const struct hwmon_chip_info pt5161l_chip_info = {
 	.info = pt5161l_info,
 };
 
-static ssize_t pt5161l_debugfs_read_fw_ver(struct file *file, char __user *buf,
-					   size_t count, loff_t *ppos)
+static ssize_t pt5161l_debugfs_read_fw_ver(struct kiocb *iocb,
+					   struct iov_iter *to)
 {
-	struct pt5161l_data *data = file->private_data;
+	struct pt5161l_data *data = iocb->ki_filp->private_data;
 	int ret;
 	char ver[32];
 
@@ -506,19 +506,18 @@ static ssize_t pt5161l_debugfs_read_fw_ver(struct file *file, char __user *buf,
 	ret = snprintf(ver, sizeof(ver), "%u.%u.%u\n", data->fw_ver.major,
 		       data->fw_ver.minor, data->fw_ver.build);
 
-	return simple_read_from_buffer(buf, count, ppos, ver, ret);
+	return simple_copy_to_iter(ver, &iocb->ki_pos, ret, to);
 }
 
 static const struct file_operations pt5161l_debugfs_ops_fw_ver = {
-	.read = pt5161l_debugfs_read_fw_ver,
+	.read_iter = pt5161l_debugfs_read_fw_ver,
 	.open = simple_open,
 };
 
-static ssize_t pt5161l_debugfs_read_fw_load_sts(struct file *file,
-						char __user *buf, size_t count,
-						loff_t *ppos)
+static ssize_t pt5161l_debugfs_read_fw_load_sts(struct kiocb *iocb,
+						struct iov_iter *to)
 {
-	struct pt5161l_data *data = file->private_data;
+	struct pt5161l_data *data = iocb->ki_filp->private_data;
 	int ret;
 	bool status = false;
 	char health[16];
@@ -532,18 +531,18 @@ static ssize_t pt5161l_debugfs_read_fw_load_sts(struct file *file,
 	ret = snprintf(health, sizeof(health), "%s\n",
 		       status ? "normal" : "abnormal");
 
-	return simple_read_from_buffer(buf, count, ppos, health, ret);
+	return simple_copy_to_iter(health, &iocb->ki_pos, ret, to);
 }
 
 static const struct file_operations pt5161l_debugfs_ops_fw_load_sts = {
-	.read = pt5161l_debugfs_read_fw_load_sts,
+	.read_iter = pt5161l_debugfs_read_fw_load_sts,
 	.open = simple_open,
 };
 
-static ssize_t pt5161l_debugfs_read_hb_sts(struct file *file, char __user *buf,
-					   size_t count, loff_t *ppos)
+static ssize_t pt5161l_debugfs_read_hb_sts(struct kiocb *iocb,
+					   struct iov_iter *to)
 {
-	struct pt5161l_data *data = file->private_data;
+	struct pt5161l_data *data = iocb->ki_filp->private_data;
 	int ret;
 	bool status = false;
 	char health[16];
@@ -557,11 +556,11 @@ static ssize_t pt5161l_debugfs_read_hb_sts(struct file *file, char __user *buf,
 	ret = snprintf(health, sizeof(health), "%s\n",
 		       status ? "normal" : "abnormal");
 
-	return simple_read_from_buffer(buf, count, ppos, health, ret);
+	return simple_copy_to_iter(health, &iocb->ki_pos, ret, to);
 }
 
 static const struct file_operations pt5161l_debugfs_ops_hb_sts = {
-	.read = pt5161l_debugfs_read_hb_sts,
+	.read_iter = pt5161l_debugfs_read_hb_sts,
 	.open = simple_open,
 };
 
