@@ -167,15 +167,15 @@ static bool sof_wait_mtrace_avail(struct sof_mtrace_core_data *core_data)
 	return false;
 }
 
-static ssize_t sof_ipc4_mtrace_dfs_read(struct file *file, char __user *buffer,
-					size_t count, loff_t *ppos)
+static ssize_t sof_ipc4_mtrace_dfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct sof_mtrace_core_data *core_data = file->private_data;
+	struct sof_mtrace_core_data *core_data = iocb->ki_filp->private_data;
 	u32 log_buffer_offset, log_buffer_size, read_ptr, write_ptr;
 	struct snd_sof_dev *sdev = core_data->sdev;
 	struct sof_mtrace_priv *priv = sdev->fw_trace_data;
 	void *log_buffer = core_data->log_buffer;
-	loff_t lpos = *ppos;
+	size_t count = iov_iter_count(to);
+	loff_t lpos = iocb->ki_pos;
 	u32 avail;
 	int ret;
 
@@ -189,7 +189,7 @@ static ssize_t sof_ipc4_mtrace_dfs_read(struct file *file, char __user *buffer,
 	if (!sof_wait_mtrace_avail(core_data)) {
 		/* No data available */
 		avail = 0;
-		if (copy_to_user(buffer, &avail, sizeof(avail)))
+		if (!copy_to_iter_full(&avail, sizeof(avail), to))
 			return -EFAULT;
 
 		return 0;
@@ -241,12 +241,12 @@ static ssize_t sof_ipc4_mtrace_dfs_read(struct file *file, char __user *buffer,
 	}
 
 	/* first write the number of bytes we have gathered */
-	ret = copy_to_user(buffer, &avail, sizeof(avail));
+	ret = !copy_to_iter_full(&avail, sizeof(avail), to);
 	if (ret)
 		return -EFAULT;
 
 	/* Followed by the data itself */
-	ret = copy_to_user(buffer + sizeof(avail), log_buffer, avail);
+	ret = !copy_to_iter_full(log_buffer, avail, to);
 	if (ret)
 		return -EFAULT;
 
@@ -264,7 +264,7 @@ static ssize_t sof_ipc4_mtrace_dfs_read(struct file *file, char __user *buffer,
 	 * Ask for a new buffer from user space for the next chunk, not
 	 * streaming due to the heading number of bytes value.
 	 */
-	*ppos += count;
+	iocb->ki_pos += count;
 
 	return count;
 }
@@ -285,17 +285,17 @@ static int sof_ipc4_mtrace_dfs_release(struct inode *inode, struct file *file)
 
 static const struct file_operations sof_dfs_mtrace_fops = {
 	.open = sof_ipc4_mtrace_dfs_open,
-	.read = sof_ipc4_mtrace_dfs_read,
+	.read_iter = sof_ipc4_mtrace_dfs_read,
 	.llseek = default_llseek,
 	.release = sof_ipc4_mtrace_dfs_release,
 
 	.owner = THIS_MODULE,
 };
 
-static ssize_t sof_ipc4_priority_mask_dfs_read(struct file *file, char __user *to,
-					       size_t count, loff_t *ppos)
+static ssize_t sof_ipc4_priority_mask_dfs_read(struct kiocb *iocb,
+					       struct iov_iter *to)
 {
-	struct sof_mtrace_priv *priv = file->private_data;
+	struct sof_mtrace_priv *priv = iocb->ki_filp->private_data;
 	int i, ret, offset, remaining;
 	char *buf;
 
@@ -316,17 +316,16 @@ static ssize_t sof_ipc4_priority_mask_dfs_read(struct file *file, char __user *t
 			 priv->state_info.logs_priorities_mask[i]);
 	}
 
-	ret = simple_read_from_buffer(to, count, ppos, buf, strlen(buf));
-
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 	kfree(buf);
 	return ret;
 }
 
-static ssize_t sof_ipc4_priority_mask_dfs_write(struct file *file,
-						const char __user *from,
-						size_t count, loff_t *ppos)
+static ssize_t sof_ipc4_priority_mask_dfs_write(struct kiocb *iocb,
+						struct iov_iter *from)
 {
-	struct sof_mtrace_priv *priv = file->private_data;
+	struct sof_mtrace_priv *priv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	unsigned int id;
 	char *buf;
 	u32 mask;
@@ -337,7 +336,7 @@ static ssize_t sof_ipc4_priority_mask_dfs_write(struct file *file,
 	 * "N,0x1234" or "N,1234" to the debugfs file
 	 * The mask will be interpreted as hexadecimal number
 	 */
-	buf = memdup_user_nul(from, count);
+	buf = iterdup_nul(from, count);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -362,11 +361,10 @@ out:
 	kfree(buf);
 	return ret;
 }
-
 static const struct file_operations sof_dfs_priority_mask_fops = {
 	.open = simple_open,
-	.read = sof_ipc4_priority_mask_dfs_read,
-	.write = sof_ipc4_priority_mask_dfs_write,
+	.read_iter = sof_ipc4_priority_mask_dfs_read,
+	.write_iter = sof_ipc4_priority_mask_dfs_write,
 	.llseek = default_llseek,
 
 	.owner = THIS_MODULE,

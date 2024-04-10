@@ -32,13 +32,13 @@ static void __iomem *sof_ipc4_query_exception_address(struct snd_sof_dev *sdev)
 	return sdev->bar[sdev->mailbox_bar] + offset;
 }
 
-static ssize_t sof_telemetry_entry_read(struct file *file, char __user *buffer,
-					size_t count, loff_t *ppos)
+static ssize_t sof_telemetry_entry_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snd_sof_dfsentry *dfse = file->private_data;
+	struct snd_sof_dfsentry *dfse = iocb->ki_filp->private_data;
 	struct snd_sof_dev *sdev = dfse->sdev;
+	size_t count = iov_iter_count(to);
 	void __iomem *io_addr;
-	loff_t pos = *ppos;
+	loff_t pos = iocb->ki_pos;
 	size_t size_ret;
 	u8 *buf;
 
@@ -59,13 +59,13 @@ static ssize_t sof_telemetry_entry_read(struct file *file, char __user *buffer,
 		return -ENOMEM;
 
 	memcpy_fromio(buf, io_addr, SOF_IPC4_DEBUG_SLOT_SIZE - 4);
-	size_ret = copy_to_user(buffer, buf + pos, count);
+	size_ret = !copy_to_iter_full(buf + pos, count, to);
 	if (size_ret) {
 		kfree(buf);
 		return -EFAULT;
 	}
 
-	*ppos = pos + count;
+	iocb->ki_pos = pos + count;
 	kfree(buf);
 
 	return count;
@@ -73,7 +73,7 @@ static ssize_t sof_telemetry_entry_read(struct file *file, char __user *buffer,
 
 static const struct file_operations sof_telemetry_fops = {
 	.open = simple_open,
-	.read = sof_telemetry_entry_read,
+	.read_iter = sof_telemetry_entry_read,
 };
 
 void sof_ipc4_create_exception_debugfs_node(struct snd_sof_dev *sdev)
