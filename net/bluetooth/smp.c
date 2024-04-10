@@ -3722,16 +3722,15 @@ static int __init test_h6(struct crypto_shash *tfm_cmac)
 
 static char test_smp_buffer[32];
 
-static ssize_t test_smp_read(struct file *file, char __user *user_buf,
-			     size_t count, loff_t *ppos)
+static ssize_t test_smp_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return simple_read_from_buffer(user_buf, count, ppos, test_smp_buffer,
-				       strlen(test_smp_buffer));
+	return simple_copy_to_iter(test_smp_buffer, &iocb->ki_pos,
+				   strlen(test_smp_buffer), to);
 }
 
 static const struct file_operations test_smp_fops = {
 	.open		= simple_open,
-	.read		= test_smp_read,
+	.read_iter	= test_smp_read,
 	.llseek		= default_llseek,
 };
 

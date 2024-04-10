@@ -183,16 +183,15 @@ out:
 
 static char test_ecdh_buffer[32];
 
-static ssize_t test_ecdh_read(struct file *file, char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t test_ecdh_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return simple_read_from_buffer(user_buf, count, ppos, test_ecdh_buffer,
-				       strlen(test_ecdh_buffer));
+	return simple_copy_to_iter(test_ecdh_buffer, &iocb->ki_pos,
+				   strlen(test_ecdh_buffer), to);
 }
 
 static const struct file_operations test_ecdh_fops = {
 	.open		= simple_open,
-	.read		= test_ecdh_read,
+	.read_iter	= test_ecdh_read,
 	.llseek		= default_llseek,
 };
 

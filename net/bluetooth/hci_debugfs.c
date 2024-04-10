@@ -31,31 +31,28 @@
 #include "hci_debugfs.h"
 
 #define DEFINE_QUIRK_ATTRIBUTE(__name, __quirk)				      \
-static ssize_t __name ## _read(struct file *file,			      \
-				char __user *user_buf,			      \
-				size_t count, loff_t *ppos)		      \
+static ssize_t __name ## _read(struct kiocb *iocb, struct iov_iter *to)	      \
 {									      \
-	struct hci_dev *hdev = file->private_data;			      \
+	struct hci_dev *hdev = iocb->ki_filp->private_data;		      \
 	char buf[3];							      \
 									      \
 	buf[0] = test_bit(__quirk, hdev->quirk_flags) ? 'Y' : 'N';	      \
 	buf[1] = '\n';							      \
 	buf[2] = '\0';							      \
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);	      \
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);	      \
 }									      \
 									      \
-static ssize_t __name ## _write(struct file *file,			      \
-				 const char __user *user_buf,		      \
-				 size_t count, loff_t *ppos)		      \
+static ssize_t __name ## _write(struct kiocb *iocb, struct iov_iter *from)    \
 {									      \
-	struct hci_dev *hdev = file->private_data;			      \
+	struct hci_dev *hdev = iocb->ki_filp->private_data;		      \
+	size_t count = iov_iter_count(from);				      \
 	bool enable;							      \
 	int err;							      \
 									      \
 	if (test_bit(HCI_UP, &hdev->flags))				      \
 		return -EBUSY;						      \
 									      \
-	err = kstrtobool_from_user(user_buf, count, &enable);		      \
+	err = kstrtobool_from_iter(from, count, &enable);		      \
 	if (err)							      \
 		return err;						      \
 									      \
@@ -69,8 +66,8 @@ static ssize_t __name ## _write(struct file *file,			      \
 									      \
 static const struct file_operations __name ## _fops = {			      \
 	.open		= simple_open,					      \
-	.read		= __name ## _read,				      \
-	.write		= __name ## _write,				      \
+	.read_iter	= __name ## _read,				      \
+	.write_iter	= __name ## _write,				      \
 	.llseek		= default_llseek,				      \
 }									      \
 
@@ -273,39 +270,37 @@ static int conn_info_max_age_get(void *data, u64 *val)
 DEFINE_DEBUGFS_ATTRIBUTE(conn_info_max_age_fops, conn_info_max_age_get,
 			  conn_info_max_age_set, "%llu\n");
 
-static ssize_t use_debug_keys_read(struct file *file, char __user *user_buf,
-				   size_t count, loff_t *ppos)
+static ssize_t use_debug_keys_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hci_dev *hdev = file->private_data;
+	struct hci_dev *hdev = iocb->ki_filp->private_data;
 	char buf[3];
 
 	buf[0] = hci_dev_test_flag(hdev, HCI_USE_DEBUG_KEYS) ? 'Y' : 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
 static const struct file_operations use_debug_keys_fops = {
 	.open		= simple_open,
-	.read		= use_debug_keys_read,
+	.read_iter	= use_debug_keys_read,
 	.llseek		= default_llseek,
 };
 
-static ssize_t sc_only_mode_read(struct file *file, char __user *user_buf,
-				 size_t count, loff_t *ppos)
+static ssize_t sc_only_mode_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hci_dev *hdev = file->private_data;
+	struct hci_dev *hdev = iocb->ki_filp->private_data;
 	char buf[3];
 
 	buf[0] = hci_dev_test_flag(hdev, HCI_SC_ONLY) ? 'Y' : 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
 static const struct file_operations sc_only_mode_fops = {
 	.open		= simple_open,
-	.read		= sc_only_mode_read,
+	.read_iter	= sc_only_mode_read,
 	.llseek		= default_llseek,
 };
 
@@ -427,21 +422,20 @@ static int voice_setting_get(void *data, u64 *val)
 DEFINE_DEBUGFS_ATTRIBUTE(voice_setting_fops, voice_setting_get,
 			  NULL, "0x%4.4llx\n");
 
-static ssize_t ssp_debug_mode_read(struct file *file, char __user *user_buf,
-				   size_t count, loff_t *ppos)
+static ssize_t ssp_debug_mode_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hci_dev *hdev = file->private_data;
+	struct hci_dev *hdev = iocb->ki_filp->private_data;
 	char buf[3];
 
 	buf[0] = hdev->ssp_debug_mode ? 'Y' : 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
 static const struct file_operations ssp_debug_mode_fops = {
 	.open		= simple_open,
-	.read		= ssp_debug_mode_read,
+	.read_iter	= ssp_debug_mode_read,
 	.llseek		= default_llseek,
 };
 
@@ -499,28 +493,25 @@ static int auto_accept_delay_get(void *data, u64 *val)
 DEFINE_DEBUGFS_ATTRIBUTE(auto_accept_delay_fops, auto_accept_delay_get,
 			  auto_accept_delay_set, "%llu\n");
 
-static ssize_t force_bredr_smp_read(struct file *file,
-				    char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t force_bredr_smp_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hci_dev *hdev = file->private_data;
+	struct hci_dev *hdev = iocb->ki_filp->private_data;
 	char buf[3];
 
 	buf[0] = hci_dev_test_flag(hdev, HCI_FORCE_BREDR_SMP) ? 'Y' : 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
-static ssize_t force_bredr_smp_write(struct file *file,
-				     const char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t force_bredr_smp_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hci_dev *hdev = file->private_data;
+	struct hci_dev *hdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	bool enable;
 	int err;
 
-	err = kstrtobool_from_user(user_buf, count, &enable);
+	err = kstrtobool_from_iter(from, count, &enable);
 	if (err)
 		return err;
 
@@ -533,8 +524,8 @@ static ssize_t force_bredr_smp_write(struct file *file,
 
 static const struct file_operations force_bredr_smp_fops = {
 	.open		= simple_open,
-	.read		= force_bredr_smp_read,
-	.write		= force_bredr_smp_write,
+	.read_iter	= force_bredr_smp_read,
+	.write_iter	= force_bredr_smp_write,
 	.llseek		= default_llseek,
 };
 
@@ -744,31 +735,29 @@ static int static_address_show(struct seq_file *f, void *p)
 
 DEFINE_SHOW_ATTRIBUTE(static_address);
 
-static ssize_t force_static_address_read(struct file *file,
-					 char __user *user_buf,
-					 size_t count, loff_t *ppos)
+static ssize_t force_static_address_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hci_dev *hdev = file->private_data;
+	struct hci_dev *hdev = iocb->ki_filp->private_data;
 	char buf[3];
 
 	buf[0] = hci_dev_test_flag(hdev, HCI_FORCE_STATIC_ADDR) ? 'Y' : 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
-static ssize_t force_static_address_write(struct file *file,
-					  const char __user *user_buf,
-					  size_t count, loff_t *ppos)
+static ssize_t force_static_address_write(struct kiocb *iocb,
+					  struct iov_iter *from)
 {
-	struct hci_dev *hdev = file->private_data;
+	struct hci_dev *hdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	bool enable;
 	int err;
 
 	if (hdev_is_powered(hdev))
 		return -EBUSY;
 
-	err = kstrtobool_from_user(user_buf, count, &enable);
+	err = kstrtobool_from_iter(from, count, &enable);
 	if (err)
 		return err;
 
@@ -782,8 +771,8 @@ static ssize_t force_static_address_write(struct file *file,
 
 static const struct file_operations force_static_address_fops = {
 	.open		= simple_open,
-	.read		= force_static_address_read,
-	.write		= force_static_address_write,
+	.read_iter	= force_static_address_read,
+	.write_iter	= force_static_address_write,
 	.llseek		= default_llseek,
 };
 
@@ -1146,29 +1135,26 @@ DEFINE_DEBUGFS_ATTRIBUTE(auth_payload_timeout_fops,
 			  auth_payload_timeout_get,
 			  auth_payload_timeout_set, "%llu\n");
 
-static ssize_t force_no_mitm_read(struct file *file,
-				  char __user *user_buf,
-				  size_t count, loff_t *ppos)
+static ssize_t force_no_mitm_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hci_dev *hdev = file->private_data;
+	struct hci_dev *hdev = iocb->ki_filp->private_data;
 	char buf[3];
 
 	buf[0] = hci_dev_test_flag(hdev, HCI_FORCE_NO_MITM) ? 'Y' : 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
-static ssize_t force_no_mitm_write(struct file *file,
-				   const char __user *user_buf,
-				   size_t count, loff_t *ppos)
+static ssize_t force_no_mitm_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hci_dev *hdev = file->private_data;
+	struct hci_dev *hdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char buf[32];
 	size_t buf_size = min(count, (sizeof(buf) - 1));
 	bool enable;
 
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 
 	buf[buf_size] = '\0';
@@ -1185,8 +1171,8 @@ static ssize_t force_no_mitm_write(struct file *file,
 
 static const struct file_operations force_no_mitm_fops = {
 	.open		= simple_open,
-	.read		= force_no_mitm_read,
-	.write		= force_no_mitm_write,
+	.read_iter	= force_no_mitm_read,
+	.write_iter	= force_no_mitm_write,
 	.llseek		= default_llseek,
 };
 
@@ -1272,22 +1258,21 @@ void hci_debugfs_create_conn(struct hci_conn *conn)
 	conn->debugfs = debugfs_create_dir(name, hdev->debugfs);
 }
 
-static ssize_t dut_mode_read(struct file *file, char __user *user_buf,
-			     size_t count, loff_t *ppos)
+static ssize_t dut_mode_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hci_dev *hdev = file->private_data;
+	struct hci_dev *hdev = iocb->ki_filp->private_data;
 	char buf[3];
 
 	buf[0] = hci_dev_test_flag(hdev, HCI_DUT_MODE) ? 'Y' : 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
-static ssize_t dut_mode_write(struct file *file, const char __user *user_buf,
-			      size_t count, loff_t *ppos)
+static ssize_t dut_mode_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hci_dev *hdev = file->private_data;
+	struct hci_dev *hdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct sk_buff *skb;
 	bool enable;
 	int err;
@@ -1295,7 +1280,7 @@ static ssize_t dut_mode_write(struct file *file, const char __user *user_buf,
 	if (!test_bit(HCI_UP, &hdev->flags))
 		return -ENETDOWN;
 
-	err = kstrtobool_from_user(user_buf, count, &enable);
+	err = kstrtobool_from_iter(from, count, &enable);
 	if (err)
 		return err;
 
@@ -1323,31 +1308,30 @@ static ssize_t dut_mode_write(struct file *file, const char __user *user_buf,
 
 static const struct file_operations dut_mode_fops = {
 	.open		= simple_open,
-	.read		= dut_mode_read,
-	.write		= dut_mode_write,
+	.read_iter	= dut_mode_read,
+	.write_iter	= dut_mode_write,
 	.llseek		= default_llseek,
 };
 
-static ssize_t vendor_diag_read(struct file *file, char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t vendor_diag_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hci_dev *hdev = file->private_data;
+	struct hci_dev *hdev = iocb->ki_filp->private_data;
 	char buf[3];
 
 	buf[0] = hci_dev_test_flag(hdev, HCI_VENDOR_DIAG) ? 'Y' : 'N';
 	buf[1] = '\n';
 	buf[2] = '\0';
-	return simple_read_from_buffer(user_buf, count, ppos, buf, 2);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, 2, to);
 }
 
-static ssize_t vendor_diag_write(struct file *file, const char __user *user_buf,
-				 size_t count, loff_t *ppos)
+static ssize_t vendor_diag_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hci_dev *hdev = file->private_data;
+	struct hci_dev *hdev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	bool enable;
 	int err;
 
-	err = kstrtobool_from_user(user_buf, count, &enable);
+	err = kstrtobool_from_iter(from, count, &enable);
 	if (err)
 		return err;
 
@@ -1379,8 +1363,8 @@ done:
 
 static const struct file_operations vendor_diag_fops = {
 	.open		= simple_open,
-	.read		= vendor_diag_read,
-	.write		= vendor_diag_write,
+	.read_iter	= vendor_diag_read,
+	.write_iter	= vendor_diag_write,
 	.llseek		= default_llseek,
 };
 

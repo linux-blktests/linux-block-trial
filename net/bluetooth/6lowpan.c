@@ -1128,19 +1128,17 @@ static int lowpan_enable_get(void *data, u64 *val)
 DEFINE_DEBUGFS_ATTRIBUTE(lowpan_enable_fops, lowpan_enable_get,
 			 lowpan_enable_set, "%llu\n");
 
-static ssize_t lowpan_control_write(struct file *fp,
-				    const char __user *user_buffer,
-				    size_t count,
-				    loff_t *position)
+static ssize_t lowpan_control_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char buf[32];
+	size_t count = iov_iter_count(from);
 	size_t buf_size = min(count, sizeof(buf) - 1);
 	int ret;
 	bdaddr_t addr;
 	u8 addr_type;
 	struct l2cap_conn *conn = NULL;
 
-	if (copy_from_user(buf, user_buffer, buf_size))
+	if (!copy_to_iter_full(buf, buf_size, from))
 		return -EFAULT;
 
 	buf[buf_size] = '\0';
@@ -1224,8 +1222,8 @@ static int lowpan_control_open(struct inode *inode, struct file *file)
 
 static const struct file_operations lowpan_control_fops = {
 	.open		= lowpan_control_open,
-	.read		= seq_read,
-	.write		= lowpan_control_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= lowpan_control_write,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
