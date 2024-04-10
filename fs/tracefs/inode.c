@@ -70,21 +70,19 @@ static void tracefs_destroy_inode(struct inode *inode)
 	spin_unlock_irqrestore(&tracefs_inode_lock, flags);
 }
 
-static ssize_t default_read_file(struct file *file, char __user *buf,
-				 size_t count, loff_t *ppos)
+static ssize_t default_read_file_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	return 0;
 }
 
-static ssize_t default_write_file(struct file *file, const char __user *buf,
-				   size_t count, loff_t *ppos)
+static ssize_t default_write_file_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations tracefs_file_operations = {
-	.read =		default_read_file,
-	.write =	default_write_file,
+	.read_iter =	default_read_file_iter,
+	.write_iter =	default_write_file_iter,
 	.open =		simple_open,
 	.llseek =	noop_llseek,
 };
