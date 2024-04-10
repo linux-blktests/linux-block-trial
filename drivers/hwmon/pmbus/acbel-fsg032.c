@@ -15,10 +15,9 @@
 
 #define ACBEL_MFR_FW_REVISION	0xd9
 
-static ssize_t acbel_fsg032_debugfs_read(struct file *file, char __user *buf, size_t count,
-					 loff_t *ppos)
+static ssize_t acbel_fsg032_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct i2c_client *client = file->private_data;
+	struct i2c_client *client = iocb->ki_filp->private_data;
 	u8 data[I2C_SMBUS_BLOCK_MAX + 2] = { 0 };
 	char out[8];
 	int rc;
@@ -28,13 +27,12 @@ static ssize_t acbel_fsg032_debugfs_read(struct file *file, char __user *buf, si
 		return rc;
 
 	rc = snprintf(out, sizeof(out), "%*phN\n", min(rc, 3), data);
-	return simple_read_from_buffer(buf, count, ppos, out, rc);
+	return simple_copy_to_iter(out, &iocb->ki_pos, rc, to);
 }
 
 static const struct file_operations acbel_debugfs_ops = {
 	.llseek = noop_llseek,
-	.read = acbel_fsg032_debugfs_read,
-	.write = NULL,
+	.read_iter = acbel_fsg032_debugfs_read,
 	.open = simple_open,
 };
 
