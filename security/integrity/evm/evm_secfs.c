@@ -28,50 +28,45 @@ static int evm_xattrs_locked;
 /**
  * evm_read_key - read() for <securityfs>/evm
  *
- * @filp: file pointer, not actually used
- * @buf: where to put the result
- * @count: maximum to send along
- * @ppos: where to start
+ * @iocb: metadata for IO
+ * @to: where to put the result
  *
  * Returns number of bytes read or error code, as appropriate
  */
-static ssize_t evm_read_key(struct file *filp, char __user *buf,
-			    size_t count, loff_t *ppos)
+static ssize_t evm_read_key(struct kiocb *iocb, struct iov_iter *to)
 {
 	char temp[80];
 	ssize_t rc;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	sprintf(temp, "%d", (evm_initialized & ~EVM_SETUP_COMPLETE));
-	rc = simple_read_from_buffer(buf, count, ppos, temp, strlen(temp));
+	rc = simple_copy_to_iter(temp, &iocb->ki_pos, strlen(temp), to);
 
 	return rc;
 }
 
 /**
  * evm_write_key - write() for <securityfs>/evm
- * @file: file pointer, not actually used
- * @buf: where to get the data from
- * @count: bytes sent
- * @ppos: where to start
+ * @iocb: metadata for IO
+ * @from: where to get the data from
  *
  * Used to signal that key is on the kernel key ring.
  * - get the integrity hmac key from the kernel key ring
  * - create list of hmac protected extended attributes
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t evm_write_key(struct file *file, const char __user *buf,
-			     size_t count, loff_t *ppos)
+static ssize_t evm_write_key(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	unsigned int i;
 	int ret;
 
 	if (!capable(CAP_SYS_ADMIN) || (evm_initialized & EVM_SETUP_COMPLETE))
 		return -EPERM;
 
-	ret = kstrtouint_from_user(buf, count, 0, &i);
+	ret = kstrtouint_from_iter(from, count, 0, &i);
 
 	if (ret)
 		return ret;
@@ -108,30 +103,27 @@ static ssize_t evm_write_key(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations evm_key_ops = {
-	.read		= evm_read_key,
-	.write		= evm_write_key,
+	.read_iter	= evm_read_key,
+	.write_iter	= evm_write_key,
 };
 
 #ifdef CONFIG_EVM_ADD_XATTRS
 /**
  * evm_read_xattrs - read() for <securityfs>/evm_xattrs
  *
- * @filp: file pointer, not actually used
- * @buf: where to put the result
- * @count: maximum to send along
- * @ppos: where to start
+ * @iocb: metadata for IO
+ * @to: where to put the result
  *
  * Returns number of bytes read or error code, as appropriate
  */
-static ssize_t evm_read_xattrs(struct file *filp, char __user *buf,
-			       size_t count, loff_t *ppos)
+static ssize_t evm_read_xattrs(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *temp;
 	int offset = 0;
 	ssize_t rc, size = 0;
 	struct xattr_list *xattr;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	rc = mutex_lock_interruptible(&xattr_list_mutex);
@@ -160,7 +152,7 @@ static ssize_t evm_read_xattrs(struct file *filp, char __user *buf,
 	}
 
 	mutex_unlock(&xattr_list_mutex);
-	rc = simple_read_from_buffer(buf, count, ppos, temp, strlen(temp));
+	rc = simple_copy_to_iter(temp, &iocb->ki_pos, strlen(temp), to);
 
 	kfree(temp);
 
@@ -169,26 +161,24 @@ static ssize_t evm_read_xattrs(struct file *filp, char __user *buf,
 
 /**
  * evm_write_xattrs - write() for <securityfs>/evm_xattrs
- * @file: file pointer, not actually used
- * @buf: where to get the data from
- * @count: bytes sent
- * @ppos: where to start
+ * @iocb: metadata for IO
+ * @from: where to get the data from
  *
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t evm_write_xattrs(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t evm_write_xattrs(struct kiocb *iocb, struct iov_iter *from)
 {
 	int len, err;
 	struct xattr_list *xattr, *tmp;
 	struct audit_buffer *ab;
 	struct iattr newattrs;
 	struct inode *inode;
+	size_t count = iov_iter_count(from);
 
 	if (!capable(CAP_SYS_ADMIN) || evm_xattrs_locked)
 		return -EPERM;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return -EINVAL;
 
 	if (count > XATTR_NAME_MAX)
@@ -206,7 +196,7 @@ static ssize_t evm_write_xattrs(struct file *file, const char __user *buf,
 	}
 
 	xattr->enabled = true;
-	xattr->name = memdup_user_nul(buf, count);
+	xattr->name = iterdup_nul(from, count);
 	if (IS_ERR(xattr->name)) {
 		err = PTR_ERR(xattr->name);
 		xattr->name = NULL;
@@ -277,8 +267,8 @@ out:
 }
 
 static const struct file_operations evm_xattr_ops = {
-	.read		= evm_read_xattrs,
-	.write		= evm_write_xattrs,
+	.read_iter	= evm_read_xattrs,
+	.write_iter	= evm_write_xattrs,
 };
 
 static int evm_init_xattrs(void)

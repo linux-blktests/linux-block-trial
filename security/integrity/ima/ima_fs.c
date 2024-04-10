@@ -38,38 +38,35 @@ __setup("ima_canonical_fmt", default_canonical_fmt_setup);
 
 static int valid_policy = 1;
 
-static ssize_t ima_show_htable_value(char __user *buf, size_t count,
-				     loff_t *ppos, atomic_long_t *val)
+static ssize_t ima_show_htable_value(struct kiocb *iocb, struct iov_iter *to,
+				     atomic_long_t *val)
 {
 	char tmpbuf[32];	/* greater than largest 'long' string value */
 	ssize_t len;
 
 	len = scnprintf(tmpbuf, sizeof(tmpbuf), "%li\n", atomic_long_read(val));
-	return simple_read_from_buffer(buf, count, ppos, tmpbuf, len);
+	return simple_copy_to_iter(tmpbuf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t ima_show_htable_violations(struct file *filp,
-					  char __user *buf,
-					  size_t count, loff_t *ppos)
+static ssize_t ima_show_htable_violations(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
-	return ima_show_htable_value(buf, count, ppos, &ima_htable.violations);
+	return ima_show_htable_value(iocb, to, &ima_htable.violations);
 }
 
 static const struct file_operations ima_htable_violations_ops = {
-	.read = ima_show_htable_violations,
+	.read_iter = ima_show_htable_violations,
 	.llseek = generic_file_llseek,
 };
 
-static ssize_t ima_show_measurements_count(struct file *filp,
-					   char __user *buf,
-					   size_t count, loff_t *ppos)
+static ssize_t ima_show_measurements_count(struct kiocb *iocb,
+					   struct iov_iter *to)
 {
-	return ima_show_htable_value(buf, count, ppos, &ima_htable.len);
-
+	return ima_show_htable_value(iocb, to, &ima_htable.len);
 }
 
 static const struct file_operations ima_measurements_count_ops = {
-	.read = ima_show_measurements_count,
+	.read_iter = ima_show_measurements_count,
 	.llseek = generic_file_llseek,
 };
 
@@ -209,7 +206,7 @@ static int ima_measurements_open(struct inode *inode, struct file *file)
 
 static const struct file_operations ima_measurements_ops = {
 	.open = ima_measurements_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = seq_release,
 };
@@ -284,7 +281,7 @@ static int ima_ascii_measurements_open(struct inode *inode, struct file *file)
 
 static const struct file_operations ima_ascii_measurements_ops = {
 	.open = ima_ascii_measurements_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = seq_release,
 };
@@ -329,9 +326,9 @@ static ssize_t ima_read_policy(char *path)
 		return pathlen;
 }
 
-static ssize_t ima_write_policy(struct file *file, const char __user *buf,
-				size_t datalen, loff_t *ppos)
+static ssize_t ima_write_policy(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t datalen = iov_iter_count(from);
 	char *data;
 	ssize_t result;
 
@@ -340,10 +337,10 @@ static ssize_t ima_write_policy(struct file *file, const char __user *buf,
 
 	/* No partial writes. */
 	result = -EINVAL;
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		goto out;
 
-	data = memdup_user_nul(buf, datalen);
+	data = iterdup_nul(from, datalen);
 	if (IS_ERR(data)) {
 		result = PTR_ERR(data);
 		goto out;
@@ -488,8 +485,8 @@ static int ima_release_policy(struct inode *inode, struct file *file)
 
 static const struct file_operations ima_measure_policy_ops = {
 	.open = ima_open_policy,
-	.write = ima_write_policy,
-	.read = seq_read,
+	.write_iter = ima_write_policy,
+	.read_iter = seq_read_iter,
 	.release = ima_release_policy,
 	.llseek = generic_file_llseek,
 };
