@@ -150,7 +150,7 @@ static DEFINE_SPINLOCK(svs_lock);
 	static const struct file_operations svs_##name##_debug_fops = {	\
 		.owner = THIS_MODULE,					\
 		.open = svs_##name##_debug_open,			\
-		.read = seq_read,					\
+		.read_iter = seq_read_iter,				\
 		.llseek = seq_lseek,					\
 		.release = single_release,				\
 	}
@@ -165,8 +165,8 @@ static DEFINE_SPINLOCK(svs_lock);
 	static const struct file_operations svs_##name##_debug_fops = {	\
 		.owner = THIS_MODULE,					\
 		.open = svs_##name##_debug_open,			\
-		.read = seq_read,					\
-		.write = svs_##name##_debug_write,			\
+		.read_iter = seq_read_iter,				\
+		.write_iter = svs_##name##_debug_write,			\
 		.llseek = seq_lseek,					\
 		.release = single_release,				\
 	}
@@ -783,19 +783,18 @@ static int svs_enable_debug_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t svs_enable_debug_write(struct file *filp,
-				      const char __user *buffer,
-				      size_t count, loff_t *pos)
+static ssize_t svs_enable_debug_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct svs_bank *svsb = file_inode(filp)->i_private;
+	struct svs_bank *svsb = file_inode(iocb->ki_filp)->i_private;
 	struct svs_platform *svsp = dev_get_drvdata(svsb->dev);
+	size_t count = iov_iter_count(from);
 	int enabled, ret;
 	char *buf __free(kfree) = NULL;
 
 	if (count >= PAGE_SIZE)
 		return -EINVAL;
 
-	buf = (char *)memdup_user_nul(buffer, count);
+	buf = iterdup_nul(from, count);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
