@@ -71,11 +71,10 @@ static struct pmbus_driver_info q54sj108a2_info[] = {
 	},
 };
 
-static ssize_t q54sj108a2_debugfs_read(struct file *file, char __user *buf,
-				       size_t count, loff_t *ppos)
+static ssize_t q54sj108a2_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int rc;
-	int *idxp = file->private_data;
+	int *idxp = iocb->ki_filp->private_data;
 	int idx = *idxp;
 	struct q54sj108a2_data *psu = to_psu(idxp, idx);
 	char data[I2C_SMBUS_BLOCK_MAX + 2] = { 0 };
@@ -171,18 +170,18 @@ static ssize_t q54sj108a2_debugfs_read(struct file *file, char __user *buf,
 	out[rc] = '\n';
 	rc += 2;
 
-	return simple_read_from_buffer(buf, count, ppos, out, rc);
+	return simple_copy_to_iter(out, &iocb->ki_pos, rc, to);
 }
 
-static ssize_t q54sj108a2_debugfs_write(struct file *file, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t q54sj108a2_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	u8 flash_key[4];
 	u8 dst_data;
 	ssize_t rc;
-	int *idxp = file->private_data;
+	int *idxp = iocb->ki_filp->private_data;
 	int idx = *idxp;
 	struct q54sj108a2_data *psu = to_psu(idxp, idx);
+	size_t count = iov_iter_count(from);
 
 	rc = i2c_smbus_write_byte_data(psu->client, PMBUS_WRITE_PROTECT, 0);
 	if (rc)
@@ -190,7 +189,7 @@ static ssize_t q54sj108a2_debugfs_write(struct file *file, const char __user *bu
 
 	switch (idx) {
 	case Q54SJ108A2_DEBUGFS_OPERATION:
-		rc = kstrtou8_from_user(buf, count, 0, &dst_data);
+		rc = kstrtou8_from_iter(from, count, 0, &dst_data);
 		if (rc < 0)
 			return rc;
 
@@ -220,7 +219,7 @@ static ssize_t q54sj108a2_debugfs_write(struct file *file, const char __user *bu
 
 		break;
 	case Q54SJ108A2_DEBUGFS_VOOV_RESPONSE:
-		rc = kstrtou8_from_user(buf, count, 0, &dst_data);
+		rc = kstrtou8_from_iter(from, count, 0, &dst_data);
 		if (rc < 0)
 			return rc;
 
@@ -230,7 +229,7 @@ static ssize_t q54sj108a2_debugfs_write(struct file *file, const char __user *bu
 
 		break;
 	case Q54SJ108A2_DEBUGFS_IOOC_RESPONSE:
-		rc = kstrtou8_from_user(buf, count, 0, &dst_data);
+		rc = kstrtou8_from_iter(from, count, 0, &dst_data);
 		if (rc < 0)
 			return rc;
 
@@ -246,7 +245,7 @@ static ssize_t q54sj108a2_debugfs_write(struct file *file, const char __user *bu
 
 		break;
 	case Q54SJ108A2_DEBUGFS_BLACKBOX_SET_OFFSET:
-		rc = kstrtou8_from_user(buf, count, 0, &dst_data);
+		rc = kstrtou8_from_iter(from, count, 0, &dst_data);
 		if (rc < 0)
 			return rc;
 
@@ -264,8 +263,8 @@ static ssize_t q54sj108a2_debugfs_write(struct file *file, const char __user *bu
 
 static const struct file_operations q54sj108a2_fops = {
 	.llseek = noop_llseek,
-	.read = q54sj108a2_debugfs_read,
-	.write = q54sj108a2_debugfs_write,
+	.read_iter = q54sj108a2_debugfs_read,
+	.write_iter = q54sj108a2_debugfs_write,
 	.open = simple_open,
 };
 
