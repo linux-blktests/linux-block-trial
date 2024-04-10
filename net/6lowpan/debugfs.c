@@ -120,20 +120,18 @@ static int lowpan_ctx_pfx_open(struct inode *inode, struct file *file)
 	return single_open(file, lowpan_ctx_pfx_show, inode->i_private);
 }
 
-static ssize_t lowpan_ctx_pfx_write(struct file *fp,
-				    const char __user *user_buf, size_t count,
-				    loff_t *ppos)
+static ssize_t lowpan_ctx_pfx_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char buf[128] = {};
-	struct seq_file *file = fp->private_data;
+	struct seq_file *file = iocb->ki_filp->private_data;
 	struct lowpan_iphc_ctx *ctx = file->private;
 	struct lowpan_iphc_ctx_table *t =
 		container_of(ctx, struct lowpan_iphc_ctx_table, table[ctx->id]);
+	size_t count = iov_iter_count(from);
 	int status = count, n, i;
 	unsigned int addr[8];
 
-	if (copy_from_user(&buf, user_buf, min_t(size_t, sizeof(buf) - 1,
-						 count))) {
+	if (!copy_from_iter_full(&buf, count, from)) {
 		status = -EFAULT;
 		goto out;
 	}
@@ -157,8 +155,8 @@ out:
 
 static const struct file_operations lowpan_ctx_pfx_fops = {
 	.open		= lowpan_ctx_pfx_open,
-	.read		= seq_read,
-	.write		= lowpan_ctx_pfx_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= lowpan_ctx_pfx_write,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
