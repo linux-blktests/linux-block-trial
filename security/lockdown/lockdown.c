@@ -93,8 +93,7 @@ static int __init lockdown_lsm_init(void)
 	return 0;
 }
 
-static ssize_t lockdown_read(struct file *filp, char __user *buf, size_t count,
-			     loff_t *ppos)
+static ssize_t lockdown_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char temp[80] = "";
 	int i, offset = 0;
@@ -116,7 +115,7 @@ static ssize_t lockdown_read(struct file *filp, char __user *buf, size_t count,
 	if (offset > 0)
 		temp[offset-1] = '\n';
 
-	return simple_read_from_buffer(buf, count, ppos, temp, strlen(temp));
+	return simple_copy_to_iter(temp, &iocb->ki_pos, strlen(temp), to);
 }
 
 static ssize_t lockdown_write(struct file *file, const char __user *buf,
@@ -146,10 +145,11 @@ static ssize_t lockdown_write(struct file *file, const char __user *buf,
 	kfree(state);
 	return err ? err : n;
 }
+FOPS_WRITE_ITER_HELPER(lockdown_write);
 
 static const struct file_operations lockdown_ops = {
-	.read  = lockdown_read,
-	.write = lockdown_write,
+	.read_iter  = lockdown_read,
+	.write_iter = lockdown_write_iter,
 };
 
 static int __init lockdown_secfs_init(void)
