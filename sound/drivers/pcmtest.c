@@ -647,48 +647,48 @@ static struct platform_driver pcmtst_pdrv = {
 	},
 };
 
-static ssize_t pattern_write(struct file *file, const char __user *u_buff, size_t len, loff_t *off)
+static ssize_t pattern_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct pattern_buf *patt_buf = file->f_inode->i_private;
-	ssize_t to_write = len;
+	struct pattern_buf *patt_buf = iocb->ki_filp->f_inode->i_private;
+	ssize_t to_write = iov_iter_count(from);
 
-	if (*off + to_write > MAX_PATTERN_LEN)
-		to_write = MAX_PATTERN_LEN - *off;
+	if (iocb->ki_pos + to_write > MAX_PATTERN_LEN)
+		to_write = MAX_PATTERN_LEN - iocb->ki_pos;
 
 	// Crop silently everything over the buffer
 	if (to_write <= 0)
-		return len;
+		return iov_iter_count(from);
 
-	if (copy_from_user(patt_buf->buf + *off, u_buff, to_write))
+	if (!copy_from_iter_full(patt_buf->buf + iocb->ki_pos, to_write, from))
 		return -EFAULT;
 
-	patt_buf->len = *off + to_write;
-	*off += to_write;
+	patt_buf->len = iocb->ki_pos + to_write;
+	iocb->ki_pos += to_write;
 
 	return to_write;
 }
 
-static ssize_t pattern_read(struct file *file, char __user *u_buff, size_t len, loff_t *off)
+static ssize_t pattern_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct pattern_buf *patt_buf = file->f_inode->i_private;
-	ssize_t to_read = len;
+	struct pattern_buf *patt_buf = iocb->ki_filp->f_inode->i_private;
+	ssize_t to_read = iov_iter_count(to);
 
-	if (*off + to_read >= MAX_PATTERN_LEN)
-		to_read = MAX_PATTERN_LEN - *off;
+	if (iocb->ki_pos + to_read >= MAX_PATTERN_LEN)
+		to_read = MAX_PATTERN_LEN - iocb->ki_pos;
 	if (to_read <= 0)
 		return 0;
 
-	if (copy_to_user(u_buff, patt_buf->buf + *off, to_read))
+	if (!copy_to_iter_full(patt_buf->buf + iocb->ki_pos, to_read, to))
 		to_read = 0;
 	else
-		*off += to_read;
+		iocb->ki_pos += to_read;
 
 	return to_read;
 }
 
 static const struct file_operations fill_pattern_fops = {
-	.read = pattern_read,
-	.write = pattern_write,
+	.read_iter = pattern_read,
+	.write_iter = pattern_write,
 };
 
 static int setup_patt_bufs(void)
