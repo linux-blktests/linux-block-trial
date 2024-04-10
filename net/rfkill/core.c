@@ -1222,10 +1222,10 @@ static __poll_t rfkill_fop_poll(struct file *file, poll_table *wait)
 	return res;
 }
 
-static ssize_t rfkill_fop_read(struct file *file, char __user *buf,
-			       size_t count, loff_t *pos)
+static ssize_t rfkill_fop_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct rfkill_data *data = file->private_data;
+	struct rfkill_data *data = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	struct rfkill_int_event *ev;
 	unsigned long sz;
 	int ret;
@@ -1233,7 +1233,7 @@ static ssize_t rfkill_fop_read(struct file *file, char __user *buf,
 	mutex_lock(&data->mtx);
 
 	while (list_empty(&data->events)) {
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			ret = -EAGAIN;
 			goto out;
 		}
@@ -1255,7 +1255,7 @@ static ssize_t rfkill_fop_read(struct file *file, char __user *buf,
 	sz = min_t(unsigned long, sizeof(ev->ev), count);
 	sz = min_t(unsigned long, sz, data->max_size);
 	ret = sz;
-	if (copy_to_user(buf, &ev->ev, sz))
+	if (!copy_to_iter_full(&ev->ev, sz, to))
 		ret = -EFAULT;
 
 	list_del(&ev->list);
@@ -1265,10 +1265,10 @@ static ssize_t rfkill_fop_read(struct file *file, char __user *buf,
 	return ret;
 }
 
-static ssize_t rfkill_fop_write(struct file *file, const char __user *buf,
-				size_t count, loff_t *pos)
+static ssize_t rfkill_fop_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct rfkill_data *data = file->private_data;
+	struct rfkill_data *data = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct rfkill *rfkill;
 	struct rfkill_event_ext ev;
 	int ret;
@@ -1284,7 +1284,7 @@ static ssize_t rfkill_fop_write(struct file *file, const char __user *buf,
 	 */
 	count = min(count, sizeof(ev));
 	count = min_t(size_t, count, data->max_size);
-	if (copy_from_user(&ev, buf, count))
+	if (!copy_from_iter_full(&ev, count, from))
 		return -EFAULT;
 
 	if (ev.type >= NUM_RFKILL_TYPES)
@@ -1388,8 +1388,8 @@ static long rfkill_fop_ioctl(struct file *file, unsigned int cmd,
 static const struct file_operations rfkill_fops = {
 	.owner		= THIS_MODULE,
 	.open		= rfkill_fop_open,
-	.read		= rfkill_fop_read,
-	.write		= rfkill_fop_write,
+	.read_iter	= rfkill_fop_read,
+	.write_iter	= rfkill_fop_write,
 	.poll		= rfkill_fop_poll,
 	.release	= rfkill_fop_release,
 	.unlocked_ioctl	= rfkill_fop_ioctl,
