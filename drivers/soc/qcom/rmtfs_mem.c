@@ -15,6 +15,7 @@
 #include <linux/uaccess.h>
 #include <linux/io.h>
 #include <linux/firmware/qcom/qcom_scm.h>
+#include <linux/uio.h>
 
 #define QCOM_RMTFS_MEM_DEV_MAX	(MINORMASK + 1)
 #define NUM_MAX_VMIDS		2
@@ -79,40 +80,39 @@ static int qcom_rmtfs_mem_open(struct inode *inode, struct file *filp)
 
 	return 0;
 }
-static ssize_t qcom_rmtfs_mem_read(struct file *filp,
-			      char __user *buf, size_t count, loff_t *f_pos)
+static ssize_t qcom_rmtfs_mem_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct qcom_rmtfs_mem *rmtfs_mem = filp->private_data;
+	struct qcom_rmtfs_mem *rmtfs_mem = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 
-	if (*f_pos >= rmtfs_mem->size)
+	if (iocb->ki_pos >= rmtfs_mem->size)
 		return 0;
 
-	if (*f_pos + count >= rmtfs_mem->size)
-		count = rmtfs_mem->size - *f_pos;
+	if (iocb->ki_pos + count >= rmtfs_mem->size)
+		count = rmtfs_mem->size - iocb->ki_pos;
 
-	if (copy_to_user(buf, rmtfs_mem->base + *f_pos, count))
+	if (!copy_to_iter_full(rmtfs_mem->base + iocb->ki_pos, count, to))
 		return -EFAULT;
 
-	*f_pos += count;
+	iocb->ki_pos += count;
 	return count;
 }
 
-static ssize_t qcom_rmtfs_mem_write(struct file *filp,
-			       const char __user *buf, size_t count,
-			       loff_t *f_pos)
+static ssize_t qcom_rmtfs_mem_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct qcom_rmtfs_mem *rmtfs_mem = filp->private_data;
+	struct qcom_rmtfs_mem *rmtfs_mem = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 
-	if (*f_pos >= rmtfs_mem->size)
+	if (iocb->ki_pos >= rmtfs_mem->size)
 		return 0;
 
-	if (*f_pos + count >= rmtfs_mem->size)
-		count = rmtfs_mem->size - *f_pos;
+	if (iocb->ki_pos + count >= rmtfs_mem->size)
+		count = rmtfs_mem->size - iocb->ki_pos;
 
-	if (copy_from_user(rmtfs_mem->base + *f_pos, buf, count))
+	if (!copy_from_iter_full(rmtfs_mem->base + iocb->ki_pos, count, from))
 		return -EFAULT;
 
-	*f_pos += count;
+	iocb->ki_pos += count;
 	return count;
 }
 
@@ -152,8 +152,8 @@ static int qcom_rmtfs_mem_mmap(struct file *filep, struct vm_area_struct *vma)
 static const struct file_operations qcom_rmtfs_mem_fops = {
 	.owner = THIS_MODULE,
 	.open = qcom_rmtfs_mem_open,
-	.read = qcom_rmtfs_mem_read,
-	.write = qcom_rmtfs_mem_write,
+	.read_iter = qcom_rmtfs_mem_read,
+	.write_iter = qcom_rmtfs_mem_write,
 	.release = qcom_rmtfs_mem_release,
 	.llseek = default_llseek,
 	.mmap = qcom_rmtfs_mem_mmap,

@@ -503,11 +503,11 @@ static const struct qmp_debugfs_entry qmp_debugfs_entries[QMP_DEBUGFS_FILES] = {
 	{ "prevent_ddr_collapse", "{class: ddr_mol, res: ddr, val: %s}", true, "mol", "off" },
 };
 
-static ssize_t qmp_debugfs_write(struct file *file, const char __user *user_buf,
-				 size_t count, loff_t *pos)
+static ssize_t qmp_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	const struct qmp_debugfs_entry *entry = NULL;
-	struct qmp *qmp = file->private_data;
+	struct qmp *qmp = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char buf[QMP_MSG_LEN];
 	unsigned int uint_val;
 	const char *str_val;
@@ -516,7 +516,7 @@ static ssize_t qmp_debugfs_write(struct file *file, const char __user *user_buf,
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(qmp->debugfs_files); i++) {
-		if (qmp->debugfs_files[i] == file->f_path.dentry) {
+		if (qmp->debugfs_files[i] == iocb->ki_filp->f_path.dentry) {
 			entry = &qmp_debugfs_entries[i];
 			break;
 		}
@@ -525,7 +525,7 @@ static ssize_t qmp_debugfs_write(struct file *file, const char __user *user_buf,
 		return -EFAULT;
 
 	if (entry->is_bool) {
-		ret = kstrtobool_from_user(user_buf, count, &bool_val);
+		ret = kstrtobool_from_iter(from, count, &bool_val);
 		if (ret)
 			return ret;
 
@@ -535,7 +535,7 @@ static ssize_t qmp_debugfs_write(struct file *file, const char __user *user_buf,
 		if (ret >= sizeof(buf))
 			return -EINVAL;
 	} else {
-		ret = kstrtou32_from_user(user_buf, count, 0, &uint_val);
+		ret = kstrtou32_from_iter(from, count, 0, &uint_val);
 		if (ret)
 			return ret;
 
@@ -553,7 +553,7 @@ static ssize_t qmp_debugfs_write(struct file *file, const char __user *user_buf,
 
 static const struct file_operations qmp_debugfs_fops = {
 	.open = simple_open,
-	.write = qmp_debugfs_write,
+	.write_iter = qmp_debugfs_write,
 };
 
 static void qmp_debugfs_create(struct qmp *qmp)
