@@ -19,12 +19,12 @@
 #include "sof-priv.h"
 #include "ops.h"
 
-static ssize_t sof_dfsentry_read(struct file *file, char __user *buffer,
-				 size_t count, loff_t *ppos)
+static ssize_t sof_dfsentry_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snd_sof_dfsentry *dfse = file->private_data;
+	struct snd_sof_dfsentry *dfse = iocb->ki_filp->private_data;
 	struct snd_sof_dev *sdev = dfse->sdev;
-	loff_t pos = *ppos;
+	size_t count = iov_iter_count(to);
+	loff_t pos = iocb->ki_pos;
 	size_t size_ret;
 	int skip = 0;
 	int size;
@@ -48,8 +48,8 @@ static ssize_t sof_dfsentry_read(struct file *file, char __user *buffer,
 	size = ALIGN(count, 4);
 
 	/* if start position is unaligned, read extra u32 */
-	if (unlikely(pos != *ppos)) {
-		skip = *ppos - pos;
+	if (unlikely(pos != iocb->ki_pos)) {
+		skip = iocb->ki_pos - pos;
 		if (pos + size + 4 < dfse->size)
 			size += 4;
 	}
@@ -91,7 +91,7 @@ static ssize_t sof_dfsentry_read(struct file *file, char __user *buffer,
 	}
 
 	/* copy to userspace */
-	size_ret = copy_to_user(buffer, buf + skip, count);
+	size_ret = !copy_to_iter_full(buf + skip, count, to);
 
 	kfree(buf);
 
@@ -99,14 +99,13 @@ static ssize_t sof_dfsentry_read(struct file *file, char __user *buffer,
 	if (size_ret)
 		return -EFAULT;
 
-	*ppos = pos + count;
-
+	iocb->ki_pos = pos + count;
 	return count;
 }
 
 static const struct file_operations sof_dfs_fops = {
 	.open = simple_open,
-	.read = sof_dfsentry_read,
+	.read_iter = sof_dfsentry_read,
 	.llseek = default_llseek,
 };
 
@@ -269,6 +268,11 @@ static ssize_t memory_info_read(struct file *file, char __user *to, size_t count
 	return simple_read_from_buffer(to, count, ppos, dfse->buf, dfse->buf_data_size);
 }
 
+static ssize_t memory_info_read_iter(struct kiocb *iocb, struct iov_iter *to)
+{
+	return vfs_read_iter(iocb, to, memory_info_read);
+}
+
 static int memory_info_open(struct inode *inode, struct file *file)
 {
 	struct snd_sof_dfsentry *dfse = inode->i_private;
@@ -289,7 +293,7 @@ static int memory_info_open(struct inode *inode, struct file *file)
 
 static const struct file_operations memory_info_fops = {
 	.open = memory_info_open,
-	.read = memory_info_read,
+	.read_iter = memory_info_read_iter,
 	.llseek = default_llseek,
 };
 

@@ -282,15 +282,17 @@ static ssize_t sof_probes_dfs_available_points_read(struct file *file,
 	return sof_probes_dfs_points_read(file, to, count, ppos,
 					  PROBES_INFO_AVAILABE_PROBES);
 }
+FOPS_READ_ITER_HELPER(sof_probes_dfs_active_points_read);
+FOPS_READ_ITER_HELPER(sof_probes_dfs_available_points_read);
 
 static ssize_t
-sof_probes_dfs_points_write(struct file *file, const char __user *from,
-			    size_t count, loff_t *ppos)
+sof_probes_dfs_points_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct sof_client_dev *cdev = file->private_data;
+	struct sof_client_dev *cdev = iocb->ki_filp->private_data;
 	struct sof_probes_priv *priv = cdev->data;
 	const struct sof_probes_ipc_ops *ipc = priv->ipc_ops;
 	struct device *dev = &cdev->auxdev.dev;
+	size_t count = iov_iter_count(from);
 	struct sof_probe_point_desc *desc;
 	u32 num_elems, *array;
 	size_t bytes;
@@ -301,7 +303,7 @@ sof_probes_dfs_points_write(struct file *file, const char __user *from,
 		return -ENOENT;
 	}
 
-	ret = parse_int_array_user(from, count, (int **)&array);
+	ret = parse_int_array_iter(from, (int **)&array);
 	if (ret < 0)
 		return ret;
 
@@ -337,8 +339,8 @@ exit:
 
 static const struct file_operations sof_probes_active_points_fops = {
 	.open = simple_open,
-	.read = sof_probes_dfs_active_points_read,
-	.write = sof_probes_dfs_points_write,
+	.read_iter = sof_probes_dfs_active_points_read_iter,
+	.write_iter = sof_probes_dfs_points_write,
 	.llseek = default_llseek,
 
 	.owner = THIS_MODULE,
@@ -346,20 +348,20 @@ static const struct file_operations sof_probes_active_points_fops = {
 
 static const struct file_operations sof_probes_available_points_fops = {
 	.open = simple_open,
-	.read = sof_probes_dfs_available_points_read,
+	.read_iter = sof_probes_dfs_available_points_read_iter,
 	.llseek = default_llseek,
 
 	.owner = THIS_MODULE,
 };
 
 static ssize_t
-sof_probes_dfs_points_remove_write(struct file *file, const char __user *from,
-				   size_t count, loff_t *ppos)
+sof_probes_dfs_points_remove_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct sof_client_dev *cdev = file->private_data;
+	struct sof_client_dev *cdev = iocb->ki_filp->private_data;
 	struct sof_probes_priv *priv = cdev->data;
 	const struct sof_probes_ipc_ops *ipc = priv->ipc_ops;
 	struct device *dev = &cdev->auxdev.dev;
+	size_t count = iov_iter_count(from);
 	int ret, err;
 	u32 *array;
 
@@ -368,7 +370,7 @@ sof_probes_dfs_points_remove_write(struct file *file, const char __user *from,
 		return -ENOENT;
 	}
 
-	ret = parse_int_array_user(from, count, (int **)&array);
+	ret = parse_int_array_iter(from, (int **)&array);
 	if (ret < 0)
 		return ret;
 
@@ -395,7 +397,7 @@ exit:
 
 static const struct file_operations sof_probes_points_remove_fops = {
 	.open = simple_open,
-	.write = sof_probes_dfs_points_remove_write,
+	.write_iter = sof_probes_dfs_points_remove_write,
 	.llseek = default_llseek,
 
 	.owner = THIS_MODULE,

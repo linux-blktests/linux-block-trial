@@ -37,21 +37,22 @@ static int sof_msg_inject_dfs_open(struct inode *inode, struct file *file)
 	return ret;
 }
 
-static ssize_t sof_kernel_msg_inject_dfs_write(struct file *file, const char __user *buffer,
-					       size_t count, loff_t *ppos)
+static ssize_t sof_kernel_msg_inject_dfs_write(struct kiocb *iocb,
+					       struct iov_iter *from)
 {
-	struct sof_client_dev *cdev = file->private_data;
+	struct sof_client_dev *cdev = iocb->ki_filp->private_data;
 	struct sof_msg_inject_priv *priv = cdev->data;
 	struct sof_ipc_cmd_hdr *hdr = priv->kernel_buffer;
 	struct device *dev = &cdev->auxdev.dev;
+	size_t count = iov_iter_count(from);
 	ssize_t size;
 	int ret;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return 0;
 
-	size = simple_write_to_buffer(priv->kernel_buffer, priv->max_msg_size,
-				      ppos, buffer, count);
+	size = simple_copy_from_iter(priv->kernel_buffer, &iocb->ki_pos,
+				      priv->max_msg_size, from);
 	if (size < 0)
 		return size;
 	if (size != count)
@@ -83,7 +84,7 @@ static int sof_msg_inject_dfs_release(struct inode *inode, struct file *file)
 
 static const struct file_operations sof_kernel_msg_inject_fops = {
 	.open = sof_msg_inject_dfs_open,
-	.write = sof_kernel_msg_inject_dfs_write,
+	.write_iter = sof_kernel_msg_inject_dfs_write,
 	.release = sof_msg_inject_dfs_release,
 
 	.owner = THIS_MODULE,

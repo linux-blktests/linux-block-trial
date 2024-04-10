@@ -49,37 +49,37 @@ static int sof_msg_inject_dfs_open(struct inode *inode, struct file *file)
 	return ret;
 }
 
-static ssize_t sof_msg_inject_dfs_read(struct file *file, char __user *buffer,
-				       size_t count, loff_t *ppos)
+static ssize_t sof_msg_inject_dfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct sof_client_dev *cdev = file->private_data;
+	struct sof_client_dev *cdev = iocb->ki_filp->private_data;
 	struct sof_msg_inject_priv *priv = cdev->data;
 	struct sof_ipc_reply *rhdr = priv->rx_buffer;
+	size_t count = iov_iter_count(to);
 
-	if (!rhdr->hdr.size || !count || *ppos)
+	if (!rhdr->hdr.size || !count || iocb->ki_pos)
 		return 0;
 
 	if (count > rhdr->hdr.size)
 		count = rhdr->hdr.size;
 
-	if (copy_to_user(buffer, priv->rx_buffer, count))
+	if (!copy_to_iter_full(priv->rx_buffer, count, to))
 		return -EFAULT;
 
-	*ppos += count;
+	iocb->ki_pos += count;
 	return count;
 }
 
-static ssize_t sof_msg_inject_ipc4_dfs_read(struct file *file,
-					    char __user *buffer,
-					    size_t count, loff_t *ppos)
+static ssize_t sof_msg_inject_ipc4_dfs_read(struct kiocb *iocb,
+					    struct iov_iter *to)
 {
-	struct sof_client_dev *cdev = file->private_data;
+	struct sof_client_dev *cdev = iocb->ki_filp->private_data;
 	struct sof_msg_inject_priv *priv = cdev->data;
 	struct sof_ipc4_msg *ipc4_msg = priv->rx_buffer;
 	size_t header_size = sizeof(ipc4_msg->header_u64);
+	size_t count = iov_iter_count(to);
 	size_t remaining;
 
-	if (!ipc4_msg->header_u64 || !count || *ppos)
+	if (!ipc4_msg->header_u64 || !count || iocb->ki_pos)
 		return 0;
 
 	/* we need space for the header at minimum (u64) */
@@ -99,10 +99,10 @@ static ssize_t sof_msg_inject_ipc4_dfs_read(struct file *file,
 		remaining = count;
 
 	/* copy the header first */
-	if (copy_to_user(buffer, &ipc4_msg->header_u64, header_size))
+	if (!copy_to_iter_full(&ipc4_msg->header_u64, header_size, to))
 		return -EFAULT;
 
-	*ppos += header_size;
+	iocb->ki_pos += header_size;
 	remaining -= header_size;
 
 	if (!remaining)
@@ -112,10 +112,10 @@ static ssize_t sof_msg_inject_ipc4_dfs_read(struct file *file,
 		remaining = ipc4_msg->data_size;
 
 	/* Copy the payload */
-	if (copy_to_user(buffer + *ppos, ipc4_msg->data_ptr, remaining))
+	if (!copy_to_iter_full(ipc4_msg->data_ptr, remaining, to))
 		return -EFAULT;
 
-	*ppos += remaining;
+	iocb->ki_pos += remaining;
 	return count;
 }
 
@@ -148,19 +148,19 @@ static int sof_msg_inject_send_message(struct sof_client_dev *cdev)
 	return ret;
 }
 
-static ssize_t sof_msg_inject_dfs_write(struct file *file, const char __user *buffer,
-					size_t count, loff_t *ppos)
+static ssize_t sof_msg_inject_dfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct sof_client_dev *cdev = file->private_data;
+	struct sof_client_dev *cdev = iocb->ki_filp->private_data;
 	struct sof_msg_inject_priv *priv = cdev->data;
+	size_t count = iov_iter_count(from);
 	ssize_t size;
 	int ret;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return 0;
 
-	size = simple_write_to_buffer(priv->tx_buffer, priv->max_msg_size,
-				      ppos, buffer, count);
+	size = simple_copy_from_iter(priv->tx_buffer, &iocb->ki_pos,
+				     priv->max_msg_size, from);
 	if (size < 0)
 		return size;
 	if (size != count)
@@ -177,25 +177,25 @@ static ssize_t sof_msg_inject_dfs_write(struct file *file, const char __user *bu
 	return size;
 };
 
-static ssize_t sof_msg_inject_ipc4_dfs_write(struct file *file,
-					     const char __user *buffer,
-					     size_t count, loff_t *ppos)
+static ssize_t sof_msg_inject_ipc4_dfs_write(struct kiocb *iocb,
+					     struct iov_iter *from)
 {
-	struct sof_client_dev *cdev = file->private_data;
+	struct sof_client_dev *cdev = iocb->ki_filp->private_data;
 	struct sof_msg_inject_priv *priv = cdev->data;
 	struct sof_ipc4_msg *ipc4_msg = priv->tx_buffer;
+	size_t count = iov_iter_count(from);
 	size_t data_size;
 	int ret;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return 0;
 
 	if (count < sizeof(ipc4_msg->header_u64))
 		return -EINVAL;
 
 	/* copy the header first */
-	if (copy_from_user(&ipc4_msg->header_u64, buffer,
-			   sizeof(ipc4_msg->header_u64)))
+	if (!copy_from_iter_full(&ipc4_msg->header_u64,
+				 sizeof(ipc4_msg->header_u64), from))
 		return -EFAULT;
 
 	data_size = count - sizeof(ipc4_msg->header_u64);
@@ -203,8 +203,7 @@ static ssize_t sof_msg_inject_ipc4_dfs_write(struct file *file,
 		return -EINVAL;
 
 	/* Copy the payload */
-	if (copy_from_user(ipc4_msg->data_ptr,
-			   buffer + sizeof(ipc4_msg->header_u64), data_size))
+	if (!copy_from_iter_full(ipc4_msg->data_ptr, data_size, from))
 		return -EFAULT;
 
 	ipc4_msg->data_size = data_size;
@@ -233,8 +232,8 @@ static int sof_msg_inject_dfs_release(struct inode *inode, struct file *file)
 
 static const struct file_operations sof_msg_inject_fops = {
 	.open = sof_msg_inject_dfs_open,
-	.read = sof_msg_inject_dfs_read,
-	.write = sof_msg_inject_dfs_write,
+	.read_iter = sof_msg_inject_dfs_read,
+	.write_iter = sof_msg_inject_dfs_write,
 	.llseek = default_llseek,
 	.release = sof_msg_inject_dfs_release,
 
@@ -243,8 +242,8 @@ static const struct file_operations sof_msg_inject_fops = {
 
 static const struct file_operations sof_msg_inject_ipc4_fops = {
 	.open = sof_msg_inject_dfs_open,
-	.read = sof_msg_inject_ipc4_dfs_read,
-	.write = sof_msg_inject_ipc4_dfs_write,
+	.read_iter = sof_msg_inject_ipc4_dfs_read,
+	.write_iter = sof_msg_inject_ipc4_dfs_write,
 	.llseek = default_llseek,
 	.release = sof_msg_inject_dfs_release,
 

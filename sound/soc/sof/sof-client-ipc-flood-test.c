@@ -235,6 +235,7 @@ out:
 	kfree(string);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(sof_ipc_flood_dfs_write);
 
 /* return the result of the last IPC flood test */
 static ssize_t sof_ipc_flood_dfs_read(struct file *file, char __user *buffer,
@@ -255,6 +256,7 @@ static ssize_t sof_ipc_flood_dfs_read(struct file *file, char __user *buffer,
 	*ppos += count;
 	return count;
 }
+FOPS_READ_ITER_HELPER(sof_ipc_flood_dfs_read);
 
 static int sof_ipc_flood_dfs_release(struct inode *inode, struct file *file)
 {
@@ -265,9 +267,9 @@ static int sof_ipc_flood_dfs_release(struct inode *inode, struct file *file)
 
 static const struct file_operations sof_ipc_flood_fops = {
 	.open = sof_ipc_flood_dfs_open,
-	.read = sof_ipc_flood_dfs_read,
+	.read_iter = sof_ipc_flood_dfs_read_iter,
 	.llseek = default_llseek,
-	.write = sof_ipc_flood_dfs_write,
+	.write_iter = sof_ipc_flood_dfs_write_iter,
 	.release = sof_ipc_flood_dfs_release,
 
 	.owner = THIS_MODULE,
