@@ -3461,11 +3461,10 @@ static int pmbus_debugfs_get_status(void *data, u64 *val)
 DEFINE_DEBUGFS_ATTRIBUTE(pmbus_debugfs_ops_status, pmbus_debugfs_get_status,
 			 NULL, "0x%04llx\n");
 
-static ssize_t pmbus_debugfs_block_read(struct file *file, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t pmbus_debugfs_block_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int rc;
-	struct pmbus_debugfs_entry *entry = file->private_data;
+	struct pmbus_debugfs_entry *entry = iocb->ki_filp->private_data;
 	struct pmbus_data *pdata = i2c_get_clientdata(entry->client);
 	char data[I2C_SMBUS_BLOCK_MAX + 2] = { 0 };
 
@@ -3484,13 +3483,12 @@ static ssize_t pmbus_debugfs_block_read(struct file *file, char __user *buf,
 	/* Include newline into the length */
 	rc += 1;
 
-	return simple_read_from_buffer(buf, count, ppos, data, rc);
+	return simple_copy_to_iter(data, &iocb->ki_pos, rc, to);
 }
 
 static const struct file_operations pmbus_debugfs_block_ops = {
 	.llseek = noop_llseek,
-	.read = pmbus_debugfs_block_read,
-	.write = NULL,
+	.read_iter = pmbus_debugfs_block_read,
 	.open = simple_open,
 };
 
