@@ -75,12 +75,12 @@ struct ibm_cffps {
 
 #define to_psu(x, y) container_of((x), struct ibm_cffps, debugfs_entries[(y)])
 
-static ssize_t ibm_cffps_debugfs_read_input_history(struct file *file, char __user *buf,
-						    size_t count, loff_t *ppos)
+static ssize_t ibm_cffps_debugfs_read_input_history(struct kiocb *iocb,
+						    struct iov_iter *to)
 {
 	int rc;
 	u8 cmd = CFFPS_INPUT_HISTORY_CMD;
-	struct ibm_cffps *psu = file->private_data;
+	struct ibm_cffps *psu = iocb->ki_filp->private_data;
 	struct i2c_msg msg[2] = {
 		{
 			.addr = psu->client->addr,
@@ -95,7 +95,7 @@ static ssize_t ibm_cffps_debugfs_read_input_history(struct file *file, char __us
 		},
 	};
 
-	if (!*ppos) {
+	if (!iocb->ki_pos) {
 		rc = pmbus_lock_interruptible(psu->client);
 		if (rc)
 			return rc;
@@ -116,22 +116,20 @@ static ssize_t ibm_cffps_debugfs_read_input_history(struct file *file, char __us
 			return rc;
 	}
 
-	return simple_read_from_buffer(buf, count, ppos,
-				       psu->input_history + 1,
-				       psu->input_history[0]);
+	return simple_copy_to_iter(psu->input_history + 1, &iocb->ki_pos,
+				   psu->input_history[0], to);
 }
 
 static const struct file_operations ibm_cffps_input_history_fops = {
 	.llseek = noop_llseek,
-	.read = ibm_cffps_debugfs_read_input_history,
+	.read_iter = ibm_cffps_debugfs_read_input_history,
 	.open = simple_open,
 };
 
-static ssize_t ibm_cffps_debugfs_read(struct file *file, char __user *buf,
-				      size_t count, loff_t *ppos)
+static ssize_t ibm_cffps_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int i, rc;
-	int *idxp = file->private_data;
+	int *idxp = iocb->ki_filp->private_data;
 	int idx = *idxp;
 	struct ibm_cffps *psu = to_psu(idxp, idx);
 	char data[I2C_SMBUS_BLOCK_MAX + 2] = { 0 };
@@ -205,22 +203,21 @@ unlock:
 	data[rc] = '\n';
 	rc += 2;
 
-	return simple_read_from_buffer(buf, count, ppos, data, rc);
+	return simple_copy_to_iter(data, &iocb->ki_pos, rc, to);
 }
 
-static ssize_t ibm_cffps_debugfs_write(struct file *file,
-				       const char __user *buf, size_t count,
-				       loff_t *ppos)
+static ssize_t ibm_cffps_debugfs_write(struct kiocb *iocb,
+				       struct iov_iter *from)
 {
 	u8 data;
 	ssize_t rc;
-	int *idxp = file->private_data;
+	int *idxp = iocb->ki_filp->private_data;
 	int idx = *idxp;
 	struct ibm_cffps *psu = to_psu(idxp, idx);
 
 	switch (idx) {
 	case CFFPS_DEBUGFS_ON_OFF_CONFIG:
-		rc = simple_write_to_buffer(&data, 1, ppos, buf, count);
+		rc = simple_copy_from_iter(&data, &iocb->ki_pos, 1, from);
 		if (rc <= 0)
 			return rc;
 
@@ -250,8 +247,8 @@ static ssize_t ibm_cffps_debugfs_write(struct file *file,
 
 static const struct file_operations ibm_cffps_fops = {
 	.llseek = noop_llseek,
-	.read = ibm_cffps_debugfs_read,
-	.write = ibm_cffps_debugfs_write,
+	.read_iter = ibm_cffps_debugfs_read,
+	.write_iter = ibm_cffps_debugfs_write,
 	.open = simple_open,
 };
 
