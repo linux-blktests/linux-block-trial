@@ -128,18 +128,9 @@ static int fop_ruleset_release(struct inode *const inode,
 	return 0;
 }
 
-static ssize_t fop_dummy_read(struct file *const filp, char __user *const buf,
-			      const size_t size, loff_t *const ppos)
+static ssize_t fop_dummy_iter(struct kiocb *iocb, struct iov_iter *iov)
 {
 	/* Dummy handler to enable FMODE_CAN_READ. */
-	return -EINVAL;
-}
-
-static ssize_t fop_dummy_write(struct file *const filp,
-			       const char __user *const buf, const size_t size,
-			       loff_t *const ppos)
-{
-	/* Dummy handler to enable FMODE_CAN_WRITE. */
 	return -EINVAL;
 }
 
@@ -151,8 +142,8 @@ static ssize_t fop_dummy_write(struct file *const filp,
  */
 static const struct file_operations ruleset_fops = {
 	.release = fop_ruleset_release,
-	.read = fop_dummy_read,
-	.write = fop_dummy_write,
+	.read_iter = fop_dummy_iter,
+	.write_iter = fop_dummy_iter,
 };
 
 /*
