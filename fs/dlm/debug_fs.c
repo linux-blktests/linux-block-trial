@@ -526,6 +526,7 @@ static ssize_t table_write2(struct file *file, const char __user *user_buf,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(table_write2);
 
 static int table_open3(struct inode *inode, struct file *file)
 {
@@ -567,7 +568,7 @@ static const struct file_operations format2_fops = {
 	.owner   = THIS_MODULE,
 	.open    = table_open2,
 	.read_iter    = seq_read_iter,
-	.write   = table_write2,
+	.write_iter   = table_write2_iter,
 	.llseek  = seq_lseek,
 	.release = seq_release
 };
@@ -591,10 +592,9 @@ static const struct file_operations format4_fops = {
 /*
  * dump lkb's on the ls_waiters list
  */
-static ssize_t waiters_read(struct file *file, char __user *userbuf,
-			    size_t count, loff_t *ppos)
+static ssize_t waiters_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dlm_ls *ls = file->private_data;
+	struct dlm_ls *ls = iocb->ki_filp->private_data;
 	struct dlm_lkb *lkb;
 	size_t len = DLM_DEBUG_BUF_LEN, pos = 0, ret, rv;
 
@@ -619,7 +619,7 @@ static ssize_t waiters_read(struct file *file, char __user *userbuf,
 	spin_unlock_bh(&ls->ls_waiters_lock);
 	dlm_unlock_recovery(ls);
 
-	rv = simple_read_from_buffer(userbuf, count, ppos, debug_buf, pos);
+	rv = simple_copy_to_iter(debug_buf, &iocb->ki_pos, pos, to);
 out:
 	mutex_unlock(&debug_buf_lock);
 	return rv;
@@ -653,12 +653,13 @@ static ssize_t waiters_write(struct file *file, const char __user *user_buf,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(waiters_write);
 
 static const struct file_operations waiters_fops = {
 	.owner   = THIS_MODULE,
 	.open    = simple_open,
-	.read    = waiters_read,
-	.write   = waiters_write,
+	.read_iter    = waiters_read,
+	.write_iter   = waiters_write_iter,
 	.llseek  = default_llseek,
 };
 
@@ -729,10 +730,11 @@ out:
 	kfree(buf);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(dlm_rawmsg_write);
 
 static const struct file_operations dlm_rawmsg_fops = {
 	.open	= simple_open,
-	.write	= dlm_rawmsg_write,
+	.write_iter	= dlm_rawmsg_write_iter,
 };
 
 void *dlm_create_debug_comms_file(int nodeid, void *data)

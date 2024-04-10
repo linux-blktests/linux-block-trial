@@ -631,6 +631,7 @@ static ssize_t device_write(struct file *file, const char __user *buf,
 	kfree(kbuf);
 	return error;
 }
+FOPS_WRITE_ITER_HELPER(device_write);
 
 /* Every process that opens the lockspace device has its own "proc" structure
    hanging off the open file that's used to keep track of locks owned by the
@@ -861,6 +862,7 @@ static ssize_t device_read(struct file *file, char __user *buf, size_t count,
 	dlm_free_cb(cb);
 	return ret;
 }
+FOPS_READ_ITER_HELPER(device_read);
 
 static __poll_t device_poll(struct file *file, poll_table *wait)
 {
@@ -925,8 +927,8 @@ static int monitor_device_close(struct inode *inode, struct file *file)
 static const struct file_operations device_fops = {
 	.open    = device_open,
 	.release = device_close,
-	.read    = device_read,
-	.write   = device_write,
+	.read_iter    = device_read_iter,
+	.write_iter   = device_write_iter,
 	.poll    = device_poll,
 	.owner   = THIS_MODULE,
 	.llseek  = noop_llseek,
@@ -935,8 +937,8 @@ static const struct file_operations device_fops = {
 static const struct file_operations ctl_device_fops = {
 	.open    = ctl_device_open,
 	.release = ctl_device_close,
-	.read    = device_read,
-	.write   = device_write,
+	.read_iter    = device_read_iter,
+	.write_iter   = device_write_iter,
 	.owner   = THIS_MODULE,
 	.llseek  = noop_llseek,
 };
