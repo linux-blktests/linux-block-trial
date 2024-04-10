@@ -53,12 +53,11 @@ static const char *audmux_port_string(int port)
 	}
 }
 
-static ssize_t audmux_read_file(struct file *file, char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t audmux_read_file(struct kiocb *iocb, struct iov_iter *to)
 {
 	ssize_t ret;
 	char *buf;
-	uintptr_t port = (uintptr_t)file->private_data;
+	uintptr_t port = (uintptr_t)iocb->ki_filp->private_data;
 	u32 pdcr, ptcr;
 
 	ret = clk_prepare_enable(audmux_clk);
@@ -119,16 +118,14 @@ static ssize_t audmux_read_file(struct file *file, char __user *user_buf,
 			"\nData received from %s\n",
 			audmux_port_string((pdcr >> 13) & 0x7));
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, ret);
-
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, ret, to);
 	kfree(buf);
-
 	return ret;
 }
 
 static const struct file_operations audmux_debugfs_fops = {
 	.open = simple_open,
-	.read = audmux_read_file,
+	.read_iter = audmux_read_file,
 	.llseek = default_llseek,
 };
 
