@@ -32,6 +32,7 @@
 #include <linux/uaccess.h>
 #include <linux/kobject.h>
 #include <linux/ctype.h>
+#include <linux/uio.h>
 
 /* selinuxfs pseudo filesystem for exporting the security policy API.
    Based on the proc code and the fs/nfsd/nfsctl.c code. */
@@ -120,15 +121,14 @@ static void selinux_fs_info_free(struct super_block *sb)
 #define CLASS_DIR_NAME "class"
 
 #define TMPBUFLEN	12
-static ssize_t sel_read_enforce(struct file *filp, char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t sel_read_enforce(struct kiocb *iocb, struct iov_iter *to)
 {
 	char tmpbuf[TMPBUFLEN];
 	ssize_t length;
 
 	length = scnprintf(tmpbuf, TMPBUFLEN, "%d",
 			   enforcing_enabled());
-	return simple_read_from_buffer(buf, count, ppos, tmpbuf, length);
+	return simple_copy_to_iter(tmpbuf, &iocb->ki_pos, length, to);
 }
 
 #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
@@ -186,32 +186,32 @@ out:
 	kfree(page);
 	return length;
 }
+FOPS_WRITE_ITER_HELPER(sel_write_enforce);
 #else
-#define sel_write_enforce NULL
+#define sel_write_enforce_iter NULL
 #endif
 
 static const struct file_operations sel_enforce_ops = {
-	.read		= sel_read_enforce,
-	.write		= sel_write_enforce,
+	.read_iter	= sel_read_enforce,
+	.write_iter	= sel_write_enforce_iter,
 	.llseek		= generic_file_llseek,
 };
 
-static ssize_t sel_read_handle_unknown(struct file *filp, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t sel_read_handle_unknown(struct kiocb *iocb, struct iov_iter *to)
 {
 	char tmpbuf[TMPBUFLEN];
 	ssize_t length;
-	ino_t ino = file_inode(filp)->i_ino;
+	ino_t ino = file_inode(iocb->ki_filp)->i_ino;
 	int handle_unknown = (ino == SEL_REJECT_UNKNOWN) ?
 		security_get_reject_unknown() :
 		!security_get_allow_unknown();
 
 	length = scnprintf(tmpbuf, TMPBUFLEN, "%d", handle_unknown);
-	return simple_read_from_buffer(buf, count, ppos, tmpbuf, length);
+	return simple_copy_to_iter(tmpbuf, &iocb->ki_pos, length, to);
 }
 
 static const struct file_operations sel_handle_unknown_ops = {
-	.read		= sel_read_handle_unknown,
+	.read_iter	= sel_read_handle_unknown,
 	.llseek		= generic_file_llseek,
 };
 
@@ -227,16 +227,14 @@ static int sel_open_handle_status(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t sel_read_handle_status(struct file *filp, char __user *buf,
-				      size_t count, loff_t *ppos)
+static ssize_t sel_read_handle_status(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct page    *status = filp->private_data;
+	struct page    *status = iocb->ki_filp->private_data;
 
 	BUG_ON(!status);
 
-	return simple_read_from_buffer(buf, count, ppos,
-				       page_address(status),
-				       sizeof(struct selinux_kernel_status));
+	return simple_copy_to_iter(page_address(status), &iocb->ki_pos,
+				   sizeof(struct selinux_kernel_status), to);
 }
 
 static int sel_mmap_handle_status(struct file *filp,
@@ -263,7 +261,7 @@ static int sel_mmap_handle_status(struct file *filp,
 
 static const struct file_operations sel_handle_status_ops = {
 	.open		= sel_open_handle_status,
-	.read		= sel_read_handle_status,
+	.read_iter	= sel_read_handle_status,
 	.mmap		= sel_mmap_handle_status,
 	.llseek		= generic_file_llseek,
 };
@@ -302,24 +300,24 @@ out:
 	kfree(page);
 	return length;
 }
+FOPS_WRITE_ITER_HELPER(sel_write_disable);
 
 static const struct file_operations sel_disable_ops = {
-	.write		= sel_write_disable,
+	.write_iter	= sel_write_disable_iter,
 	.llseek		= generic_file_llseek,
 };
 
-static ssize_t sel_read_policyvers(struct file *filp, char __user *buf,
-				   size_t count, loff_t *ppos)
+static ssize_t sel_read_policyvers(struct kiocb *iocb, struct iov_iter *to)
 {
 	char tmpbuf[TMPBUFLEN];
 	ssize_t length;
 
 	length = scnprintf(tmpbuf, TMPBUFLEN, "%u", POLICYDB_VERSION_MAX);
-	return simple_read_from_buffer(buf, count, ppos, tmpbuf, length);
+	return simple_copy_to_iter(tmpbuf, &iocb->ki_pos, length, to);
 }
 
 static const struct file_operations sel_policyvers_ops = {
-	.read		= sel_read_policyvers,
+	.read_iter	= sel_read_policyvers,
 	.llseek		= generic_file_llseek,
 };
 
@@ -339,19 +337,18 @@ static struct dentry *sel_make_dir(struct dentry *dir, const char *name,
 static struct dentry *sel_make_swapover_dir(struct super_block *sb,
 						unsigned long *ino);
 
-static ssize_t sel_read_mls(struct file *filp, char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t sel_read_mls(struct kiocb *iocb, struct iov_iter *to)
 {
 	char tmpbuf[TMPBUFLEN];
 	ssize_t length;
 
 	length = scnprintf(tmpbuf, TMPBUFLEN, "%d",
 			   security_mls_enabled());
-	return simple_read_from_buffer(buf, count, ppos, tmpbuf, length);
+	return simple_copy_to_iter(tmpbuf, &iocb->ki_pos, length, to);
 }
 
 static const struct file_operations sel_mls_ops = {
-	.read		= sel_read_mls,
+	.read_iter	= sel_read_mls,
 	.llseek		= generic_file_llseek,
 };
 
@@ -425,10 +422,9 @@ static int sel_release_policy(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t sel_read_policy(struct file *filp, char __user *buf,
-			       size_t count, loff_t *ppos)
+static ssize_t sel_read_policy(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct policy_load_memory *plm = filp->private_data;
+	struct policy_load_memory *plm = iocb->ki_filp->private_data;
 	int ret;
 
 	ret = avc_has_perm(current_sid(), SECINITSID_SECURITY,
@@ -436,7 +432,7 @@ static ssize_t sel_read_policy(struct file *filp, char __user *buf,
 	if (ret)
 		return ret;
 
-	return simple_read_from_buffer(buf, count, ppos, plm->data, plm->len);
+	return simple_copy_to_iter(plm->data, &iocb->ki_pos, plm->len, to);
 }
 
 static vm_fault_t sel_mmap_policy_fault(struct vm_fault *vmf)
@@ -483,7 +479,7 @@ static int sel_mmap_policy(struct file *filp, struct vm_area_struct *vma)
 
 static const struct file_operations sel_policy_ops = {
 	.open		= sel_open_policy,
-	.read		= sel_read_policy,
+	.read_iter	= sel_read_policy,
 	.mmap		= sel_mmap_policy,
 	.release	= sel_release_policy,
 	.llseek		= generic_file_llseek,
@@ -636,9 +632,10 @@ out:
 	vfree(data);
 	return length;
 }
+FOPS_WRITE_ITER_HELPER(sel_write_load);
 
 static const struct file_operations sel_load_ops = {
-	.write		= sel_write_load,
+	.write_iter	= sel_write_load_iter,
 	.llseek		= generic_file_llseek,
 };
 
@@ -675,15 +672,14 @@ out:
 	return length;
 }
 
-static ssize_t sel_read_checkreqprot(struct file *filp, char __user *buf,
-				     size_t count, loff_t *ppos)
+static ssize_t sel_read_checkreqprot(struct kiocb *iocb, struct iov_iter *to)
 {
 	char tmpbuf[TMPBUFLEN];
 	ssize_t length;
 
 	length = scnprintf(tmpbuf, TMPBUFLEN, "%u",
 			   checkreqprot_get());
-	return simple_read_from_buffer(buf, count, ppos, tmpbuf, length);
+	return simple_copy_to_iter(tmpbuf, &iocb->ki_pos, length, to);
 }
 
 static ssize_t sel_write_checkreqprot(struct file *file, const char __user *buf,
@@ -730,9 +726,10 @@ out:
 	kfree(page);
 	return length;
 }
+FOPS_WRITE_ITER_HELPER(sel_write_checkreqprot);
 static const struct file_operations sel_checkreqprot_ops = {
-	.read		= sel_read_checkreqprot,
-	.write		= sel_write_checkreqprot,
+	.read_iter	= sel_read_checkreqprot,
+	.write_iter	= sel_write_checkreqprot_iter,
 	.llseek		= generic_file_llseek,
 };
 
@@ -806,9 +803,10 @@ out:
 	kfree(taskcon);
 	return rc;
 }
+FOPS_WRITE_ITER_HELPER(sel_write_validatetrans);
 
 static const struct file_operations sel_transition_ops = {
-	.write		= sel_write_validatetrans,
+	.write_iter	= sel_write_validatetrans_iter,
 	.llseek		= generic_file_llseek,
 };
 
@@ -850,10 +848,11 @@ static ssize_t selinux_transaction_write(struct file *file, const char __user *b
 	}
 	return rv;
 }
+FOPS_WRITE_ITER_HELPER(selinux_transaction_write);
 
 static const struct file_operations transaction_ops = {
-	.write		= selinux_transaction_write,
-	.read		= simple_transaction_read,
+	.write_iter	= selinux_transaction_write_iter,
+	.read_iter	= simple_transaction_read_iter,
 	.release	= simple_transaction_release,
 	.llseek		= generic_file_llseek,
 };
@@ -1230,16 +1229,15 @@ static int sel_attach_file(struct dentry *parent, const char *name,
 	return PTR_ERR_OR_ZERO(dentry);
 }
 
-static ssize_t sel_read_bool(struct file *filep, char __user *buf,
-			     size_t count, loff_t *ppos)
+static ssize_t sel_read_bool(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct selinux_fs_info *fsi = file_inode(filep)->i_sb->s_fs_info;
+	struct selinux_fs_info *fsi = file_inode(iocb->ki_filp)->i_sb->s_fs_info;
 	char buffer[4];
 	ssize_t length;
 	ssize_t ret;
 	int cur_enforcing;
-	unsigned index = file_inode(filep)->i_ino & SEL_INO_MASK;
-	const char *name = filep->f_path.dentry->d_name.name;
+	unsigned index = file_inode(iocb->ki_filp)->i_ino & SEL_INO_MASK;
+	const char *name = iocb->ki_filp->f_path.dentry->d_name.name;
 
 	mutex_lock(&selinux_state.policy_mutex);
 
@@ -1256,7 +1254,7 @@ static ssize_t sel_read_bool(struct file *filep, char __user *buf,
 	length = scnprintf(buffer, sizeof(buffer), "%d %d", !!cur_enforcing,
 			  !!fsi->bool_pending_values[index]);
 	mutex_unlock(&selinux_state.policy_mutex);
-	return simple_read_from_buffer(buf, count, ppos, buffer, length);
+	return simple_copy_to_iter(buffer, &iocb->ki_pos, length, to);
 
 out_unlock:
 	mutex_unlock(&selinux_state.policy_mutex);
@@ -1312,10 +1310,11 @@ out:
 	kfree(page);
 	return length;
 }
+FOPS_WRITE_ITER_HELPER(sel_write_bool);
 
 static const struct file_operations sel_bool_ops = {
-	.read		= sel_read_bool,
-	.write		= sel_write_bool,
+	.read_iter	= sel_read_bool,
+	.write_iter	= sel_write_bool_iter,
 	.llseek		= generic_file_llseek,
 };
 
@@ -1364,9 +1363,10 @@ out:
 	kfree(page);
 	return length;
 }
+FOPS_WRITE_ITER_HELPER(sel_commit_bools_write);
 
 static const struct file_operations sel_commit_bools_ops = {
-	.write		= sel_commit_bools_write,
+	.write_iter	= sel_commit_bools_write_iter,
 	.llseek		= generic_file_llseek,
 };
 
@@ -1428,15 +1428,14 @@ out:
 	return ret;
 }
 
-static ssize_t sel_read_avc_cache_threshold(struct file *filp, char __user *buf,
-					    size_t count, loff_t *ppos)
+static ssize_t sel_read_avc_cache_threshold(struct kiocb *iocb, struct iov_iter *to)
 {
 	char tmpbuf[TMPBUFLEN];
 	ssize_t length;
 
 	length = scnprintf(tmpbuf, TMPBUFLEN, "%u",
 			   avc_get_cache_threshold());
-	return simple_read_from_buffer(buf, count, ppos, tmpbuf, length);
+	return simple_copy_to_iter(tmpbuf, &iocb->ki_pos, length, to);
 }
 
 static ssize_t sel_write_avc_cache_threshold(struct file *file,
@@ -1476,9 +1475,9 @@ out:
 	kfree(page);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(sel_write_avc_cache_threshold);
 
-static ssize_t sel_read_avc_hash_stats(struct file *filp, char __user *buf,
-				       size_t count, loff_t *ppos)
+static ssize_t sel_read_avc_hash_stats(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *page;
 	ssize_t length;
@@ -1489,14 +1488,13 @@ static ssize_t sel_read_avc_hash_stats(struct file *filp, char __user *buf,
 
 	length = avc_get_hash_stats(page);
 	if (length >= 0)
-		length = simple_read_from_buffer(buf, count, ppos, page, length);
+		length = simple_copy_to_iter(page, &iocb->ki_pos, length, to);
 	free_page((unsigned long)page);
 
 	return length;
 }
 
-static ssize_t sel_read_sidtab_hash_stats(struct file *filp, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t sel_read_sidtab_hash_stats(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *page;
 	ssize_t length;
@@ -1507,26 +1505,25 @@ static ssize_t sel_read_sidtab_hash_stats(struct file *filp, char __user *buf,
 
 	length = security_sidtab_hash_stats(page);
 	if (length >= 0)
-		length = simple_read_from_buffer(buf, count, ppos, page,
-						length);
+		length = simple_copy_to_iter(page, &iocb->ki_pos, length, to);
 	free_page((unsigned long)page);
 
 	return length;
 }
 
 static const struct file_operations sel_sidtab_hash_stats_ops = {
-	.read		= sel_read_sidtab_hash_stats,
+	.read_iter	= sel_read_sidtab_hash_stats,
 	.llseek		= generic_file_llseek,
 };
 
 static const struct file_operations sel_avc_cache_threshold_ops = {
-	.read		= sel_read_avc_cache_threshold,
-	.write		= sel_write_avc_cache_threshold,
+	.read_iter	= sel_read_avc_cache_threshold,
+	.write_iter	= sel_write_avc_cache_threshold_iter,
 	.llseek		= generic_file_llseek,
 };
 
 static const struct file_operations sel_avc_hash_stats_ops = {
-	.read		= sel_read_avc_hash_stats,
+	.read_iter	= sel_read_avc_hash_stats,
 	.llseek		= generic_file_llseek,
 };
 
@@ -1595,7 +1592,7 @@ static int sel_open_avc_cache_stats(struct inode *inode, struct file *file)
 
 static const struct file_operations sel_avc_cache_stats_ops = {
 	.open		= sel_open_avc_cache_stats,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
@@ -1658,25 +1655,24 @@ static int sel_make_ss_files(struct dentry *dir)
 	return err;
 }
 
-static ssize_t sel_read_initcon(struct file *file, char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t sel_read_initcon(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *con;
 	u32 sid, len;
 	ssize_t ret;
 
-	sid = file_inode(file)->i_ino&SEL_INO_MASK;
+	sid = file_inode(iocb->ki_filp)->i_ino&SEL_INO_MASK;
 	ret = security_sid_to_context(sid, &con, &len);
 	if (ret)
 		return ret;
 
-	ret = simple_read_from_buffer(buf, count, ppos, con, len);
+	ret = simple_copy_to_iter(con, &iocb->ki_pos, len, to);
 	kfree(con);
 	return ret;
 }
 
 static const struct file_operations sel_initcon_ops = {
-	.read		= sel_read_initcon,
+	.read_iter	= sel_read_initcon,
 	.llseek		= generic_file_llseek,
 };
 
@@ -1724,50 +1720,47 @@ static inline u32 sel_ino_to_perm(unsigned long ino)
 	return (ino & SEL_INO_MASK) % (SEL_VEC_MAX + 1);
 }
 
-static ssize_t sel_read_class(struct file *file, char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t sel_read_class(struct kiocb *iocb, struct iov_iter *to)
 {
-	unsigned long ino = file_inode(file)->i_ino;
+	unsigned long ino = file_inode(iocb->ki_filp)->i_ino;
 	char res[TMPBUFLEN];
 	ssize_t len = scnprintf(res, sizeof(res), "%d", sel_ino_to_class(ino));
-	return simple_read_from_buffer(buf, count, ppos, res, len);
+	return simple_copy_to_iter(res, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations sel_class_ops = {
-	.read		= sel_read_class,
+	.read_iter	= sel_read_class,
 	.llseek		= generic_file_llseek,
 };
 
-static ssize_t sel_read_perm(struct file *file, char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t sel_read_perm(struct kiocb *iocb, struct iov_iter *to)
 {
-	unsigned long ino = file_inode(file)->i_ino;
+	unsigned long ino = file_inode(iocb->ki_filp)->i_ino;
 	char res[TMPBUFLEN];
 	ssize_t len = scnprintf(res, sizeof(res), "%d", sel_ino_to_perm(ino));
-	return simple_read_from_buffer(buf, count, ppos, res, len);
+	return simple_copy_to_iter(res, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations sel_perm_ops = {
-	.read		= sel_read_perm,
+	.read_iter	= sel_read_perm,
 	.llseek		= generic_file_llseek,
 };
 
-static ssize_t sel_read_policycap(struct file *file, char __user *buf,
-				  size_t count, loff_t *ppos)
+static ssize_t sel_read_policycap(struct kiocb *iocb, struct iov_iter *to)
 {
 	int value;
 	char tmpbuf[TMPBUFLEN];
 	ssize_t length;
-	unsigned long i_ino = file_inode(file)->i_ino;
+	unsigned long i_ino = file_inode(iocb->ki_filp)->i_ino;
 
 	value = security_policycap_supported(i_ino & SEL_INO_MASK);
 	length = scnprintf(tmpbuf, TMPBUFLEN, "%d", value);
 
-	return simple_read_from_buffer(buf, count, ppos, tmpbuf, length);
+	return simple_copy_to_iter(tmpbuf, &iocb->ki_pos, length, to);
 }
 
 static const struct file_operations sel_policycap_ops = {
-	.read		= sel_read_policycap,
+	.read_iter	= sel_read_policycap,
 	.llseek		= generic_file_llseek,
 };
 
