@@ -39,10 +39,9 @@
 #define	RI_NLSB_SHIFT	19
 #define	RI_NLSB(r)	(((r) * RI_LSB_ENTRIES) >> RI_NLSB_SHIFT)
 
-static ssize_t ccp5_debugfs_info_read(struct file *filp, char __user *ubuf,
-				      size_t count, loff_t *offp)
+static ssize_t ccp5_debugfs_info_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ccp_device *ccp = filp->private_data;
+	struct ccp_device *ccp = iocb->ki_filp->private_data;
 	unsigned int oboff = 0;
 	unsigned int regval;
 	ssize_t ret;
@@ -85,7 +84,7 @@ static ssize_t ccp5_debugfs_info_read(struct file *filp, char __user *ubuf,
 	oboff += OSCNPRINTF("LSB Entries: %d\n",
 		   (regval & RI_LSB_ENTRIES) >> RI_NLSB_SHIFT);
 
-	ret = simple_read_from_buffer(ubuf, count, offp, obuf, oboff);
+	ret = simple_copy_to_iter(obuf, &iocb->ki_pos, oboff, to);
 	kfree(obuf);
 
 	return ret;
@@ -94,10 +93,9 @@ static ssize_t ccp5_debugfs_info_read(struct file *filp, char __user *ubuf,
 /* Return a formatted buffer containing the current
  * statistics across all queues for a CCP.
  */
-static ssize_t ccp5_debugfs_stats_read(struct file *filp, char __user *ubuf,
-				       size_t count, loff_t *offp)
+static ssize_t ccp5_debugfs_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ccp_device *ccp = filp->private_data;
+	struct ccp_device *ccp = iocb->ki_filp->private_data;
 	unsigned long total_xts_aes_ops = 0;
 	unsigned long total_3des_ops = 0;
 	unsigned long total_aes_ops = 0;
@@ -147,7 +145,7 @@ static ssize_t ccp5_debugfs_stats_read(struct file *filp, char __user *ubuf,
 	oboff += OSCNPRINTF("                     ECC: %ld\n",
 			    total_ecc_ops);
 
-	ret = simple_read_from_buffer(ubuf, count, offp, obuf, oboff);
+	ret = simple_copy_to_iter(obuf, &iocb->ki_pos, oboff, to);
 	kfree(obuf);
 
 	return ret;
@@ -171,27 +169,25 @@ static void ccp5_debugfs_reset_queue_stats(struct ccp_cmd_queue *cmd_q)
  * should be used to reset the queue counters across
  * that device.
  */
-static ssize_t ccp5_debugfs_stats_write(struct file *filp,
-					const char __user *ubuf,
-					size_t count, loff_t *offp)
+static ssize_t ccp5_debugfs_stats_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct ccp_device *ccp = filp->private_data;
+	struct ccp_device *ccp = iocb->ki_filp->private_data;
 	int i;
 
 	for (i = 0; i < ccp->cmd_q_count; i++)
 		ccp5_debugfs_reset_queue_stats(&ccp->cmd_q[i]);
 	ccp->total_interrupts = 0L;
 
-	return count;
+	return iov_iter_count(from);
 }
 
 /* Return a formatted buffer containing the current information
  * for that queue
  */
-static ssize_t ccp5_debugfs_queue_read(struct file *filp, char __user *ubuf,
-				       size_t count, loff_t *offp)
+static ssize_t ccp5_debugfs_queue_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ccp_cmd_queue *cmd_q = filp->private_data;
+	struct ccp_cmd_queue *cmd_q = iocb->ki_filp->private_data;
 	unsigned int oboff = 0;
 	unsigned int regval;
 	ssize_t ret;
@@ -233,7 +229,7 @@ static ssize_t ccp5_debugfs_queue_read(struct file *filp, char __user *ubuf,
 		oboff += OSCNPRINTF(" COMPLETION");
 	oboff += OSCNPRINTF("\n");
 
-	ret = simple_read_from_buffer(ubuf, count, offp, obuf, oboff);
+	ret = simple_copy_to_iter(obuf, &iocb->ki_pos, oboff, to);
 	kfree(obuf);
 
 	return ret;
@@ -242,36 +238,33 @@ static ssize_t ccp5_debugfs_queue_read(struct file *filp, char __user *ubuf,
 /* A value was written to the stats variable for a
  * queue. Reset the queue counters to this value.
  */
-static ssize_t ccp5_debugfs_queue_write(struct file *filp,
-					const char __user *ubuf,
-					size_t count, loff_t *offp)
+static ssize_t ccp5_debugfs_queue_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct ccp_cmd_queue *cmd_q = filp->private_data;
+	struct ccp_cmd_queue *cmd_q = iocb->ki_filp->private_data;
 
 	ccp5_debugfs_reset_queue_stats(cmd_q);
-
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations ccp_debugfs_info_ops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = ccp5_debugfs_info_read,
-	.write = NULL,
+	.read_iter = ccp5_debugfs_info_read,
 };
 
 static const struct file_operations ccp_debugfs_queue_ops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = ccp5_debugfs_queue_read,
-	.write = ccp5_debugfs_queue_write,
+	.read_iter = ccp5_debugfs_queue_read,
+	.write_iter = ccp5_debugfs_queue_write,
 };
 
 static const struct file_operations ccp_debugfs_stats_ops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = ccp5_debugfs_stats_read,
-	.write = ccp5_debugfs_stats_write,
+	.read_iter = ccp5_debugfs_stats_read,
+	.write_iter = ccp5_debugfs_stats_write,
 };
 
 static struct dentry *ccp_debugfs_dir;
