@@ -765,13 +765,12 @@ static int atk_debugfs_ggrp_open(struct inode *inode, struct file *file)
 	return nonseekable_open(inode, file);
 }
 
-static ssize_t atk_debugfs_ggrp_read(struct file *file, char __user *buf,
-		size_t count, loff_t *pos)
+static ssize_t atk_debugfs_ggrp_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	char *str = file->private_data;
+	char *str = iocb->ki_filp->private_data;
 	size_t len = strlen(str);
 
-	return simple_read_from_buffer(buf, count, pos, str, len);
+	return simple_copy_to_iter(str, &iocb->ki_pos, len, to);
 }
 
 static int atk_debugfs_ggrp_release(struct inode *inode, struct file *file)
@@ -781,7 +780,7 @@ static int atk_debugfs_ggrp_release(struct inode *inode, struct file *file)
 }
 
 static const struct file_operations atk_debugfs_ggrp_fops = {
-	.read		= atk_debugfs_ggrp_read,
+	.read_iter	= atk_debugfs_ggrp_read,
 	.open		= atk_debugfs_ggrp_open,
 	.release	= atk_debugfs_ggrp_release,
 };
