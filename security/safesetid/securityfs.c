@@ -248,6 +248,7 @@ static ssize_t safesetid_uid_file_write(struct file *file,
 
 	return handle_policy_update(file, buf, len, UID);
 }
+FOPS_WRITE_ITER_HELPER(safesetid_uid_file_write);
 
 static ssize_t safesetid_gid_file_write(struct file *file,
 				    const char __user *buf,
@@ -262,6 +263,7 @@ static ssize_t safesetid_gid_file_write(struct file *file,
 
 	return handle_policy_update(file, buf, len, GID);
 }
+FOPS_WRITE_ITER_HELPER(safesetid_gid_file_write);
 
 static ssize_t safesetid_file_read(struct file *file, char __user *buf,
 				   size_t len, loff_t *ppos, struct mutex *policy_update_lock, struct __rcu setid_ruleset* ruleset)
@@ -288,6 +290,7 @@ static ssize_t safesetid_uid_file_read(struct file *file, char __user *buf,
 	return safesetid_file_read(file, buf, len, ppos,
 				   &uid_policy_update_lock, safesetid_setuid_rules);
 }
+FOPS_READ_ITER_HELPER(safesetid_uid_file_read);
 
 static ssize_t safesetid_gid_file_read(struct file *file, char __user *buf,
 				   size_t len, loff_t *ppos)
@@ -295,17 +298,16 @@ static ssize_t safesetid_gid_file_read(struct file *file, char __user *buf,
 	return safesetid_file_read(file, buf, len, ppos,
 				   &gid_policy_update_lock, safesetid_setgid_rules);
 }
-
-
+FOPS_READ_ITER_HELPER(safesetid_gid_file_read);
 
 static const struct file_operations safesetid_uid_file_fops = {
-	.read = safesetid_uid_file_read,
-	.write = safesetid_uid_file_write,
+	.read_iter = safesetid_uid_file_read_iter,
+	.write_iter = safesetid_uid_file_write_iter,
 };
 
 static const struct file_operations safesetid_gid_file_fops = {
-	.read = safesetid_gid_file_read,
-	.write = safesetid_gid_file_write,
+	.read_iter = safesetid_gid_file_read_iter,
+	.write_iter = safesetid_gid_file_write_iter,
 };
 
 int __init safesetid_init_securityfs(void)
