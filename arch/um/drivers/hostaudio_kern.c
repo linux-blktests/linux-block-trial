@@ -69,10 +69,10 @@ static DEFINE_MUTEX(hostaudio_mutex);
 
 /* /dev/dsp file operations */
 
-static ssize_t hostaudio_read(struct file *file, char __user *buffer,
-			      size_t count, loff_t *ppos)
+static ssize_t hostaudio_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hostaudio_state *state = file->private_data;
+	struct hostaudio_state *state = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	void *kbuf;
 	int err;
 
@@ -88,7 +88,7 @@ static ssize_t hostaudio_read(struct file *file, char __user *buffer,
 	if (err < 0)
 		goto out;
 
-	if (copy_to_user(buffer, kbuf, err))
+	if (!copy_to_iter_full(kbuf, err, to))
 		err = -EFAULT;
 
 out:
@@ -96,10 +96,10 @@ out:
 	return err;
 }
 
-static ssize_t hostaudio_write(struct file *file, const char __user *buffer,
-			       size_t count, loff_t *ppos)
+static ssize_t hostaudio_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hostaudio_state *state = file->private_data;
+	struct hostaudio_state *state = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	void *kbuf;
 	int err;
 
@@ -107,14 +107,14 @@ static ssize_t hostaudio_write(struct file *file, const char __user *buffer,
 	printk(KERN_DEBUG "hostaudio: write called, count = %d\n", count);
 #endif
 
-	kbuf = memdup_user(buffer, count);
+	kbuf = iterdup(from, count);
 	if (IS_ERR(kbuf))
 		return PTR_ERR(kbuf);
 
 	err = os_write_file(state->fd, kbuf, count);
 	if (err < 0)
 		goto out;
-	*ppos += err;
+	iocb->ki_pos += err;
 
  out:
 	kfree(kbuf);
@@ -293,8 +293,8 @@ static int hostmixer_release(struct inode *inode, struct file *file)
 
 static const struct file_operations hostaudio_fops = {
 	.owner          = THIS_MODULE,
-	.read           = hostaudio_read,
-	.write          = hostaudio_write,
+	.read_iter      = hostaudio_read,
+	.write_iter     = hostaudio_write,
 	.poll           = hostaudio_poll,
 	.unlocked_ioctl	= hostaudio_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
