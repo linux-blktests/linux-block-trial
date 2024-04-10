@@ -18,10 +18,11 @@ static ssize_t pm_status_read(struct file *f, char __user *buf, size_t count,
 
 	return count;
 }
+FOPS_READ_ITER_HELPER(pm_status_read);
 
 static const struct file_operations pm_status_fops = {
 	.owner = THIS_MODULE,
-	.read = pm_status_read,
+	.read_iter = pm_status_read_iter,
 };
 
 void adf_pm_dbgfs_add(struct adf_accel_dev *accel_dev)

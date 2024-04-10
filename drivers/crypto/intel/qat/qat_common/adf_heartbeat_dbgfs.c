@@ -19,30 +19,28 @@
 #define HB_STATUS_MAX_STRLEN 4
 #define HB_STATS_MAX_STRLEN 16
 
-static ssize_t adf_hb_stats_read(struct file *file, char __user *user_buffer,
-				 size_t count, loff_t *ppos)
+static ssize_t adf_hb_stats_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[HB_STATS_MAX_STRLEN];
 	unsigned int *value;
 	int len;
 
-	if (*ppos > 0)
+	if (iocb->ki_pos > 0)
 		return 0;
 
-	value = file->private_data;
+	value = iocb->ki_filp->private_data;
 	len = scnprintf(buf, sizeof(buf), "%u\n", *value);
 
-	return simple_read_from_buffer(user_buffer, count, ppos, buf, len + 1);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len + 1, to);
 }
 
 static const struct file_operations adf_hb_stats_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = adf_hb_stats_read,
+	.read_iter = adf_hb_stats_read,
 };
 
-static ssize_t adf_hb_status_read(struct file *file, char __user *user_buf,
-				  size_t count, loff_t *ppos)
+static ssize_t adf_hb_status_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	enum adf_device_heartbeat_status hb_status;
 	char ret_str[HB_STATUS_MAX_STRLEN];
@@ -50,10 +48,10 @@ static ssize_t adf_hb_status_read(struct file *file, char __user *user_buf,
 	int ret_code;
 	size_t len;
 
-	if (*ppos > 0)
+	if (iocb->ki_pos > 0)
 		return 0;
 
-	accel_dev = file->private_data;
+	accel_dev = iocb->ki_filp->private_data;
 	ret_code = HB_OK;
 
 	adf_heartbeat_status(accel_dev, &hb_status);
@@ -63,52 +61,50 @@ static ssize_t adf_hb_status_read(struct file *file, char __user *user_buf,
 
 	len = scnprintf(ret_str, sizeof(ret_str), "%d\n", ret_code);
 
-	return simple_read_from_buffer(user_buf, count, ppos, ret_str, len + 1);
+	return simple_copy_to_iter(ret_str, &iocb->ki_pos, len + 1, to);
 }
 
 static const struct file_operations adf_hb_status_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = adf_hb_status_read,
+	.read_iter = adf_hb_status_read,
 };
 
-static ssize_t adf_hb_cfg_read(struct file *file, char __user *user_buf,
-			       size_t count, loff_t *ppos)
+static ssize_t adf_hb_cfg_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char timer_str[ADF_CFG_MAX_VAL_LEN_IN_BYTES];
 	struct adf_accel_dev *accel_dev;
 	unsigned int timer_ms;
 	int len;
 
-	if (*ppos > 0)
+	if (iocb->ki_pos > 0)
 		return 0;
 
-	accel_dev = file->private_data;
+	accel_dev = iocb->ki_filp->private_data;
 	timer_ms = accel_dev->heartbeat->hb_timer;
 	len = scnprintf(timer_str, sizeof(timer_str), "%u\n", timer_ms);
 
-	return simple_read_from_buffer(user_buf, count, ppos, timer_str,
-				       len + 1);
+	return simple_copy_to_iter(timer_str, &iocb->ki_pos, len + 1, to);
 }
 
-static ssize_t adf_hb_cfg_write(struct file *file, const char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t adf_hb_cfg_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char input_str[ADF_CFG_MAX_VAL_LEN_IN_BYTES] = { };
+	size_t count = iov_iter_count(from);
 	struct adf_accel_dev *accel_dev;
 	int ret, written_chars;
 	unsigned int timer_ms;
 	u32 ticks;
 
-	accel_dev = file->private_data;
+	accel_dev = iocb->ki_filp->private_data;
 	timer_ms = ADF_CFG_HB_TIMER_DEFAULT_MS;
 
 	/* last byte left as string termination */
 	if (count > sizeof(input_str) - 1)
 		return -EINVAL;
 
-	written_chars = simple_write_to_buffer(input_str, sizeof(input_str) - 1,
-					       ppos, user_buf, count);
+	written_chars = simple_copy_from_iter(input_str, &iocb->ki_pos,
+						sizeof(input_str) - 1, from);
 	if (written_chars > 0) {
 		ret = kstrtouint(input_str, 10, &timer_ms);
 		if (ret) {
@@ -151,23 +147,23 @@ static ssize_t adf_hb_cfg_write(struct file *file, const char __user *user_buf,
 static const struct file_operations adf_hb_cfg_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = adf_hb_cfg_read,
-	.write = adf_hb_cfg_write,
+	.read_iter = adf_hb_cfg_read,
+	.write_iter = adf_hb_cfg_write,
 };
 
-static ssize_t adf_hb_error_inject_write(struct file *file,
-					 const char __user *user_buf,
-					 size_t count, loff_t *ppos)
+static ssize_t adf_hb_error_inject_write(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct adf_accel_dev *accel_dev = file->private_data;
+	struct adf_accel_dev *accel_dev = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char buf[3];
 	int ret;
 
 	/* last byte left as string termination */
-	if (*ppos != 0 || count != 2)
+	if (iocb->ki_pos != 0 || count != 2)
 		return -EINVAL;
 
-	if (copy_from_user(buf, user_buf, count))
+	if (!copy_from_iter_full(buf, count, from))
 		return -EFAULT;
 	buf[count] = '\0';
 
@@ -190,7 +186,7 @@ static ssize_t adf_hb_error_inject_write(struct file *file,
 static const struct file_operations adf_hb_error_inject_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.write = adf_hb_error_inject_write,
+	.write_iter = adf_hb_error_inject_write,
 };
 
 void adf_heartbeat_dbgfs_add(struct adf_accel_dev *accel_dev)

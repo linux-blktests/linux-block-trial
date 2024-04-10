@@ -224,7 +224,7 @@ static int qat_fw_counters_file_release(struct inode *inode, struct file *file)
 static const struct file_operations qat_fw_counters_fops = {
 	.owner = THIS_MODULE,
 	.open = qat_fw_counters_file_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = qat_fw_counters_file_release,
 };

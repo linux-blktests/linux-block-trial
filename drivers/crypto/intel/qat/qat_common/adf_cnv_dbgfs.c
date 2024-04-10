@@ -255,23 +255,21 @@ static int qat_cnv_errors_file_release(struct inode *inode, struct file *file)
 static const struct file_operations qat_cnv_fops = {
 	.owner = THIS_MODULE,
 	.open = qat_cnv_errors_file_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = qat_cnv_errors_file_release,
 };
 
-static ssize_t no_comp_file_read(struct file *f, char __user *buf, size_t count,
-				 loff_t *pos)
+static ssize_t no_comp_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *file_msg = "No engine configured for comp\n";
 
-	return simple_read_from_buffer(buf, count, pos, file_msg,
-				       strlen(file_msg));
+	return simple_copy_to_iter(file_msg, &iocb->ki_pos, strlen(file_msg), to);
 }
 
 static const struct file_operations qat_cnv_no_comp_fops = {
 	.owner = THIS_MODULE,
-	.read = no_comp_file_read,
+	.read_iter = no_comp_file_read,
 };
 
 void adf_cnv_dbgfs_add(struct adf_accel_dev *accel_dev)
