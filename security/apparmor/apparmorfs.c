@@ -534,9 +534,10 @@ static ssize_t profile_load(struct file *f, const char __user *buf, size_t size,
 
 	return error;
 }
+FOPS_WRITE_ITER_HELPER(profile_load);
 
 static const struct file_operations aa_fs_profile_load = {
-	.write = profile_load,
+	.write_iter = profile_load_iter,
 	.llseek = default_llseek,
 };
 
@@ -551,9 +552,10 @@ static ssize_t profile_replace(struct file *f, const char __user *buf,
 
 	return error;
 }
+FOPS_WRITE_ITER_HELPER(profile_replace);
 
 static const struct file_operations aa_fs_profile_replace = {
-	.write = profile_replace,
+	.write_iter = profile_replace_iter,
 	.llseek = default_llseek,
 };
 
@@ -592,9 +594,10 @@ static ssize_t profile_remove(struct file *f, const char __user *buf,
 	aa_put_ns(ns);
 	return error;
 }
+FOPS_WRITE_ITER_HELPER(profile_remove);
 
 static const struct file_operations aa_fs_profile_remove = {
-	.write = profile_remove,
+	.write_iter = profile_remove_iter,
 	.llseek = default_llseek,
 };
 
@@ -616,10 +619,11 @@ static int ns_revision_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t ns_revision_read(struct file *file, char __user *buf,
-				size_t size, loff_t *ppos)
+static ssize_t ns_revision_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	struct file *file = iocb->ki_filp;
 	struct aa_revision *rev = file->private_data;
+	size_t size = iov_iter_count(to);
 	char buffer[32];
 	long last_read;
 	int avail;
@@ -638,13 +642,13 @@ static ssize_t ns_revision_read(struct file *file, char __user *buf,
 	}
 
 	avail = sprintf(buffer, "%ld\n", rev->ns->revision);
-	if (*ppos + size > avail) {
+	if (iocb->ki_pos + size > avail) {
 		rev->last_read = rev->ns->revision;
-		*ppos = 0;
+		iocb->ki_pos = 0;
 	}
 	mutex_unlock(&rev->ns->lock);
 
-	return simple_read_from_buffer(buf, size, ppos, buffer, avail);
+	return simple_copy_to_iter(buffer, &iocb->ki_pos, avail, to);
 }
 
 static int ns_revision_open(struct inode *inode, struct file *file)
@@ -688,7 +692,7 @@ static const struct file_operations aa_fs_ns_revision_fops = {
 	.owner		= THIS_MODULE,
 	.open		= ns_revision_open,
 	.poll		= ns_revision_poll,
-	.read		= ns_revision_read,
+	.read_iter	= ns_revision_read,
 	.llseek		= generic_file_llseek,
 	.release	= ns_revision_release,
 };
@@ -970,9 +974,9 @@ static struct multi_transaction *multi_transaction_new(struct file *file,
 	return t;
 }
 
-static ssize_t multi_transaction_read(struct file *file, char __user *buf,
-				       size_t size, loff_t *pos)
+static ssize_t multi_transaction_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	struct file *file = iocb->ki_filp;
 	struct multi_transaction *t;
 	ssize_t ret;
 
@@ -983,7 +987,7 @@ static ssize_t multi_transaction_read(struct file *file, char __user *buf,
 	if (!t)
 		return 0;
 
-	ret = simple_read_from_buffer(buf, size, pos, t->data, t->size);
+	ret = simple_copy_to_iter(t->data, &iocb->ki_pos, t->size, to);
 	put_multi_transaction(t);
 
 	return ret;
@@ -1072,10 +1076,11 @@ static ssize_t aa_write_access(struct file *file, const char __user *ubuf,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(aa_write_access);
 
 static const struct file_operations aa_sfs_access = {
-	.write		= aa_write_access,
-	.read		= multi_transaction_read,
+	.write_iter	= aa_write_access_iter,
+	.read_iter	= multi_transaction_read,
 	.release	= multi_transaction_release,
 	.llseek		= generic_file_llseek,
 };
@@ -1113,7 +1118,7 @@ static int aa_sfs_seq_open(struct inode *inode, struct file *file)
 const struct file_operations aa_sfs_seq_file_ops = {
 	.owner		= THIS_MODULE,
 	.open		= aa_sfs_seq_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
@@ -1132,7 +1137,7 @@ static int seq_profile_ ##NAME ##_open(struct inode *inode, struct file *file)\
 static const struct file_operations seq_profile_ ##NAME ##_fops = {	      \
 	.owner		= THIS_MODULE,					      \
 	.open		= seq_profile_ ##NAME ##_open,			      \
-	.read		= seq_read,					      \
+	.read_iter	= seq_read_iter,				      \
 	.llseek		= seq_lseek,					      \
 	.release	= seq_profile_release,				      \
 }									      \
@@ -1234,7 +1239,7 @@ static int seq_ns_ ##NAME ##_open(struct inode *inode, struct file *file)     \
 static const struct file_operations seq_ns_ ##NAME ##_fops = {	      \
 	.owner		= THIS_MODULE,					      \
 	.open		= seq_ns_ ##NAME ##_open,			      \
-	.read		= seq_read,					      \
+	.read_iter	= seq_read_iter,				      \
 	.llseek		= seq_lseek,					      \
 	.release	= single_release,				      \
 }									      \
@@ -1324,7 +1329,7 @@ static int seq_rawdata_ ##NAME ##_open(struct inode *inode, struct file *file)\
 static const struct file_operations seq_rawdata_ ##NAME ##_fops = {	      \
 	.owner		= THIS_MODULE,					      \
 	.open		= seq_rawdata_ ##NAME ##_open,			      \
-	.read		= seq_read,					      \
+	.read_iter	= seq_read_iter,				      \
 	.llseek		= seq_lseek,					      \
 	.release	= seq_rawdata_release,				      \
 }									      \
@@ -1439,14 +1444,12 @@ cleanup:
 	return 0;
 }
 
-static ssize_t rawdata_read(struct file *file, char __user *buf, size_t size,
-			    loff_t *ppos)
+static ssize_t rawdata_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct rawdata_f_data *private = file->private_data;
+	struct rawdata_f_data *private = iocb->ki_filp->private_data;
 
-	return simple_read_from_buffer(buf, size, ppos,
-				       RAWDATA_F_DATA_BUF(private),
-				       private->loaddata->size);
+	return simple_copy_to_iter(RAWDATA_F_DATA_BUF(private), &iocb->ki_pos,
+				       private->loaddata->size, to);
 }
 
 static int rawdata_release(struct inode *inode, struct file *file)
@@ -1497,7 +1500,7 @@ fail_private_alloc:
 
 static const struct file_operations rawdata_fops = {
 	.open = rawdata_open,
-	.read = rawdata_read,
+	.read_iter = rawdata_read,
 	.llseek = generic_file_llseek,
 	.release = rawdata_release,
 };
@@ -2371,7 +2374,7 @@ static int profiles_release(struct inode *inode, struct file *file)
 
 static const struct file_operations aa_sfs_profiles_fops = {
 	.open = profiles_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = profiles_release,
 };
