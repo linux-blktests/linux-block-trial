@@ -21,6 +21,8 @@
 #include <net/cipso_ipv4.h>
 #include <linux/seq_file.h>
 #include <linux/ctype.h>
+#include <linux/uio.h>
+#include <linux/kstrtox.h>
 #include <linux/audit.h>
 #include <linux/magic.h>
 #include <linux/mount.h>
@@ -442,13 +444,12 @@ static ssize_t smk_parse_long_rule(char *data, struct smack_parsed_rule *rule,
  *	"subject<whitespace>object<whitespace>
  *	 acc_enable<whitespace>acc_disable[<whitespace>...]"
  */
-static ssize_t smk_write_rules_list(struct file *file, const char __user *buf,
+static ssize_t smk_write_rules_list(struct file *file, char *data,
 					size_t count, loff_t *ppos,
 					struct list_head *rule_list,
 					struct mutex *rule_lock, int format)
 {
 	struct smack_parsed_rule rule;
-	char *data;
 	int rc;
 	int trunc = 0;
 	int tokens;
@@ -474,10 +475,6 @@ static ssize_t smk_write_rules_list(struct file *file, const char __user *buf,
 		}
 	}
 
-	data = memdup_user_nul(buf, count);
-	if (IS_ERR(data))
-		return PTR_ERR(data);
-
 	/*
 	 * In case of parsing only part of user buf,
 	 * avoid having partial rule at the data buffer
@@ -485,10 +482,8 @@ static ssize_t smk_write_rules_list(struct file *file, const char __user *buf,
 	if (trunc) {
 		while (count > 0 && (data[count - 1] != '\n'))
 			--count;
-		if (count == 0) {
-			rc = -EINVAL;
-			goto out;
-		}
+		if (count == 0)
+			return -EINVAL;
 	}
 
 	data[count] = '\0';
@@ -497,16 +492,14 @@ static ssize_t smk_write_rules_list(struct file *file, const char __user *buf,
 		if (format == SMK_FIXED24_FMT) {
 			rc = smk_parse_rule(data, &rule, 1);
 			if (rc < 0)
-				goto out;
+				return rc;
 			cnt = count;
 		} else {
 			rc = smk_parse_long_rule(data + cnt, &rule, 1, tokens);
 			if (rc < 0)
-				goto out;
-			if (rc == 0) {
-				rc = -EINVAL;
-				goto out;
-			}
+				return rc;
+			if (rc == 0)
+				return -EINVAL;
 			cnt += rc;
 		}
 
@@ -517,13 +510,10 @@ static ssize_t smk_write_rules_list(struct file *file, const char __user *buf,
 			rc = smk_set_access(&rule, rule_list, rule_lock);
 
 		if (rc)
-			goto out;
+			return rc;
 	}
 
-	rc = cnt;
-out:
-	kfree(data);
-	return rc;
+	return cnt;
 }
 
 /*
@@ -634,15 +624,16 @@ static int smk_open_load(struct inode *inode, struct file *file)
 
 /**
  * smk_write_load - write() for /smack/load
- * @file: file pointer, not actually used
- * @buf: where to get the data from
- * @count: bytes sent
- * @ppos: where to start - must be 0
+ * @iocb: the kiocb for the I/O
+ * @from: where to get the data from
  *
  */
-static ssize_t smk_write_load(struct file *file, const char __user *buf,
-			      size_t count, loff_t *ppos)
+static ssize_t smk_write_load(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
+	char *data;
+	ssize_t rc;
+
 	/*
 	 * Must have privilege.
 	 * No partial writes.
@@ -651,15 +642,21 @@ static ssize_t smk_write_load(struct file *file, const char __user *buf,
 	if (!smack_privileged(CAP_MAC_ADMIN))
 		return -EPERM;
 
-	return smk_write_rules_list(file, buf, count, ppos, NULL, NULL,
-				    SMK_FIXED24_FMT);
+	data = iterdup_nul(from, count);
+	if (IS_ERR(data))
+		return PTR_ERR(data);
+
+	rc = smk_write_rules_list(iocb->ki_filp, data, count, &iocb->ki_pos,
+				  NULL, NULL, SMK_FIXED24_FMT);
+	kfree(data);
+	return rc;
 }
 
 static const struct file_operations smk_load_ops = {
 	.open           = smk_open_load,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek         = seq_lseek,
-	.write		= smk_write_load,
+	.write_iter	= smk_write_load,
 	.release        = seq_release,
 };
 
@@ -829,7 +826,7 @@ static int smk_open_cipso(struct inode *inode, struct file *file)
  * Accepts only one cipso rule per write call.
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t smk_set_cipso(struct file *file, const char __user *buf,
+static ssize_t smk_set_cipso(struct file *file, char *data,
 				size_t count, loff_t *ppos, int format)
 {
 	struct netlbl_lsm_catmap *old_cat;
@@ -840,7 +837,6 @@ static ssize_t smk_set_cipso(struct file *file, const char __user *buf,
 	unsigned int cat;
 	int catlen;
 	ssize_t rc = -EINVAL;
-	char *data = NULL;
 	char *rule;
 	int ret;
 	int i;
@@ -859,10 +855,6 @@ static ssize_t smk_set_cipso(struct file *file, const char __user *buf,
 		return -EINVAL;
 	if (count > PAGE_SIZE)
 		return -EINVAL;
-
-	data = memdup_user_nul(buf, count);
-	if (IS_ERR(data))
-		return PTR_ERR(data);
 
 	rule = data;
 	/*
@@ -940,7 +932,6 @@ static ssize_t smk_set_cipso(struct file *file, const char __user *buf,
 
 out:
 	mutex_unlock(&smack_cipso_lock);
-	kfree(data);
 	return rc;
 }
 
@@ -954,17 +945,27 @@ out:
  * Accepts only one cipso rule per write call.
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t smk_write_cipso(struct file *file, const char __user *buf,
-			       size_t count, loff_t *ppos)
+static ssize_t smk_write_cipso(struct kiocb *iocb, struct iov_iter *from)
 {
-	return smk_set_cipso(file, buf, count, ppos, SMK_FIXED24_FMT);
+	size_t count = iov_iter_count(from);
+	char *data;
+	ssize_t rc;
+
+	data = iterdup_nul(from, count);
+	if (IS_ERR(data))
+		return PTR_ERR(data);
+
+	rc = smk_set_cipso(iocb->ki_filp, data, count, &iocb->ki_pos,
+			   SMK_FIXED24_FMT);
+	kfree(data);
+	return rc;
 }
 
 static const struct file_operations smk_cipso_ops = {
 	.open           = smk_open_cipso,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek         = seq_lseek,
-	.write		= smk_write_cipso,
+	.write_iter	= smk_write_cipso,
 	.release        = seq_release,
 };
 
@@ -1028,17 +1029,27 @@ static int smk_open_cipso2(struct inode *inode, struct file *file)
  * Accepts only one cipso rule per write call.
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t smk_write_cipso2(struct file *file, const char __user *buf,
-			      size_t count, loff_t *ppos)
+static ssize_t smk_write_cipso2(struct kiocb *iocb, struct iov_iter *from)
 {
-	return smk_set_cipso(file, buf, count, ppos, SMK_LONG_FMT);
+	size_t count = iov_iter_count(from);
+	char *data;
+	ssize_t rc;
+
+	data = iterdup_nul(from, count);
+	if (IS_ERR(data))
+		return PTR_ERR(data);
+
+	rc = smk_set_cipso(iocb->ki_filp, data, count, &iocb->ki_pos,
+			   SMK_LONG_FMT);
+	kfree(data);
+	return rc;
 }
 
 static const struct file_operations smk_cipso2_ops = {
 	.open           = smk_open_cipso2,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek         = seq_lseek,
-	.write		= smk_write_cipso2,
+	.write_iter	= smk_write_cipso2,
 	.release        = seq_release,
 };
 
@@ -1146,9 +1157,9 @@ static void smk_net4addr_insert(struct smk_net4addr *new)
  * Accepts only one net4addr per write call.
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t smk_write_net4addr(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t smk_write_net4addr(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct smk_net4addr *snp;
 	struct sockaddr_in newname;
 	char *smack;
@@ -1174,12 +1185,12 @@ static ssize_t smk_write_net4addr(struct file *file, const char __user *buf,
 	 */
 	if (!smack_privileged(CAP_MAC_ADMIN))
 		return -EPERM;
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return -EINVAL;
 	if (count < SMK_NETLBLADDRMIN || count > PAGE_SIZE - 1)
 		return -EINVAL;
 
-	data = memdup_user_nul(buf, count);
+	data = iterdup_nul(from, count);
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
@@ -1299,9 +1310,9 @@ free_data_out:
 
 static const struct file_operations smk_net4addr_ops = {
 	.open           = smk_open_net4addr,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek         = seq_lseek,
-	.write		= smk_write_net4addr,
+	.write_iter	= smk_write_net4addr,
 	.release        = seq_release,
 };
 
@@ -1407,9 +1418,9 @@ static void smk_net6addr_insert(struct smk_net6addr *new)
  * Accepts only one net6addr per write call.
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t smk_write_net6addr(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t smk_write_net6addr(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct smk_net6addr *snp;
 	struct in6_addr newname;
 	struct in6_addr fullmask;
@@ -1432,12 +1443,12 @@ static ssize_t smk_write_net6addr(struct file *file, const char __user *buf,
 	 */
 	if (!smack_privileged(CAP_MAC_ADMIN))
 		return -EPERM;
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return -EINVAL;
 	if (count < SMK_NETLBLADDRMIN || count > PAGE_SIZE - 1)
 		return -EINVAL;
 
-	data = memdup_user_nul(buf, count);
+	data = iterdup_nul(from, count);
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
@@ -1555,64 +1566,53 @@ free_data_out:
 
 static const struct file_operations smk_net6addr_ops = {
 	.open           = smk_open_net6addr,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek         = seq_lseek,
-	.write		= smk_write_net6addr,
+	.write_iter	= smk_write_net6addr,
 	.release        = seq_release,
 };
 #endif /* CONFIG_IPV6 */
 
 /**
  * smk_read_doi - read() for /smack/doi
- * @filp: file pointer, not actually used
- * @buf: where to put the result
- * @count: maximum to send along
- * @ppos: where to start
+ * @iocb: the kiocb for the I/O
+ * @to: where to put the result
  *
  * Returns number of bytes read or error code, as appropriate
  */
-static ssize_t smk_read_doi(struct file *filp, char __user *buf,
-			    size_t count, loff_t *ppos)
+static ssize_t smk_read_doi(struct kiocb *iocb, struct iov_iter *to)
 {
 	char temp[80];
 	ssize_t rc;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	sprintf(temp, "%lu", (unsigned long)smk_cipso_doi_value);
-	rc = simple_read_from_buffer(buf, count, ppos, temp, strlen(temp));
+	rc = simple_copy_to_iter(temp, &iocb->ki_pos, strlen(temp), to);
 
 	return rc;
 }
 
 /**
  * smk_write_doi - write() for /smack/doi
- * @file: file pointer, not actually used
- * @buf: where to get the data from
- * @count: bytes sent
- * @ppos: where to start
+ * @iocb: the kiocb for the I/O
+ * @from: where to get the data from
  *
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t smk_write_doi(struct file *file, const char __user *buf,
-			     size_t count, loff_t *ppos)
+static ssize_t smk_write_doi(struct kiocb *iocb, struct iov_iter *from)
 {
-	char temp[80];
+	size_t count = iov_iter_count(from);
 	unsigned long u;
 
 	if (!smack_privileged(CAP_MAC_ADMIN))
 		return -EPERM;
 
-	if (count >= sizeof(temp) || count == 0)
+	if (count >= 80 || count == 0)
 		return -EINVAL;
 
-	if (copy_from_user(temp, buf, count) != 0)
-		return -EFAULT;
-
-	temp[count] = '\0';
-
-	if (kstrtoul(temp, 10, &u))
+	if (kstrtoul_from_iter(from, count, 10, &u))
 		return -EINVAL;
 
 	if (u == CIPSO_V4_DOI_UNKNOWN || u > U32_MAX)
@@ -1622,63 +1622,52 @@ static ssize_t smk_write_doi(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations smk_doi_ops = {
-	.read		= smk_read_doi,
-	.write		= smk_write_doi,
+	.read_iter	= smk_read_doi,
+	.write_iter	= smk_write_doi,
 	.llseek		= default_llseek,
 };
 
 /**
  * smk_read_direct - read() for /smack/direct
- * @filp: file pointer, not actually used
- * @buf: where to put the result
- * @count: maximum to send along
- * @ppos: where to start
+ * @iocb: the kiocb for the I/O
+ * @to: where to put the result
  *
  * Returns number of bytes read or error code, as appropriate
  */
-static ssize_t smk_read_direct(struct file *filp, char __user *buf,
-			       size_t count, loff_t *ppos)
+static ssize_t smk_read_direct(struct kiocb *iocb, struct iov_iter *to)
 {
 	char temp[80];
 	ssize_t rc;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	sprintf(temp, "%d", smack_cipso_direct);
-	rc = simple_read_from_buffer(buf, count, ppos, temp, strlen(temp));
+	rc = simple_copy_to_iter(temp, &iocb->ki_pos, strlen(temp), to);
 
 	return rc;
 }
 
 /**
  * smk_write_direct - write() for /smack/direct
- * @file: file pointer, not actually used
- * @buf: where to get the data from
- * @count: bytes sent
- * @ppos: where to start
+ * @iocb: the kiocb for the I/O
+ * @from: where to get the data from
  *
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t smk_write_direct(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t smk_write_direct(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct smack_known *skp;
-	char temp[80];
+	size_t count = iov_iter_count(from);
 	int i;
 
 	if (!smack_privileged(CAP_MAC_ADMIN))
 		return -EPERM;
 
-	if (count >= sizeof(temp) || count == 0)
+	if (count >= 80 || count == 0)
 		return -EINVAL;
 
-	if (copy_from_user(temp, buf, count) != 0)
-		return -EFAULT;
-
-	temp[count] = '\0';
-
-	if (sscanf(temp, "%d", &i) != 1)
+	if (kstrtoint_from_iter(from, count, 10, &i))
 		return -EINVAL;
 
 	/*
@@ -1700,63 +1689,52 @@ static ssize_t smk_write_direct(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations smk_direct_ops = {
-	.read		= smk_read_direct,
-	.write		= smk_write_direct,
+	.read_iter	= smk_read_direct,
+	.write_iter	= smk_write_direct,
 	.llseek		= default_llseek,
 };
 
 /**
  * smk_read_mapped - read() for /smack/mapped
- * @filp: file pointer, not actually used
- * @buf: where to put the result
- * @count: maximum to send along
- * @ppos: where to start
+ * @iocb: the kiocb for the I/O
+ * @to: where to put the result
  *
  * Returns number of bytes read or error code, as appropriate
  */
-static ssize_t smk_read_mapped(struct file *filp, char __user *buf,
-			       size_t count, loff_t *ppos)
+static ssize_t smk_read_mapped(struct kiocb *iocb, struct iov_iter *to)
 {
 	char temp[80];
 	ssize_t rc;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	sprintf(temp, "%d", smack_cipso_mapped);
-	rc = simple_read_from_buffer(buf, count, ppos, temp, strlen(temp));
+	rc = simple_copy_to_iter(temp, &iocb->ki_pos, strlen(temp), to);
 
 	return rc;
 }
 
 /**
  * smk_write_mapped - write() for /smack/mapped
- * @file: file pointer, not actually used
- * @buf: where to get the data from
- * @count: bytes sent
- * @ppos: where to start
+ * @iocb: the kiocb for the I/O
+ * @from: where to get the data from
  *
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t smk_write_mapped(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t smk_write_mapped(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct smack_known *skp;
-	char temp[80];
+	size_t count = iov_iter_count(from);
 	int i;
 
 	if (!smack_privileged(CAP_MAC_ADMIN))
 		return -EPERM;
 
-	if (count >= sizeof(temp) || count == 0)
+	if (count >= 80 || count == 0)
 		return -EINVAL;
 
-	if (copy_from_user(temp, buf, count) != 0)
-		return -EFAULT;
-
-	temp[count] = '\0';
-
-	if (sscanf(temp, "%d", &i) != 1)
+	if (kstrtoint_from_iter(from, count, 10, &i))
 		return -EINVAL;
 
 	/*
@@ -1778,27 +1756,25 @@ static ssize_t smk_write_mapped(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations smk_mapped_ops = {
-	.read		= smk_read_mapped,
-	.write		= smk_write_mapped,
+	.read_iter	= smk_read_mapped,
+	.write_iter	= smk_write_mapped,
 	.llseek		= default_llseek,
 };
 
 /**
  * smk_read_ambient - read() for /smack/ambient
- * @filp: file pointer, not actually used
- * @buf: where to put the result
- * @cn: maximum to send along
- * @ppos: where to start
+ * @iocb: the kiocb for the I/O
+ * @to: where to put the result
  *
  * Returns number of bytes read or error code, as appropriate
  */
-static ssize_t smk_read_ambient(struct file *filp, char __user *buf,
-				size_t cn, loff_t *ppos)
+static ssize_t smk_read_ambient(struct kiocb *iocb, struct iov_iter *to)
 {
 	ssize_t rc;
 	int asize;
+	size_t cn = iov_iter_count(to);
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 	/*
 	 * Being careful to avoid a problem in the case where
@@ -1809,9 +1785,9 @@ static ssize_t smk_read_ambient(struct file *filp, char __user *buf,
 	asize = strlen(smack_net_ambient->smk_known) + 1;
 
 	if (cn >= asize)
-		rc = simple_read_from_buffer(buf, cn, ppos,
-					     smack_net_ambient->smk_known,
-					     asize);
+		rc = simple_copy_to_iter(smack_net_ambient->smk_known,
+					     &iocb->ki_pos,
+					     asize, to);
 	else
 		rc = -EINVAL;
 
@@ -1829,9 +1805,9 @@ static ssize_t smk_read_ambient(struct file *filp, char __user *buf,
  *
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t smk_write_ambient(struct file *file, const char __user *buf,
-				 size_t count, loff_t *ppos)
+static ssize_t smk_write_ambient(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct smack_known *skp;
 	char *oldambient;
 	char *data;
@@ -1844,7 +1820,7 @@ static ssize_t smk_write_ambient(struct file *file, const char __user *buf,
 	if (count == 0 || count > PAGE_SIZE)
 		return -EINVAL;
 
-	data = memdup_user_nul(buf, count);
+	data = iterdup_nul(from, count);
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
@@ -1868,8 +1844,8 @@ out:
 }
 
 static const struct file_operations smk_ambient_ops = {
-	.read		= smk_read_ambient,
-	.write		= smk_write_ambient,
+	.read_iter	= smk_read_ambient,
+	.write_iter	= smk_write_ambient,
 	.llseek		= default_llseek,
 };
 
@@ -2005,9 +1981,9 @@ void smk_destroy_label_list(struct list_head *list)
  *
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t smk_write_onlycap(struct file *file, const char __user *buf,
-				 size_t count, loff_t *ppos)
+static ssize_t smk_write_onlycap(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char *data;
 	LIST_HEAD(list_tmp);
 	int rc;
@@ -2018,7 +1994,7 @@ static ssize_t smk_write_onlycap(struct file *file, const char __user *buf,
 	if (count > PAGE_SIZE)
 		return -EINVAL;
 
-	data = memdup_user_nul(buf, count);
+	data = iterdup_nul(from, count);
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
@@ -2049,8 +2025,8 @@ static ssize_t smk_write_onlycap(struct file *file, const char __user *buf,
 
 static const struct file_operations smk_onlycap_ops = {
 	.open		= smk_open_onlycap,
-	.read		= seq_read,
-	.write		= smk_write_onlycap,
+	.read_iter	= seq_read_iter,
+	.write_iter	= smk_write_onlycap,
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
@@ -2058,21 +2034,19 @@ static const struct file_operations smk_onlycap_ops = {
 #ifdef CONFIG_SECURITY_SMACK_BRINGUP
 /**
  * smk_read_unconfined - read() for smackfs/unconfined
- * @filp: file pointer, not actually used
- * @buf: where to put the result
- * @cn: maximum to send along
- * @ppos: where to start
+ * @iocb: the kiocb for the I/O
+ * @to: where to put the result
  *
  * Returns number of bytes read or error code, as appropriate
  */
-static ssize_t smk_read_unconfined(struct file *filp, char __user *buf,
-					size_t cn, loff_t *ppos)
+static ssize_t smk_read_unconfined(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *smack = "";
 	ssize_t rc = -EINVAL;
 	int asize;
+	size_t cn = iov_iter_count(to);
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	if (smack_unconfined != NULL)
@@ -2081,7 +2055,7 @@ static ssize_t smk_read_unconfined(struct file *filp, char __user *buf,
 	asize = strlen(smack) + 1;
 
 	if (cn >= asize)
-		rc = simple_read_from_buffer(buf, cn, ppos, smack, asize);
+		rc = simple_copy_to_iter(smack, &iocb->ki_pos, asize, to);
 
 	return rc;
 }
@@ -2095,9 +2069,9 @@ static ssize_t smk_read_unconfined(struct file *filp, char __user *buf,
  *
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t smk_write_unconfined(struct file *file, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t smk_write_unconfined(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char *data;
 	struct smack_known *skp;
 	int rc = count;
@@ -2108,7 +2082,7 @@ static ssize_t smk_write_unconfined(struct file *file, const char __user *buf,
 	if (count > PAGE_SIZE)
 		return -EINVAL;
 
-	data = memdup_user_nul(buf, count);
+	data = iterdup_nul(from, count);
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
@@ -2137,8 +2111,8 @@ freeout:
 }
 
 static const struct file_operations smk_unconfined_ops = {
-	.read		= smk_read_unconfined,
-	.write		= smk_write_unconfined,
+	.read_iter	= smk_read_unconfined,
+	.write_iter	= smk_write_unconfined,
 	.llseek		= default_llseek,
 };
 #endif /* CONFIG_SECURITY_SMACK_BRINGUP */
@@ -2146,54 +2120,43 @@ static const struct file_operations smk_unconfined_ops = {
 #ifdef CONFIG_AUDIT
 /**
  * smk_read_logging - read() for /smack/logging
- * @filp: file pointer, not actually used
- * @buf: where to put the result
- * @count: maximum to send along
- * @ppos: where to start
+ * @iocb: the kiocb for the I/O
+ * @to: where to put the result
  *
  * Returns number of bytes read or error code, as appropriate
  */
-static ssize_t smk_read_logging(struct file *filp, char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t smk_read_logging(struct kiocb *iocb, struct iov_iter *to)
 {
 	char temp[32];
 	ssize_t rc;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	sprintf(temp, "%d\n", log_policy);
-	rc = simple_read_from_buffer(buf, count, ppos, temp, strlen(temp));
+	rc = simple_copy_to_iter(temp, &iocb->ki_pos, strlen(temp), to);
 	return rc;
 }
 
 /**
  * smk_write_logging - write() for /smack/logging
- * @file: file pointer, not actually used
- * @buf: where to get the data from
- * @count: bytes sent
- * @ppos: where to start
+ * @iocb: the kiocb for the I/O
+ * @from: where to get the data from
  *
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t smk_write_logging(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t smk_write_logging(struct kiocb *iocb, struct iov_iter *from)
 {
-	char temp[32];
+	size_t count = iov_iter_count(from);
 	int i;
 
 	if (!smack_privileged(CAP_MAC_ADMIN))
 		return -EPERM;
 
-	if (count >= sizeof(temp) || count == 0)
+	if (count >= 32 || count == 0)
 		return -EINVAL;
 
-	if (copy_from_user(temp, buf, count) != 0)
-		return -EFAULT;
-
-	temp[count] = '\0';
-
-	if (sscanf(temp, "%d", &i) != 1)
+	if (kstrtoint_from_iter(from, count, 10, &i))
 		return -EINVAL;
 	if (i < 0 || i > 3)
 		return -EINVAL;
@@ -2204,8 +2167,8 @@ static ssize_t smk_write_logging(struct file *file, const char __user *buf,
 
 
 static const struct file_operations smk_logging_ops = {
-	.read		= smk_read_logging,
-	.write		= smk_write_logging,
+	.read_iter	= smk_read_logging,
+	.write_iter	= smk_write_logging,
 	.llseek		= default_llseek,
 };
 #endif /* CONFIG_AUDIT */
@@ -2267,20 +2230,28 @@ static int smk_open_load_self(struct inode *inode, struct file *file)
  * @ppos: where to start - must be 0
  *
  */
-static ssize_t smk_write_load_self(struct file *file, const char __user *buf,
-			      size_t count, loff_t *ppos)
+static ssize_t smk_write_load_self(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct task_smack *tsp = smack_cred(current_cred());
+	char *data;
+	ssize_t rc;
 
-	return smk_write_rules_list(file, buf, count, ppos, &tsp->smk_rules,
+	data = iterdup_nul(from, count);
+	if (IS_ERR(data))
+		return PTR_ERR(data);
+
+	rc = smk_write_rules_list(iocb->ki_filp, data, count, &iocb->ki_pos, &tsp->smk_rules,
 				    &tsp->smk_rules_lock, SMK_FIXED24_FMT);
+	kfree(data);
+	return rc;
 }
 
 static const struct file_operations smk_load_self_ops = {
 	.open           = smk_open_load_self,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek         = seq_lseek,
-	.write		= smk_write_load_self,
+	.write_iter	= smk_write_load_self,
 	.release        = seq_release,
 };
 
@@ -2345,10 +2316,11 @@ static ssize_t smk_write_access(struct file *file, const char __user *buf,
 {
 	return smk_user_access(file, buf, count, ppos, SMK_FIXED24_FMT);
 }
+FOPS_WRITE_ITER_HELPER(smk_write_access);
 
 static const struct file_operations smk_access_ops = {
-	.write		= smk_write_access,
-	.read		= simple_transaction_read,
+	.write_iter	= smk_write_access_iter,
+	.read_iter	= simple_transaction_read_iter,
 	.release	= simple_transaction_release,
 	.llseek		= generic_file_llseek,
 };
@@ -2398,24 +2370,33 @@ static int smk_open_load2(struct inode *inode, struct file *file)
  * @ppos: where to start - must be 0
  *
  */
-static ssize_t smk_write_load2(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t smk_write_load2(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
+	char *data;
+	ssize_t rc;
+
 	/*
 	 * Must have privilege.
 	 */
 	if (!smack_privileged(CAP_MAC_ADMIN))
 		return -EPERM;
 
-	return smk_write_rules_list(file, buf, count, ppos, NULL, NULL,
+	data = iterdup_nul(from, count);
+	if (IS_ERR(data))
+		return PTR_ERR(data);
+
+	rc = smk_write_rules_list(iocb->ki_filp, data, count, &iocb->ki_pos, NULL, NULL,
 				    SMK_LONG_FMT);
+	kfree(data);
+	return rc;
 }
 
 static const struct file_operations smk_load2_ops = {
 	.open           = smk_open_load2,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek         = seq_lseek,
-	.write		= smk_write_load2,
+	.write_iter	= smk_write_load2,
 	.release        = seq_release,
 };
 
@@ -2475,20 +2456,28 @@ static int smk_open_load_self2(struct inode *inode, struct file *file)
  * @ppos: where to start - must be 0
  *
  */
-static ssize_t smk_write_load_self2(struct file *file, const char __user *buf,
-			      size_t count, loff_t *ppos)
+static ssize_t smk_write_load_self2(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct task_smack *tsp = smack_cred(current_cred());
+	char *data;
+	ssize_t rc;
 
-	return smk_write_rules_list(file, buf, count, ppos, &tsp->smk_rules,
+	data = iterdup_nul(from, count);
+	if (IS_ERR(data))
+		return PTR_ERR(data);
+
+	rc = smk_write_rules_list(iocb->ki_filp, data, count, &iocb->ki_pos, &tsp->smk_rules,
 				    &tsp->smk_rules_lock, SMK_LONG_FMT);
+	kfree(data);
+	return rc;
 }
 
 static const struct file_operations smk_load_self2_ops = {
 	.open           = smk_open_load_self2,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek         = seq_lseek,
-	.write		= smk_write_load_self2,
+	.write_iter	= smk_write_load_self2,
 	.release        = seq_release,
 };
 
@@ -2504,10 +2493,11 @@ static ssize_t smk_write_access2(struct file *file, const char __user *buf,
 {
 	return smk_user_access(file, buf, count, ppos, SMK_LONG_FMT);
 }
+FOPS_WRITE_ITER_HELPER(smk_write_access2);
 
 static const struct file_operations smk_access2_ops = {
-	.write		= smk_write_access2,
-	.read		= simple_transaction_read,
+	.write_iter	= smk_write_access2_iter,
+	.read_iter	= simple_transaction_read_iter,
 	.release	= simple_transaction_release,
 	.llseek		= generic_file_llseek,
 };
@@ -2519,9 +2509,9 @@ static const struct file_operations smk_access2_ops = {
  * @count: bytes sent
  * @ppos: where to start - must be 0
  */
-static ssize_t smk_write_revoke_subj(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t smk_write_revoke_subj(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char *data;
 	const char *cp;
 	struct smack_known *skp;
@@ -2530,7 +2520,7 @@ static ssize_t smk_write_revoke_subj(struct file *file, const char __user *buf,
 	struct mutex *rule_lock;
 	int rc = count;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return -EINVAL;
 
 	if (!smack_privileged(CAP_MAC_ADMIN))
@@ -2539,7 +2529,7 @@ static ssize_t smk_write_revoke_subj(struct file *file, const char __user *buf,
 	if (count == 0 || count > SMK_LONGLABEL)
 		return -EINVAL;
 
-	data = memdup_user(buf, count);
+	data = iterdup(from, count);
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
@@ -2572,8 +2562,8 @@ out_data:
 }
 
 static const struct file_operations smk_revoke_subj_ops = {
-	.write		= smk_write_revoke_subj,
-	.read		= simple_transaction_read,
+	.write_iter	= smk_write_revoke_subj,
+	.read_iter	= simple_transaction_read_iter,
 	.release	= simple_transaction_release,
 	.llseek		= generic_file_llseek,
 };
@@ -2594,43 +2584,50 @@ static int smk_init_sysfs(void)
  * @count: bytes sent
  * @ppos: where to start - must be 0
  */
-static ssize_t smk_write_change_rule(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t smk_write_change_rule(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
+	char *data;
+	ssize_t rc;
+
 	/*
 	 * Must have privilege.
 	 */
 	if (!smack_privileged(CAP_MAC_ADMIN))
 		return -EPERM;
 
-	return smk_write_rules_list(file, buf, count, ppos, NULL, NULL,
+	data = iterdup_nul(from, count);
+	if (IS_ERR(data))
+		return PTR_ERR(data);
+
+	rc = smk_write_rules_list(iocb->ki_filp, data, count, &iocb->ki_pos, NULL, NULL,
 				    SMK_CHANGE_FMT);
+	kfree(data);
+	return rc;
 }
 
 static const struct file_operations smk_change_rule_ops = {
-	.write		= smk_write_change_rule,
-	.read		= simple_transaction_read,
+	.write_iter	= smk_write_change_rule,
+	.read_iter	= simple_transaction_read_iter,
 	.release	= simple_transaction_release,
 	.llseek		= generic_file_llseek,
 };
 
 /**
  * smk_read_syslog - read() for smackfs/syslog
- * @filp: file pointer, not actually used
- * @buf: where to put the result
- * @cn: maximum to send along
- * @ppos: where to start
+ * @iocb: the kiocb for the I/O
+ * @to: where to put the result
  *
  * Returns number of bytes read or error code, as appropriate
  */
-static ssize_t smk_read_syslog(struct file *filp, char __user *buf,
-				size_t cn, loff_t *ppos)
+static ssize_t smk_read_syslog(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct smack_known *skp;
 	ssize_t rc = -EINVAL;
 	int asize;
+	size_t cn = iov_iter_count(to);
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	if (smack_syslog_label == NULL)
@@ -2641,8 +2638,8 @@ static ssize_t smk_read_syslog(struct file *filp, char __user *buf,
 	asize = strlen(skp->smk_known) + 1;
 
 	if (cn >= asize)
-		rc = simple_read_from_buffer(buf, cn, ppos, skp->smk_known,
-						asize);
+		rc = simple_copy_to_iter(skp->smk_known,
+						&iocb->ki_pos, asize, to);
 
 	return rc;
 }
@@ -2656,9 +2653,9 @@ static ssize_t smk_read_syslog(struct file *filp, char __user *buf,
  *
  * Returns number of bytes written or error code, as appropriate
  */
-static ssize_t smk_write_syslog(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t smk_write_syslog(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char *data;
 	struct smack_known *skp;
 	int rc = count;
@@ -2670,7 +2667,7 @@ static ssize_t smk_write_syslog(struct file *file, const char __user *buf,
 	if (count == 0 || count > PAGE_SIZE)
 		return -EINVAL;
 
-	data = memdup_user_nul(buf, count);
+	data = iterdup_nul(from, count);
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
@@ -2685,8 +2682,8 @@ static ssize_t smk_write_syslog(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations smk_syslog_ops = {
-	.read		= smk_read_syslog,
-	.write		= smk_write_syslog,
+	.read_iter	= smk_read_syslog,
+	.write_iter	= smk_write_syslog,
 	.llseek		= default_llseek,
 };
 
@@ -2748,9 +2745,9 @@ static int smk_open_relabel_self(struct inode *inode, struct file *file)
  * @ppos: where to start - must be 0
  *
  */
-static ssize_t smk_write_relabel_self(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t smk_write_relabel_self(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char *data;
 	int rc;
 	LIST_HEAD(list_tmp);
@@ -2765,12 +2762,12 @@ static ssize_t smk_write_relabel_self(struct file *file, const char __user *buf,
 	 * No partial write.
 	 * Enough data must be present.
 	 */
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return -EINVAL;
 	if (count == 0 || count > PAGE_SIZE)
 		return -EINVAL;
 
-	data = memdup_user_nul(buf, count);
+	data = iterdup_nul(from, count);
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
@@ -2799,60 +2796,49 @@ out:
 
 static const struct file_operations smk_relabel_self_ops = {
 	.open		= smk_open_relabel_self,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
-	.write		= smk_write_relabel_self,
+	.write_iter	= smk_write_relabel_self,
 	.release	= seq_release,
 };
 
 /**
  * smk_read_ptrace - read() for /smack/ptrace
- * @filp: file pointer, not actually used
- * @buf: where to put the result
- * @count: maximum to send along
- * @ppos: where to start
+ * @iocb: the kiocb for the I/O
+ * @to: where to put the result
  *
  * Returns number of bytes read or error code, as appropriate
  */
-static ssize_t smk_read_ptrace(struct file *filp, char __user *buf,
-			       size_t count, loff_t *ppos)
+static ssize_t smk_read_ptrace(struct kiocb *iocb, struct iov_iter *to)
 {
 	char temp[32];
 	ssize_t rc;
 
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	sprintf(temp, "%d\n", smack_ptrace_rule);
-	rc = simple_read_from_buffer(buf, count, ppos, temp, strlen(temp));
+	rc = simple_copy_to_iter(temp, &iocb->ki_pos, strlen(temp), to);
 	return rc;
 }
 
 /**
  * smk_write_ptrace - write() for /smack/ptrace
- * @file: file pointer
- * @buf: data from user space
- * @count: bytes sent
- * @ppos: where to start - must be 0
+ * @iocb: the kiocb for the I/O
+ * @from: data from user space
  */
-static ssize_t smk_write_ptrace(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t smk_write_ptrace(struct kiocb *iocb, struct iov_iter *from)
 {
-	char temp[32];
+	size_t count = iov_iter_count(from);
 	int i;
 
 	if (!smack_privileged(CAP_MAC_ADMIN))
 		return -EPERM;
 
-	if (*ppos != 0 || count >= sizeof(temp) || count == 0)
+	if (iocb->ki_pos != 0 || count >= 32 || count == 0)
 		return -EINVAL;
 
-	if (copy_from_user(temp, buf, count) != 0)
-		return -EFAULT;
-
-	temp[count] = '\0';
-
-	if (sscanf(temp, "%d", &i) != 1)
+	if (kstrtoint_from_iter(from, count, 10, &i))
 		return -EINVAL;
 	if (i < SMACK_PTRACE_DEFAULT || i > SMACK_PTRACE_MAX)
 		return -EINVAL;
@@ -2862,8 +2848,8 @@ static ssize_t smk_write_ptrace(struct file *file, const char __user *buf,
 }
 
 static const struct file_operations smk_ptrace_ops = {
-	.write		= smk_write_ptrace,
-	.read		= smk_read_ptrace,
+	.write_iter	= smk_write_ptrace,
+	.read_iter	= smk_read_ptrace,
 	.llseek		= default_llseek,
 };
 
