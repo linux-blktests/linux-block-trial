@@ -2436,11 +2436,9 @@ static const char * const dapm_type_name[] = {
 	[snd_soc_dapm_decoder]          = "decoder",
 };
 
-static ssize_t dapm_widget_power_read_file(struct file *file,
-					   char __user *user_buf,
-					   size_t count, loff_t *ppos)
+static ssize_t dapm_widget_power_read_file(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snd_soc_dapm_widget *w = file->private_data;
+	struct snd_soc_dapm_widget *w = iocb->ki_filp->private_data;
 	enum snd_soc_dapm_direction dir, rdir;
 	char *buf;
 	int in, out;
@@ -2505,22 +2503,20 @@ static ssize_t dapm_widget_power_read_file(struct file *file,
 
 	snd_soc_dapm_mutex_unlock(w->dapm);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, ret);
-
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, ret, to);
 	kfree(buf);
 	return ret;
 }
 
 static const struct file_operations dapm_widget_power_fops = {
 	.open = simple_open,
-	.read = dapm_widget_power_read_file,
+	.read_iter = dapm_widget_power_read_file,
 	.llseek = default_llseek,
 };
 
-static ssize_t dapm_bias_read_file(struct file *file, char __user *user_buf,
-				   size_t count, loff_t *ppos)
+static ssize_t dapm_bias_read_file(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snd_soc_dapm_context *dapm = file->private_data;
+	struct snd_soc_dapm_context *dapm = iocb->ki_filp->private_data;
 	char *level;
 
 	switch (dapm->bias_level) {
@@ -2542,13 +2538,12 @@ static ssize_t dapm_bias_read_file(struct file *file, char __user *user_buf,
 		break;
 	}
 
-	return simple_read_from_buffer(user_buf, count, ppos, level,
-				       strlen(level));
+	return simple_copy_to_iter(level, &iocb->ki_pos, strlen(level), to);
 }
 
 static const struct file_operations dapm_bias_fops = {
 	.open = simple_open,
-	.read = dapm_bias_read_file,
+	.read_iter = dapm_bias_read_file,
 	.llseek = default_llseek,
 };
 

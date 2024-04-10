@@ -230,10 +230,9 @@ out:
 	return offset;
 }
 
-static ssize_t dpcm_state_read_file(struct file *file, char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t dpcm_state_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snd_soc_pcm_runtime *fe = file->private_data;
+	struct snd_soc_pcm_runtime *fe = iocb->ki_filp->private_data;
 	ssize_t out_count = PAGE_SIZE, offset = 0, ret = 0;
 	int stream;
 	char *buf;
@@ -254,15 +253,14 @@ static ssize_t dpcm_state_read_file(struct file *file, char __user *user_buf,
 						  out_count - offset);
 	snd_soc_dpcm_mutex_unlock(fe);
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, offset);
-
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, offset, to);
 	kfree(buf);
 	return ret;
 }
 
 static const struct file_operations dpcm_state_fops = {
 	.open = simple_open,
-	.read = dpcm_state_read_file,
+	.read_iter = dpcm_state_read,
 	.llseek = default_llseek,
 };
 
