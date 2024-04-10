@@ -86,6 +86,7 @@ static ssize_t tomoyo_write_self(struct file *file, const char __user *buf,
 	kfree(data);
 	return error ? error : count;
 }
+FOPS_WRITE_ITER_HELPER(tomoyo_write_self);
 
 /**
  * tomoyo_read_self - read() for /sys/kernel/security/tomoyo/self_domain interface.
@@ -97,28 +98,28 @@ static ssize_t tomoyo_write_self(struct file *file, const char __user *buf,
  *
  * Returns read size on success, negative value otherwise.
  */
-static ssize_t tomoyo_read_self(struct file *file, char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t tomoyo_read_self(struct kiocb *iocb, struct iov_iter *to)
 {
 	const char *domain = tomoyo_domain()->domainname->name;
+	size_t count = iov_iter_count(to);
 	loff_t len = strlen(domain);
-	loff_t pos = *ppos;
+	loff_t pos = iocb->ki_pos;
 
 	if (pos >= len || !count)
 		return 0;
 	len -= pos;
 	if (count < len)
 		len = count;
-	if (copy_to_user(buf, domain + pos, len))
+	if (copy_to_iter(domain + pos, len, to))
 		return -EFAULT;
-	*ppos += len;
+	iocb->ki_pos += len;
 	return len;
 }
 
 /* Operations for /sys/kernel/security/tomoyo/self_domain interface. */
 static const struct file_operations tomoyo_self_operations = {
-	.write = tomoyo_write_self,
-	.read  = tomoyo_read_self,
+	.write_iter = tomoyo_write_self_iter,
+	.read_iter  = tomoyo_read_self,
 };
 
 /**
@@ -178,6 +179,7 @@ static ssize_t tomoyo_read(struct file *file, char __user *buf, size_t count,
 {
 	return tomoyo_read_control(file->private_data, buf, count);
 }
+FOPS_READ_ITER_HELPER(tomoyo_read);
 
 /**
  * tomoyo_write - write() for /sys/kernel/security/tomoyo/ interface.
@@ -194,6 +196,7 @@ static ssize_t tomoyo_write(struct file *file, const char __user *buf,
 {
 	return tomoyo_write_control(file->private_data, buf, count);
 }
+FOPS_WRITE_ITER_HELPER(tomoyo_write);
 
 /*
  * tomoyo_operations is a "struct file_operations" which is used for handling
@@ -206,8 +209,8 @@ static const struct file_operations tomoyo_operations = {
 	.open    = tomoyo_open,
 	.release = tomoyo_release,
 	.poll    = tomoyo_poll,
-	.read    = tomoyo_read,
-	.write   = tomoyo_write,
+	.read_iter = tomoyo_read_iter,
+	.write_iter = tomoyo_write_iter,
 	.llseek  = noop_llseek,
 };
 
