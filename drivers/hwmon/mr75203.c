@@ -181,26 +181,24 @@ struct pvt_device {
 	u32			ip_freq;
 };
 
-static ssize_t pvt_ts_coeff_j_read(struct file *file, char __user *user_buf,
-				   size_t count, loff_t *ppos)
+static ssize_t pvt_ts_coeff_j_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct pvt_device *pvt = file->private_data;
+	struct pvt_device *pvt = iocb->ki_filp->private_data;
 	unsigned int len;
 	char buf[13];
 
 	len = scnprintf(buf, sizeof(buf), "%d\n", pvt->ts_coeff.j);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t pvt_ts_coeff_j_write(struct file *file,
-				    const char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t pvt_ts_coeff_j_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct pvt_device *pvt = file->private_data;
+	struct pvt_device *pvt = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int ret;
 
-	ret = kstrtos32_from_user(user_buf, count, 0, &pvt->ts_coeff.j);
+	ret = kstrtos32_from_iter(from, count, 0, &pvt->ts_coeff.j);
 	if (ret)
 		return ret;
 
@@ -208,8 +206,8 @@ static ssize_t pvt_ts_coeff_j_write(struct file *file,
 }
 
 static const struct file_operations pvt_ts_coeff_j_fops = {
-	.read = pvt_ts_coeff_j_read,
-	.write = pvt_ts_coeff_j_write,
+	.read_iter = pvt_ts_coeff_j_read,
+	.write_iter = pvt_ts_coeff_j_write,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
