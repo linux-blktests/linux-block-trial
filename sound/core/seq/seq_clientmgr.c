@@ -477,7 +477,7 @@ static ssize_t snd_seq_read(struct file *file, char __user *buf, size_t count,
 
 	return (err < 0) ? err : result;
 }
-
+FOPS_READ_ITER_HELPER(snd_seq_read);
 
 /*
  * check access permission to the port
@@ -1076,7 +1076,7 @@ static ssize_t snd_seq_write(struct file *file, const char __user *buf,
 	mutex_unlock(&client->ioctl_mutex);
 	return written ? written : err;
 }
-
+FOPS_WRITE_ITER_HELPER(snd_seq_write);
 
 /*
  * handle polling
@@ -2638,8 +2638,8 @@ void snd_seq_info_clients_read(struct snd_info_entry *entry,
 static const struct file_operations snd_seq_f_ops =
 {
 	.owner =	THIS_MODULE,
-	.read =		snd_seq_read,
-	.write =	snd_seq_write,
+	.read_iter =	snd_seq_read_iter,
+	.write_iter =	snd_seq_write_iter,
 	.open =		snd_seq_open,
 	.release =	snd_seq_release,
 	.poll =		snd_seq_poll,

@@ -365,7 +365,7 @@ static ssize_t snd_compr_write(struct file *f, const char __user *buf,
 
 	return retval;
 }
-
+FOPS_WRITE_ITER_HELPER(snd_compr_write);
 
 static ssize_t snd_compr_read(struct file *f, char __user *buf,
 		size_t count, loff_t *offset)
@@ -412,6 +412,7 @@ static ssize_t snd_compr_read(struct file *f, char __user *buf,
 
 	return retval;
 }
+FOPS_READ_ITER_HELPER(snd_compr_read);
 
 static int snd_compr_mmap(struct file *f, struct vm_area_struct *vma)
 {
@@ -1386,8 +1387,8 @@ static const struct file_operations snd_compr_file_ops = {
 		.owner =	THIS_MODULE,
 		.open =		snd_compr_open,
 		.release =	snd_compr_free,
-		.write =	snd_compr_write,
-		.read =		snd_compr_read,
+		.write_iter =	snd_compr_write_iter,
+		.read_iter =	snd_compr_read_iter,
 		.unlocked_ioctl = snd_compr_ioctl,
 #ifdef CONFIG_COMPAT
 		.compat_ioctl = snd_compr_ioctl_compat,

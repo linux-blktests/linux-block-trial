@@ -43,8 +43,8 @@ static inline void unregister_proc(void) {}
 
 static int odev_open(struct inode *inode, struct file *file);
 static int odev_release(struct inode *inode, struct file *file);
-static ssize_t odev_read(struct file *file, char __user *buf, size_t count, loff_t *offset);
-static ssize_t odev_write(struct file *file, const char __user *buf, size_t count, loff_t *offset);
+static ssize_t odev_read_iter(struct kiocb *iocb, struct iov_iter *to);
+static ssize_t odev_write_iter(struct kiocb *iocb, struct iov_iter *from);
 static long odev_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
 static __poll_t odev_poll(struct file *file, poll_table * wait);
 
@@ -151,7 +151,7 @@ odev_read(struct file *file, char __user *buf, size_t count, loff_t *offset)
 		return -ENXIO;
 	return snd_seq_oss_read(dp, buf, count);
 }
-
+FOPS_READ_ITER_HELPER(odev_read);
 
 static ssize_t
 odev_write(struct file *file, const char __user *buf, size_t count, loff_t *offset)
@@ -162,6 +162,7 @@ odev_write(struct file *file, const char __user *buf, size_t count, loff_t *offs
 		return -ENXIO;
 	return snd_seq_oss_write(dp, buf, count, file);
 }
+FOPS_WRITE_ITER_HELPER(odev_write);
 
 static long
 odev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
@@ -209,8 +210,8 @@ odev_poll(struct file *file, poll_table * wait)
 static const struct file_operations seq_oss_f_ops =
 {
 	.owner =	THIS_MODULE,
-	.read =		odev_read,
-	.write =	odev_write,
+	.read_iter =	odev_read_iter,
+	.write_iter =	odev_write_iter,
 	.open =		odev_open,
 	.release =	odev_release,
 	.poll =		odev_poll,

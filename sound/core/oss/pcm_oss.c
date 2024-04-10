@@ -2784,6 +2784,7 @@ static ssize_t snd_pcm_oss_read(struct file *file, char __user *buf, size_t coun
 	}
 #endif
 }
+FOPS_READ_ITER_HELPER(snd_pcm_oss_read);
 
 static ssize_t snd_pcm_oss_write(struct file *file, const char __user *buf, size_t count, loff_t *offset)
 {
@@ -2803,6 +2804,7 @@ static ssize_t snd_pcm_oss_write(struct file *file, const char __user *buf, size
 #endif
 	return result;
 }
+FOPS_WRITE_ITER_HELPER(snd_pcm_oss_write);
 
 static int snd_pcm_oss_playback_ready(struct snd_pcm_substream *substream)
 {
@@ -3105,8 +3107,8 @@ static inline void snd_pcm_oss_proc_done(struct snd_pcm *pcm)
 static const struct file_operations snd_pcm_oss_f_reg =
 {
 	.owner =	THIS_MODULE,
-	.read =		snd_pcm_oss_read,
-	.write =	snd_pcm_oss_write,
+	.read_iter =	snd_pcm_oss_read_iter,
+	.write_iter =	snd_pcm_oss_write_iter,
 	.open =		snd_pcm_oss_open,
 	.release =	snd_pcm_oss_release,
 	.poll =		snd_pcm_oss_poll,

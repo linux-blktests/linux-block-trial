@@ -1321,6 +1321,7 @@ static ssize_t snd_rawmidi_read(struct file *file, char __user *buf, size_t coun
 	}
 	return result;
 }
+FOPS_READ_ITER_HELPER(snd_rawmidi_read);
 
 /**
  * snd_rawmidi_transmit_empty - check whether the output buffer is empty
@@ -1657,6 +1658,7 @@ static ssize_t snd_rawmidi_write(struct file *file, const char __user *buf,
 	}
 	return result;
 }
+FOPS_WRITE_ITER_HELPER(snd_rawmidi_write);
 
 static __poll_t snd_rawmidi_poll(struct file *file, poll_table *wait)
 {
@@ -1785,8 +1787,8 @@ static void snd_rawmidi_proc_info_read(struct snd_info_entry *entry,
 
 static const struct file_operations snd_rawmidi_f_ops = {
 	.owner =	THIS_MODULE,
-	.read =		snd_rawmidi_read,
-	.write =	snd_rawmidi_write,
+	.read_iter =	snd_rawmidi_read_iter,
+	.write_iter =	snd_rawmidi_write_iter,
 	.open =		snd_rawmidi_open,
 	.release =	snd_rawmidi_release,
 	.poll =		snd_rawmidi_poll,

@@ -2306,9 +2306,9 @@ static int snd_timer_user_fasync(int fd, struct file * file, int on)
 	return snd_fasync_helper(fd, file, on, &tu->fasync);
 }
 
-static ssize_t snd_timer_user_read(struct file *file, char __user *buffer,
-				   size_t count, loff_t *offset)
+static ssize_t snd_timer_user_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	struct snd_timer_tread64 *tread;
 	struct snd_timer_tread32 tread32;
 	struct snd_timer_user *tu;
@@ -2316,7 +2316,7 @@ static ssize_t snd_timer_user_read(struct file *file, char __user *buffer,
 	int qhead;
 	int err = 0;
 
-	tu = file->private_data;
+	tu = iocb->ki_filp->private_data;
 	switch (tu->tread) {
 	case TREAD_FORMAT_TIME64:
 		unit = sizeof(struct snd_timer_tread64);
@@ -2338,7 +2338,8 @@ static ssize_t snd_timer_user_read(struct file *file, char __user *buffer,
 		while (!tu->qused) {
 			wait_queue_entry_t wait;
 
-			if ((file->f_flags & O_NONBLOCK) != 0 || result > 0) {
+			if ((iocb->ki_filp->f_flags & O_NONBLOCK) != 0 ||
+			     result > 0) {
 				err = -EAGAIN;
 				goto _error;
 			}
@@ -2374,8 +2375,9 @@ static ssize_t snd_timer_user_read(struct file *file, char __user *buffer,
 
 		switch (tu->tread) {
 		case TREAD_FORMAT_TIME64:
-			if (copy_to_user(buffer, tread,
-					 sizeof(struct snd_timer_tread64)))
+			if (!copy_to_iter_full(tread,
+					       sizeof(struct snd_timer_tread64),
+					       to))
 				err = -EFAULT;
 			break;
 		case TREAD_FORMAT_TIME32:
@@ -2387,12 +2389,12 @@ static ssize_t snd_timer_user_read(struct file *file, char __user *buffer,
 				.val = tread->val,
 			};
 
-			if (copy_to_user(buffer, &tread32, sizeof(tread32)))
+			if (!copy_to_iter_full(&tread32, sizeof(tread32), to))
 				err = -EFAULT;
 			break;
 		case TREAD_FORMAT_NONE:
-			if (copy_to_user(buffer, &tu->queue[qhead],
-					 sizeof(struct snd_timer_read)))
+			if (!copy_to_iter_full(&tu->queue[qhead],
+					 sizeof(struct snd_timer_read), to))
 				err = -EFAULT;
 			break;
 		default:
@@ -2404,7 +2406,6 @@ static ssize_t snd_timer_user_read(struct file *file, char __user *buffer,
 		if (err < 0)
 			goto _error;
 		result += unit;
-		buffer += unit;
 	}
  _error:
 	spin_unlock_irq(&tu->qlock);
@@ -2440,7 +2441,7 @@ static __poll_t snd_timer_user_poll(struct file *file, poll_table * wait)
 static const struct file_operations snd_timer_f_ops =
 {
 	.owner =	THIS_MODULE,
-	.read =		snd_timer_user_read,
+	.read_iter =	snd_timer_user_read,
 	.open =		snd_timer_user_open,
 	.release =	snd_timer_user_release,
 	.poll =		snd_timer_user_poll,

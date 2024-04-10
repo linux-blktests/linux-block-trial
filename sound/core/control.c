@@ -1974,14 +1974,14 @@ static long snd_ctl_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 	return -ENOTTY;
 }
 
-static ssize_t snd_ctl_read(struct file *file, char __user *buffer,
-			    size_t count, loff_t * offset)
+static ssize_t snd_ctl_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	struct snd_ctl_file *ctl;
 	int err = 0;
 	ssize_t result = 0;
 
-	ctl = file->private_data;
+	ctl = iocb->ki_filp->private_data;
 	if (snd_BUG_ON(!ctl || !ctl->card))
 		return -ENXIO;
 	if (!ctl->subscribed)
@@ -1994,7 +1994,8 @@ static ssize_t snd_ctl_read(struct file *file, char __user *buffer,
 		struct snd_kctl_event *kev;
 		while (list_empty(&ctl->events)) {
 			wait_queue_entry_t wait;
-			if ((file->f_flags & O_NONBLOCK) != 0 || result > 0) {
+			if ((iocb->ki_filp->f_flags & O_NONBLOCK) != 0 ||
+			    result > 0) {
 				err = -EAGAIN;
 				goto __end_lock;
 			}
@@ -2017,12 +2018,11 @@ static ssize_t snd_ctl_read(struct file *file, char __user *buffer,
 		list_del(&kev->list);
 		spin_unlock_irq(&ctl->read_lock);
 		kfree(kev);
-		if (copy_to_user(buffer, &ev, sizeof(struct snd_ctl_event))) {
+		if (!copy_to_iter_full(&ev, sizeof(struct snd_ctl_event), to)) {
 			err = -EFAULT;
 			goto __end;
 		}
 		spin_lock_irq(&ctl->read_lock);
-		buffer += sizeof(struct snd_ctl_event);
 		count -= sizeof(struct snd_ctl_event);
 		result += sizeof(struct snd_ctl_event);
 	}
@@ -2266,7 +2266,7 @@ EXPORT_SYMBOL_GPL(snd_ctl_disconnect_layer);
 static const struct file_operations snd_ctl_f_ops =
 {
 	.owner =	THIS_MODULE,
-	.read =		snd_ctl_read,
+	.read_iter =	snd_ctl_read,
 	.open =		snd_ctl_open,
 	.release =	snd_ctl_release,
 	.poll =		snd_ctl_poll,

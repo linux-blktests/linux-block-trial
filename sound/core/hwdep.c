@@ -55,6 +55,7 @@ static ssize_t snd_hwdep_read(struct file * file, char __user *buf,
 		return hw->ops.read(hw, buf, count, offset);
 	return -ENXIO;	
 }
+FOPS_READ_ITER_HELPER(snd_hwdep_read);
 
 static ssize_t snd_hwdep_write(struct file * file, const char __user *buf,
 			       size_t count, loff_t *offset)
@@ -64,6 +65,7 @@ static ssize_t snd_hwdep_write(struct file * file, const char __user *buf,
 		return hw->ops.write(hw, buf, count, offset);
 	return -ENXIO;	
 }
+FOPS_WRITE_ITER_HELPER(snd_hwdep_write);
 
 static int snd_hwdep_open(struct inode *inode, struct file * file)
 {
@@ -327,8 +329,8 @@ static const struct file_operations snd_hwdep_f_ops =
 {
 	.owner = 	THIS_MODULE,
 	.llseek =	snd_hwdep_llseek,
-	.read = 	snd_hwdep_read,
-	.write =	snd_hwdep_write,
+	.read_iter = 	snd_hwdep_read_iter,
+	.write_iter =	snd_hwdep_write_iter,
 	.open =		snd_hwdep_open,
 	.release =	snd_hwdep_release,
 	.poll =		snd_hwdep_poll,

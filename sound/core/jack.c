@@ -166,29 +166,25 @@ static void snd_jack_inject_report(struct snd_jack_kctl *jack_kctl, int status)
 #endif /* CONFIG_SND_JACK_INPUT_DEV */
 }
 
-static ssize_t sw_inject_enable_read(struct file *file,
-				     char __user *to, size_t count, loff_t *ppos)
+static ssize_t sw_inject_enable_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snd_jack_kctl *jack_kctl = file->private_data;
-	int len, ret;
+	struct snd_jack_kctl *jack_kctl = iocb->ki_filp->private_data;
 	char buf[128];
+	int len;
 
 	len = scnprintf(buf, sizeof(buf), "%s: %s\t\t%s: %i\n", "Jack", jack_kctl->kctl->id.name,
 			"Inject Enabled", jack_kctl->sw_inject_enable);
-	ret = simple_read_from_buffer(to, count, ppos, buf, len);
-
-	return ret;
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t sw_inject_enable_write(struct file *file,
-				      const char __user *from, size_t count, loff_t *ppos)
+static ssize_t sw_inject_enable_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct snd_jack_kctl *jack_kctl = file->private_data;
+	struct snd_jack_kctl *jack_kctl = iocb->ki_filp->private_data;
 	int ret, err;
 	unsigned long enable;
 	char buf[8] = { 0 };
 
-	ret = simple_write_to_buffer(buf, sizeof(buf) - 1, ppos, from, count);
+	ret = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf) - 1, from);
 	err = kstrtoul(buf, 0, &enable);
 	if (err)
 		return err;
@@ -204,10 +200,9 @@ static ssize_t sw_inject_enable_write(struct file *file,
 	return ret;
 }
 
-static ssize_t jackin_inject_write(struct file *file,
-				   const char __user *from, size_t count, loff_t *ppos)
+static ssize_t jackin_inject_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct snd_jack_kctl *jack_kctl = file->private_data;
+	struct snd_jack_kctl *jack_kctl = iocb->ki_filp->private_data;
 	int ret, err;
 	unsigned long enable;
 	char buf[8] = { 0 };
@@ -215,7 +210,7 @@ static ssize_t jackin_inject_write(struct file *file,
 	if (!jack_kctl->sw_inject_enable)
 		return -EINVAL;
 
-	ret = simple_write_to_buffer(buf, sizeof(buf) - 1, ppos, from, count);
+	ret = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf) - 1, from);
 	err = kstrtoul(buf, 0, &enable);
 	if (err)
 		return err;
@@ -225,17 +220,14 @@ static ssize_t jackin_inject_write(struct file *file,
 	return ret;
 }
 
-static ssize_t jack_kctl_id_read(struct file *file,
-				 char __user *to, size_t count, loff_t *ppos)
+static ssize_t jack_kctl_id_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snd_jack_kctl *jack_kctl = file->private_data;
+	struct snd_jack_kctl *jack_kctl = iocb->ki_filp->private_data;
 	char buf[64];
-	int len, ret;
+	int len;
 
 	len = scnprintf(buf, sizeof(buf), "%s\n", jack_kctl->kctl->id.name);
-	ret = simple_read_from_buffer(to, count, ppos, buf, len);
-
-	return ret;
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 /* the bit definition is aligned with snd_jack_types in jack.h */
@@ -264,82 +256,73 @@ static int parse_mask_bits(unsigned int mask_bits, char *buf, size_t buf_size)
 	return strlen(buf);
 }
 
-static ssize_t jack_kctl_mask_bits_read(struct file *file,
-					char __user *to, size_t count, loff_t *ppos)
+static ssize_t jack_kctl_mask_bits_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snd_jack_kctl *jack_kctl = file->private_data;
+	struct snd_jack_kctl *jack_kctl = iocb->ki_filp->private_data;
 	char buf[256];
-	int len, ret;
+	int len;
 
 	len = parse_mask_bits(jack_kctl->mask_bits, buf, sizeof(buf));
-	ret = simple_read_from_buffer(to, count, ppos, buf, len);
-
-	return ret;
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t jack_kctl_status_read(struct file *file,
-				     char __user *to, size_t count, loff_t *ppos)
+static ssize_t jack_kctl_status_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snd_jack_kctl *jack_kctl = file->private_data;
+	struct snd_jack_kctl *jack_kctl = iocb->ki_filp->private_data;
 	char buf[16];
-	int len, ret;
+	int len;
 
 	len = scnprintf(buf, sizeof(buf), "%s\n", jack_kctl->kctl->private_value ?
 			"Plugged" : "Unplugged");
-	ret = simple_read_from_buffer(to, count, ppos, buf, len);
-
-	return ret;
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 #ifdef CONFIG_SND_JACK_INPUT_DEV
-static ssize_t jack_type_read(struct file *file,
-			      char __user *to, size_t count, loff_t *ppos)
+static ssize_t jack_type_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snd_jack_kctl *jack_kctl = file->private_data;
+	struct snd_jack_kctl *jack_kctl = iocb->ki_filp->private_data;
 	char buf[256];
-	int len, ret;
+	int len;
 
 	len = parse_mask_bits(jack_kctl->jack->type, buf, sizeof(buf));
-	ret = simple_read_from_buffer(to, count, ppos, buf, len);
-
-	return ret;
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations jack_type_fops = {
 	.open = simple_open,
-	.read = jack_type_read,
+	.read_iter = jack_type_read,
 	.llseek = default_llseek,
 };
 #endif
 
 static const struct file_operations sw_inject_enable_fops = {
 	.open = simple_open,
-	.read = sw_inject_enable_read,
-	.write = sw_inject_enable_write,
+	.read_iter = sw_inject_enable_read,
+	.write_iter = sw_inject_enable_write,
 	.llseek = default_llseek,
 };
 
 static const struct file_operations jackin_inject_fops = {
 	.open = simple_open,
-	.write = jackin_inject_write,
+	.write_iter = jackin_inject_write,
 	.llseek = default_llseek,
 };
 
 static const struct file_operations jack_kctl_id_fops = {
 	.open = simple_open,
-	.read = jack_kctl_id_read,
+	.read_iter = jack_kctl_id_read,
 	.llseek = default_llseek,
 };
 
 static const struct file_operations jack_kctl_mask_bits_fops = {
 	.open = simple_open,
-	.read = jack_kctl_mask_bits_read,
+	.read_iter = jack_kctl_mask_bits_read,
 	.llseek = default_llseek,
 };
 
 static const struct file_operations jack_kctl_status_fops = {
 	.open = simple_open,
-	.read = jack_kctl_status_read,
+	.read_iter = jack_kctl_status_read,
 	.llseek = default_llseek,
 };
 

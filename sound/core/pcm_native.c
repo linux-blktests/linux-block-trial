@@ -3662,6 +3662,22 @@ static ssize_t snd_pcm_writev(struct kiocb *iocb, struct iov_iter *from)
 	return result;
 }
 
+static ssize_t snd_pcm_read_iter(struct kiocb *iocb, struct iov_iter *to)
+{
+	if (!(iocb->ki_flags & IOCB_VECTORED))
+		return vfs_read_iter(iocb, to, snd_pcm_read);
+
+	return snd_pcm_readv(iocb, to);
+}
+
+static ssize_t snd_pcm_write_iter(struct kiocb *iocb, struct iov_iter *from)
+{
+	if (!(iocb->ki_flags & IOCB_VECTORED))
+		return vfs_write_iter(iocb, from, snd_pcm_write);
+
+	return snd_pcm_writev(iocb, from);
+}
+
 static __poll_t snd_pcm_poll(struct file *file, poll_table *wait)
 {
 	struct snd_pcm_file *pcm_file;
@@ -4206,8 +4222,7 @@ static unsigned long snd_pcm_get_unmapped_area(struct file *file,
 const struct file_operations snd_pcm_f_ops[2] = {
 	{
 		.owner =		THIS_MODULE,
-		.write =		snd_pcm_write,
-		.write_iter =		snd_pcm_writev,
+		.write_iter =		snd_pcm_write_iter,
 		.open =			snd_pcm_playback_open,
 		.release =		snd_pcm_release,
 		.poll =			snd_pcm_poll,
@@ -4219,8 +4234,7 @@ const struct file_operations snd_pcm_f_ops[2] = {
 	},
 	{
 		.owner =		THIS_MODULE,
-		.read =			snd_pcm_read,
-		.read_iter =		snd_pcm_readv,
+		.read_iter =		snd_pcm_read_iter,
 		.open =			snd_pcm_capture_open,
 		.release =		snd_pcm_release,
 		.poll =			snd_pcm_poll,

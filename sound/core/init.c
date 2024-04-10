@@ -405,14 +405,12 @@ static loff_t snd_disconnect_llseek(struct file *file, loff_t offset, int orig)
 	return -ENODEV;
 }
 
-static ssize_t snd_disconnect_read(struct file *file, char __user *buf,
-				   size_t count, loff_t *offset)
+static ssize_t snd_disconnect_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return -ENODEV;
 }
 
-static ssize_t snd_disconnect_write(struct file *file, const char __user *buf,
-				    size_t count, loff_t *offset)
+static ssize_t snd_disconnect_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return -ENODEV;
 }
@@ -465,8 +463,8 @@ static const struct file_operations snd_shutdown_f_ops =
 {
 	.owner = 	THIS_MODULE,
 	.llseek =	snd_disconnect_llseek,
-	.read = 	snd_disconnect_read,
-	.write =	snd_disconnect_write,
+	.read_iter = 	snd_disconnect_read,
+	.write_iter =	snd_disconnect_write,
 	.release =	snd_disconnect_release,
 	.poll =		snd_disconnect_poll,
 	.unlocked_ioctl = snd_disconnect_ioctl,
