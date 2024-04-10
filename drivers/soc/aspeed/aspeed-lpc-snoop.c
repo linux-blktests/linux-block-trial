@@ -110,22 +110,22 @@ static struct aspeed_lpc_snoop_channel *snoop_file_to_chan(struct file *file)
 			    miscdev);
 }
 
-static ssize_t snoop_file_read(struct file *file, char __user *buffer,
-				size_t count, loff_t *ppos)
+static ssize_t snoop_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct aspeed_lpc_snoop_channel *chan = snoop_file_to_chan(file);
+	struct aspeed_lpc_snoop_channel *chan = snoop_file_to_chan(iocb->ki_filp);
+	size_t count = iov_iter_count(to);
 	unsigned int copied;
 	int ret = 0;
 
 	if (kfifo_is_empty(&chan->fifo)) {
-		if (file->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 		ret = wait_event_interruptible(chan->wq,
 				!kfifo_is_empty(&chan->fifo));
 		if (ret == -ERESTARTSYS)
 			return -EINTR;
 	}
-	ret = kfifo_to_user(&chan->fifo, buffer, count, &copied);
+	ret = kfifo_to_iter(&chan->fifo, to, count, &copied);
 	if (ret)
 		return ret;
 
@@ -143,7 +143,7 @@ static __poll_t snoop_file_poll(struct file *file,
 
 static const struct file_operations snoop_fops = {
 	.owner  = THIS_MODULE,
-	.read   = snoop_file_read,
+	.read_iter   = snoop_file_read,
 	.poll   = snoop_file_poll,
 	.llseek = noop_llseek,
 };
