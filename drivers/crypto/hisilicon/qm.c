@@ -4011,10 +4011,9 @@ static int qm_vf_read_qos(struct hisi_qm *qm)
 	return ret;
 }
 
-static ssize_t qm_algqos_read(struct file *filp, char __user *buf,
-			       size_t count, loff_t *pos)
+static ssize_t qm_algqos_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hisi_qm *qm = filp->private_data;
+	struct hisi_qm *qm = iocb->ki_filp->private_data;
 	char tbuf[QM_DBG_READ_LEN];
 	u32 qos_val, ir;
 	int ret;
@@ -4042,7 +4041,7 @@ static ssize_t qm_algqos_read(struct file *filp, char __user *buf,
 	qos_val = ir / QM_QOS_RATE;
 	ret = scnprintf(tbuf, QM_DBG_READ_LEN, "%u\n", qos_val);
 
-	ret = simple_read_from_buffer(buf, count, pos, tbuf, ret);
+	ret = simple_copy_to_iter(tbuf, &iocb->ki_pos, ret, to);
 
 err_get_status:
 	clear_bit(QM_RESETTING, &qm->misc_ctl);
@@ -4091,22 +4090,23 @@ static ssize_t qm_get_qos_value(struct hisi_qm *qm, const char *buf,
 	return 0;
 }
 
-static ssize_t qm_algqos_write(struct file *filp, const char __user *buf,
-			       size_t count, loff_t *pos)
+static ssize_t qm_algqos_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hisi_qm *qm = filp->private_data;
+	struct hisi_qm *qm = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char tbuf[QM_DBG_READ_LEN];
 	unsigned int fun_index;
 	unsigned long val;
 	int len, ret;
 
-	if (*pos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	if (count >= QM_DBG_READ_LEN)
 		return -ENOSPC;
 
-	len = simple_write_to_buffer(tbuf, QM_DBG_READ_LEN - 1, pos, buf, count);
+	len = simple_copy_from_iter(tbuf, &iocb->ki_pos, QM_DBG_READ_LEN - 1,
+					from);
 	if (len < 0)
 		return len;
 
@@ -4148,8 +4148,8 @@ err_get_status:
 static const struct file_operations qm_algqos_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = qm_algqos_read,
-	.write = qm_algqos_write,
+	.read_iter = qm_algqos_read,
+	.write_iter = qm_algqos_write,
 };
 
 /**

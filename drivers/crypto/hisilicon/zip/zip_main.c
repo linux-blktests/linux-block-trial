@@ -743,10 +743,9 @@ static int clear_enable_write(struct hisi_qm *qm, u32 val)
 	return  0;
 }
 
-static ssize_t hisi_zip_ctrl_debug_read(struct file *filp, char __user *buf,
-					size_t count, loff_t *pos)
+static ssize_t hisi_zip_ctrl_debug_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ctrl_debug_file *file = filp->private_data;
+	struct ctrl_debug_file *file = iocb->ki_filp->private_data;
 	struct hisi_qm *qm = file_to_qm(file);
 	char tbuf[HZIP_BUF_SIZE];
 	u32 val;
@@ -768,7 +767,7 @@ static ssize_t hisi_zip_ctrl_debug_read(struct file *filp, char __user *buf,
 
 	hisi_qm_put_dfx_access(qm);
 	ret = scnprintf(tbuf, sizeof(tbuf), "%u\n", val);
-	return simple_read_from_buffer(buf, count, pos, tbuf, ret);
+	return simple_copy_to_iter(tbuf, &iocb->ki_pos, ret, to);
 
 err_input:
 	spin_unlock_irq(&file->lock);
@@ -776,23 +775,23 @@ err_input:
 	return -EINVAL;
 }
 
-static ssize_t hisi_zip_ctrl_debug_write(struct file *filp,
-					 const char __user *buf,
-					 size_t count, loff_t *pos)
+static ssize_t hisi_zip_ctrl_debug_write(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct ctrl_debug_file *file = filp->private_data;
+	struct ctrl_debug_file *file = iocb->ki_filp->private_data;
 	struct hisi_qm *qm = file_to_qm(file);
+	size_t count = iov_iter_count(from);
 	char tbuf[HZIP_BUF_SIZE];
 	unsigned long val;
 	int len, ret;
 
-	if (*pos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	if (count >= HZIP_BUF_SIZE)
 		return -ENOSPC;
 
-	len = simple_write_to_buffer(tbuf, HZIP_BUF_SIZE - 1, pos, buf, count);
+	len = simple_copy_from_iter(tbuf, &iocb->ki_pos, HZIP_BUF_SIZE - 1, from);
 	if (len < 0)
 		return len;
 
@@ -828,8 +827,8 @@ err_input:
 static const struct file_operations ctrl_debug_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = hisi_zip_ctrl_debug_read,
-	.write = hisi_zip_ctrl_debug_write,
+	.read_iter = hisi_zip_ctrl_debug_read,
+	.write_iter = hisi_zip_ctrl_debug_write,
 };
 
 static int zip_debugfs_atomic64_set(void *data, u64 val)

@@ -138,8 +138,7 @@ static struct hisi_qm *file_to_qm(struct debugfs_file *file)
 	return container_of(debug, struct hisi_qm, debug);
 }
 
-static ssize_t qm_cmd_read(struct file *filp, char __user *buffer,
-			   size_t count, loff_t *pos)
+static ssize_t qm_cmd_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[QM_DBG_READ_LEN];
 	int len;
@@ -147,7 +146,7 @@ static ssize_t qm_cmd_read(struct file *filp, char __user *buffer,
 	len = scnprintf(buf, QM_DBG_READ_LEN, "%s\n",
 			"Please echo help to cmd to get help information");
 
-	return simple_read_from_buffer(buffer, count, pos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static void dump_show(struct hisi_qm *qm, void *info,
@@ -510,14 +509,14 @@ err_buffer_free:
 	return ret;
 }
 
-static ssize_t qm_cmd_write(struct file *filp, const char __user *buffer,
-			    size_t count, loff_t *pos)
+static ssize_t qm_cmd_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hisi_qm *qm = filp->private_data;
+	struct hisi_qm *qm = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char *cmd_buf, *cmd_buf_tmp;
 	int ret;
 
-	if (*pos)
+	if (iocb->ki_pos)
 		return 0;
 
 	ret = hisi_qm_get_dfx_access(qm);
@@ -535,7 +534,7 @@ static ssize_t qm_cmd_write(struct file *filp, const char __user *buffer,
 		goto put_dfx_access;
 	}
 
-	cmd_buf = memdup_user_nul(buffer, count);
+	cmd_buf = iterdup_nul(from, count);
 	if (IS_ERR(cmd_buf)) {
 		ret = PTR_ERR(cmd_buf);
 		goto put_dfx_access;
@@ -565,8 +564,8 @@ put_dfx_access:
 static const struct file_operations qm_cmd_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = qm_cmd_read,
-	.write = qm_cmd_write,
+	.read_iter = qm_cmd_read,
+	.write_iter = qm_cmd_write,
 };
 
 /**
@@ -712,10 +711,9 @@ static int current_qm_write(struct hisi_qm *qm, u32 val)
 	return 0;
 }
 
-static ssize_t qm_debug_read(struct file *filp, char __user *buf,
-			     size_t count, loff_t *pos)
+static ssize_t qm_debug_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct debugfs_file *file = filp->private_data;
+	struct debugfs_file *file = iocb->ki_filp->private_data;
 	enum qm_debug_file index = file->index;
 	struct hisi_qm *qm = file_to_qm(file);
 	char tbuf[QM_DBG_TMP_BUF_LEN];
@@ -744,7 +742,7 @@ static ssize_t qm_debug_read(struct file *filp, char __user *buf,
 
 	hisi_qm_put_dfx_access(qm);
 	ret = scnprintf(tbuf, QM_DBG_TMP_BUF_LEN, "%u\n", val);
-	return simple_read_from_buffer(buf, count, pos, tbuf, ret);
+	return simple_copy_to_iter(tbuf, &iocb->ki_pos, ret, to);
 
 err_input:
 	mutex_unlock(&file->lock);
@@ -752,24 +750,24 @@ err_input:
 	return -EINVAL;
 }
 
-static ssize_t qm_debug_write(struct file *filp, const char __user *buf,
-			      size_t count, loff_t *pos)
+static ssize_t qm_debug_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct debugfs_file *file = filp->private_data;
+	struct debugfs_file *file = iocb->ki_filp->private_data;
 	enum qm_debug_file index = file->index;
 	struct hisi_qm *qm = file_to_qm(file);
+	size_t count = iov_iter_count(from);
 	unsigned long val;
 	char tbuf[QM_DBG_TMP_BUF_LEN];
 	int len, ret;
 
-	if (*pos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	if (count >= QM_DBG_TMP_BUF_LEN)
 		return -ENOSPC;
 
-	len = simple_write_to_buffer(tbuf, QM_DBG_TMP_BUF_LEN - 1, pos, buf,
-				     count);
+	len = simple_copy_from_iter(tbuf, &iocb->ki_pos, QM_DBG_TMP_BUF_LEN - 1,
+					from);
 	if (len < 0)
 		return len;
 
@@ -808,8 +806,8 @@ static ssize_t qm_debug_write(struct file *filp, const char __user *buf,
 static const struct file_operations qm_debug_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = qm_debug_read,
-	.write = qm_debug_write,
+	.read_iter = qm_debug_read,
+	.write_iter = qm_debug_write,
 };
 
 static void dfx_regs_uninit(struct hisi_qm *qm,
@@ -1075,23 +1073,22 @@ static int qm_state_show(struct seq_file *s, void *unused)
 
 DEFINE_SHOW_ATTRIBUTE(qm_state);
 
-static ssize_t qm_status_read(struct file *filp, char __user *buffer,
-			      size_t count, loff_t *pos)
+static ssize_t qm_status_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hisi_qm *qm = filp->private_data;
+	struct hisi_qm *qm = iocb->ki_filp->private_data;
 	char buf[QM_DBG_READ_LEN];
 	int val, len;
 
 	val = atomic_read(&qm->status.flags);
 	len = scnprintf(buf, QM_DBG_READ_LEN, "%s\n", qm_s[val]);
 
-	return simple_read_from_buffer(buffer, count, pos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations qm_status_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = qm_status_read,
+	.read_iter = qm_status_read,
 };
 
 static void qm_create_debugfs_file(struct hisi_qm *qm, struct dentry *dir,

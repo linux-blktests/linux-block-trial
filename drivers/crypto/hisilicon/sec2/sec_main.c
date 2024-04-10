@@ -798,10 +798,9 @@ static int sec_clear_enable_write(struct hisi_qm *qm, u32 val)
 	return 0;
 }
 
-static ssize_t sec_debug_read(struct file *filp, char __user *buf,
-			       size_t count, loff_t *pos)
+static ssize_t sec_debug_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct sec_debug_file *file = filp->private_data;
+	struct sec_debug_file *file = iocb->ki_filp->private_data;
 	char tbuf[SEC_DBGFS_VAL_MAX_LEN];
 	struct hisi_qm *qm = file->qm;
 	u32 val;
@@ -825,7 +824,7 @@ static ssize_t sec_debug_read(struct file *filp, char __user *buf,
 
 	hisi_qm_put_dfx_access(qm);
 	ret = snprintf(tbuf, SEC_DBGFS_VAL_MAX_LEN, "%u\n", val);
-	return simple_read_from_buffer(buf, count, pos, tbuf, ret);
+	return simple_copy_to_iter(tbuf, &iocb->ki_pos, ret, to);
 
 err_input:
 	spin_unlock_irq(&file->lock);
@@ -833,23 +832,23 @@ err_input:
 	return -EINVAL;
 }
 
-static ssize_t sec_debug_write(struct file *filp, const char __user *buf,
-			       size_t count, loff_t *pos)
+static ssize_t sec_debug_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct sec_debug_file *file = filp->private_data;
+	struct sec_debug_file *file = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	char tbuf[SEC_DBGFS_VAL_MAX_LEN];
 	struct hisi_qm *qm = file->qm;
 	unsigned long val;
 	int len, ret;
 
-	if (*pos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	if (count >= SEC_DBGFS_VAL_MAX_LEN)
 		return -ENOSPC;
 
-	len = simple_write_to_buffer(tbuf, SEC_DBGFS_VAL_MAX_LEN - 1,
-				     pos, buf, count);
+	len = simple_copy_from_iter(tbuf, &iocb->ki_pos,
+					SEC_DBGFS_VAL_MAX_LEN - 1, from);
 	if (len < 0)
 		return len;
 
@@ -885,8 +884,8 @@ static ssize_t sec_debug_write(struct file *filp, const char __user *buf,
 static const struct file_operations sec_dbg_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = sec_debug_read,
-	.write = sec_debug_write,
+	.read_iter = sec_debug_read,
+	.write_iter = sec_debug_write,
 };
 
 static int sec_debugfs_atomic64_get(void *data, u64 *val)
