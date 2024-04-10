@@ -66,7 +66,7 @@ static int dl_debug_open_common(struct inode *inode, struct file *file)
 
 static const struct file_operations file_ops_common = {
 	.open = dl_debug_open_common,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
@@ -411,10 +411,11 @@ static ssize_t rtl_debugfs_common_write(struct file *filp,
 
 	return debugfs_priv->cb_write(filp, buffer, count, loff);
 }
+FOPS_WRITE_ITER_HELPER(rtl_debugfs_common_write);
 
 static const struct file_operations file_ops_common_write = {
 	.owner = THIS_MODULE,
-	.write = rtl_debugfs_common_write,
+	.write_iter = rtl_debugfs_common_write_iter,
 	.open = simple_open,
 	.release = rtl_debugfs_close,
 };
