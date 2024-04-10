@@ -662,6 +662,7 @@ static ssize_t sq_write(struct file *file, const char __user *src, size_t uLeft,
 
 	return uUsed < 0? uUsed: uWritten;
 }
+FOPS_WRITE_ITER_HELPER(sq_write);
 
 static __poll_t sq_poll(struct file *file, struct poll_table_struct *wait)
 {
@@ -1151,7 +1152,7 @@ static long sq_unlocked_ioctl(struct file *file, u_int cmd, u_long arg)
 static const struct file_operations sq_fops =
 {
 	.owner		= THIS_MODULE,
-	.write		= sq_write,
+	.write_iter	= sq_write_iter,
 	.poll		= sq_poll,
 	.unlocked_ioctl	= sq_unlocked_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
@@ -1330,15 +1331,15 @@ static int state_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t state_read(struct file *file, char __user *buf, size_t count,
-			  loff_t *ppos)
+static ssize_t state_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	int n = state.len - state.ptr;
 	if (n > count)
 		n = count;
 	if (n <= 0)
 		return 0;
-	if (copy_to_user(buf, &state.buf[state.ptr], n))
+	if (!copy_to_iter_full(&state.buf[state.ptr], n, to))
 		return -EFAULT;
 	state.ptr += n;
 	return n;
@@ -1346,7 +1347,7 @@ static ssize_t state_read(struct file *file, char __user *buf, size_t count,
 
 static const struct file_operations state_fops = {
 	.owner		= THIS_MODULE,
-	.read		= state_read,
+	.read_iter	= state_read,
 	.open		= state_open,
 	.release	= state_release,
 };
