@@ -19,8 +19,7 @@
 struct rtw_debugfs_priv {
 	struct rtw_dev *rtwdev;
 	int (*cb_read)(struct seq_file *m, void *v);
-	ssize_t (*cb_write)(struct file *filp, const char __user *buffer,
-			    size_t count, loff_t *loff);
+	ssize_t (*cb_write)(struct kiocb *, struct iov_iter *);
 	union {
 		u32 cb_data;
 		u8 *buf;
@@ -111,23 +110,21 @@ static int rtw_debugfs_single_show(struct seq_file *m, void *v)
 	return debugfs_priv->cb_read(m, v);
 }
 
-static ssize_t rtw_debugfs_common_write(struct file *filp,
-					const char __user *buffer,
-					size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_common_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct rtw_debugfs_priv *debugfs_priv = filp->private_data;
+	struct rtw_debugfs_priv *debugfs_priv = iocb->ki_filp->private_data;
 
-	return debugfs_priv->cb_write(filp, buffer, count, loff);
+	return debugfs_priv->cb_write(iocb, from);
 }
 
-static ssize_t rtw_debugfs_single_write(struct file *filp,
-					const char __user *buffer,
-					size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_single_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct seq_file *seqpriv = (struct seq_file *)filp->private_data;
+	struct seq_file *seqpriv = iocb->ki_filp->private_data;
 	struct rtw_debugfs_priv *debugfs_priv = seqpriv->private;
 
-	return debugfs_priv->cb_write(filp, buffer, count, loff);
+	return debugfs_priv->cb_write(iocb, from);
 }
 
 static int rtw_debugfs_single_open_rw(struct inode *inode, struct file *filp)
@@ -143,7 +140,7 @@ static int rtw_debugfs_close(struct inode *inode, struct file *filp)
 static const struct file_operations file_ops_single_r = {
 	.owner = THIS_MODULE,
 	.open = rtw_debugfs_single_open_rw,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
@@ -152,14 +149,14 @@ static const struct file_operations file_ops_single_rw = {
 	.owner = THIS_MODULE,
 	.open = rtw_debugfs_single_open_rw,
 	.release = single_release,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
-	.write = rtw_debugfs_single_write,
+	.write_iter = rtw_debugfs_single_write,
 };
 
 static const struct file_operations file_ops_common_write = {
 	.owner = THIS_MODULE,
-	.write = rtw_debugfs_common_write,
+	.write_iter = rtw_debugfs_common_write,
 	.open = simple_open,
 	.release = rtw_debugfs_close,
 };
@@ -227,9 +224,9 @@ static int rtw_debugfs_get_fix_rate(struct seq_file *m, void *v)
 }
 
 static int rtw_debugfs_copy_from_user(char tmp[], int size,
-				      const char __user *buffer, size_t count,
-				      int num)
+				      struct iov_iter *from, int num)
 {
+	size_t count = iov_iter_count(from);
 	int tmp_len;
 
 	memset(tmp, 0, size);
@@ -239,7 +236,7 @@ static int rtw_debugfs_copy_from_user(char tmp[], int size,
 
 	tmp_len = (count > size - 1 ? size - 1 : count);
 
-	if (copy_from_user(tmp, buffer, tmp_len))
+	if (!copy_from_iter_full(tmp, tmp_len, from))
 		return -EFAULT;
 
 	tmp[tmp_len] = '\0';
@@ -247,19 +244,19 @@ static int rtw_debugfs_copy_from_user(char tmp[], int size,
 	return 0;
 }
 
-static ssize_t rtw_debugfs_set_read_reg(struct file *filp,
-					const char __user *buffer,
-					size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_set_read_reg(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct seq_file *seqpriv = (struct seq_file *)filp->private_data;
+	struct seq_file *seqpriv = iocb->ki_filp->private_data;
 	struct rtw_debugfs_priv *debugfs_priv = seqpriv->private;
 	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
+	size_t count = iov_iter_count(from);
 	char tmp[32 + 1];
 	u32 addr, len;
 	int num;
 	int ret;
 
-	ret = rtw_debugfs_copy_from_user(tmp, sizeof(tmp), buffer, count, 2);
+	ret = rtw_debugfs_copy_from_user(tmp, sizeof(tmp), from, 2);
 	if (ret)
 		return ret;
 
@@ -337,19 +334,19 @@ static int rtw_debugfs_get_rsvd_page(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t rtw_debugfs_set_rsvd_page(struct file *filp,
-					 const char __user *buffer,
-					 size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_set_rsvd_page(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct seq_file *seqpriv = (struct seq_file *)filp->private_data;
+	struct seq_file *seqpriv = iocb->ki_filp->private_data;
 	struct rtw_debugfs_priv *debugfs_priv = seqpriv->private;
 	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
+	size_t count = iov_iter_count(from);
 	char tmp[32 + 1];
 	u32 offset, page_num;
 	int num;
 	int ret;
 
-	ret = rtw_debugfs_copy_from_user(tmp, sizeof(tmp), buffer, count, 2);
+	ret = rtw_debugfs_copy_from_user(tmp, sizeof(tmp), from, 2);
 	if (ret)
 		return ret;
 
@@ -366,16 +363,16 @@ static ssize_t rtw_debugfs_set_rsvd_page(struct file *filp,
 	return count;
 }
 
-static ssize_t rtw_debugfs_set_single_input(struct file *filp,
-					    const char __user *buffer,
-					    size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_set_single_input(struct kiocb *iocb,
+					    struct iov_iter *from)
 {
-	struct seq_file *seqpriv = (struct seq_file *)filp->private_data;
+	struct seq_file *seqpriv = iocb->ki_filp->private_data;
 	struct rtw_debugfs_priv *debugfs_priv = seqpriv->private;
+	size_t count = iov_iter_count(from);
 	u32 input;
 	int ret;
 
-	ret = kstrtou32_from_user(buffer, count, 0, &input);
+	ret = kstrtou32_from_iter(from, count, 0, &input);
 	if (ret)
 		return ret;
 
@@ -384,18 +381,18 @@ static ssize_t rtw_debugfs_set_single_input(struct file *filp,
 	return count;
 }
 
-static ssize_t rtw_debugfs_set_write_reg(struct file *filp,
-					 const char __user *buffer,
-					 size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_set_write_reg(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct rtw_debugfs_priv *debugfs_priv = filp->private_data;
+	struct rtw_debugfs_priv *debugfs_priv = iocb->ki_filp->private_data;
 	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
+	size_t count = iov_iter_count(from);
 	char tmp[32 + 1];
 	u32 addr, val, len;
 	int num;
 	int ret;
 
-	ret = rtw_debugfs_copy_from_user(tmp, sizeof(tmp), buffer, count, 3);
+	ret = rtw_debugfs_copy_from_user(tmp, sizeof(tmp), from, 3);
 	if (ret)
 		return ret;
 
@@ -430,18 +427,17 @@ static ssize_t rtw_debugfs_set_write_reg(struct file *filp,
 	return count;
 }
 
-static ssize_t rtw_debugfs_set_h2c(struct file *filp,
-				   const char __user *buffer,
-				   size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_set_h2c(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct rtw_debugfs_priv *debugfs_priv = filp->private_data;
+	struct rtw_debugfs_priv *debugfs_priv = iocb->ki_filp->private_data;
 	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
+	size_t count = iov_iter_count(from);
 	char tmp[32 + 1];
 	u8 param[8];
 	int num;
 	int ret;
 
-	ret = rtw_debugfs_copy_from_user(tmp, sizeof(tmp), buffer, count, 3);
+	ret = rtw_debugfs_copy_from_user(tmp, sizeof(tmp), from, 3);
 	if (ret)
 		return ret;
 
@@ -460,18 +456,18 @@ static ssize_t rtw_debugfs_set_h2c(struct file *filp,
 	return count;
 }
 
-static ssize_t rtw_debugfs_set_rf_write(struct file *filp,
-					const char __user *buffer,
-					size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_set_rf_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct rtw_debugfs_priv *debugfs_priv = filp->private_data;
+	struct rtw_debugfs_priv *debugfs_priv = iocb->ki_filp->private_data;
 	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
+	size_t count = iov_iter_count(from);
 	char tmp[32 + 1];
 	u32 path, addr, mask, val;
 	int num;
 	int ret;
 
-	ret = rtw_debugfs_copy_from_user(tmp, sizeof(tmp), buffer, count, 4);
+	ret = rtw_debugfs_copy_from_user(tmp, sizeof(tmp), from, 4);
 	if (ret)
 		return ret;
 
@@ -492,19 +488,18 @@ static ssize_t rtw_debugfs_set_rf_write(struct file *filp,
 	return count;
 }
 
-static ssize_t rtw_debugfs_set_rf_read(struct file *filp,
-				       const char __user *buffer,
-				       size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_set_rf_read(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *seqpriv = (struct seq_file *)filp->private_data;
+	struct seq_file *seqpriv = iocb->ki_filp->private_data;
 	struct rtw_debugfs_priv *debugfs_priv = seqpriv->private;
 	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
+	size_t count = iov_iter_count(from);
 	char tmp[32 + 1];
 	u32 path, addr, mask;
 	int num;
 	int ret;
 
-	ret = rtw_debugfs_copy_from_user(tmp, sizeof(tmp), buffer, count, 3);
+	ret = rtw_debugfs_copy_from_user(tmp, sizeof(tmp), from, 3);
 	if (ret)
 		return ret;
 
@@ -522,18 +517,18 @@ static ssize_t rtw_debugfs_set_rf_read(struct file *filp,
 	return count;
 }
 
-static ssize_t rtw_debugfs_set_fix_rate(struct file *filp,
-					const char __user *buffer,
-					size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_set_fix_rate(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct seq_file *seqpriv = (struct seq_file *)filp->private_data;
+	struct seq_file *seqpriv = iocb->ki_filp->private_data;
 	struct rtw_debugfs_priv *debugfs_priv = seqpriv->private;
 	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
 	struct rtw_dm_info *dm_info = &rtwdev->dm_info;
+	size_t count = iov_iter_count(from);
 	u8 fix_rate;
 	int ret;
 
-	ret = kstrtou8_from_user(buffer, count, 0, &fix_rate);
+	ret = kstrtou8_from_iter(from, count, 0, &fix_rate);
 	if (ret)
 		return ret;
 
@@ -931,18 +926,18 @@ static int rtw_debugfs_get_coex_info(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t rtw_debugfs_set_coex_enable(struct file *filp,
-					   const char __user *buffer,
-					   size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_set_coex_enable(struct kiocb *iocb,
+					   struct iov_iter *from)
 {
-	struct seq_file *seqpriv = (struct seq_file *)filp->private_data;
+	struct seq_file *seqpriv = iocb->ki_filp->private_data;
 	struct rtw_debugfs_priv *debugfs_priv = seqpriv->private;
 	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
 	struct rtw_coex *coex = &rtwdev->coex;
+	size_t count = iov_iter_count(from);
 	bool enable;
 	int ret;
 
-	ret = kstrtobool_from_user(buffer, count, &enable);
+	ret = kstrtobool_from_iter(from, count, &enable);
 	if (ret)
 		return ret;
 
@@ -965,17 +960,17 @@ static int rtw_debugfs_get_coex_enable(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t rtw_debugfs_set_edcca_enable(struct file *filp,
-					    const char __user *buffer,
-					    size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_set_edcca_enable(struct kiocb *iocb,
+					    struct iov_iter *from)
 {
-	struct seq_file *seqpriv = (struct seq_file *)filp->private_data;
+	struct seq_file *seqpriv = iocb->ki_filp->private_data;
 	struct rtw_debugfs_priv *debugfs_priv = seqpriv->private;
 	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
+	size_t count = iov_iter_count(from);
 	bool input;
 	int err;
 
-	err = kstrtobool_from_user(buffer, count, &input);
+	err = kstrtobool_from_iter(from, count, &input);
 	if (err)
 		return err;
 
@@ -997,17 +992,17 @@ static int rtw_debugfs_get_edcca_enable(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t rtw_debugfs_set_fw_crash(struct file *filp,
-					const char __user *buffer,
-					size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_set_fw_crash(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct seq_file *seqpriv = (struct seq_file *)filp->private_data;
+	struct seq_file *seqpriv = iocb->ki_filp->private_data;
 	struct rtw_debugfs_priv *debugfs_priv = seqpriv->private;
 	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
+	size_t count = iov_iter_count(from);
 	bool input;
 	int ret;
 
-	ret = kstrtobool_from_user(buffer, count, &input);
+	ret = kstrtobool_from_iter(from, count, &input);
 	if (ret)
 		return ret;
 
@@ -1037,17 +1032,17 @@ static int rtw_debugfs_get_fw_crash(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t rtw_debugfs_set_force_lowest_basic_rate(struct file *filp,
-						       const char __user *buffer,
-						       size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_set_force_lowest_basic_rate(struct kiocb *iocb,
+						       struct iov_iter *from)
 {
-	struct seq_file *seqpriv = (struct seq_file *)filp->private_data;
+	struct seq_file *seqpriv = iocb->ki_filp->private_data;
 	struct rtw_debugfs_priv *debugfs_priv = seqpriv->private;
 	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
+	size_t count = iov_iter_count(from);
 	bool input;
 	int err;
 
-	err = kstrtobool_from_user(buffer, count, &input);
+	err = kstrtobool_from_iter(from, count, &input);
 	if (err)
 		return err;
 
@@ -1070,18 +1065,18 @@ static int rtw_debugfs_get_force_lowest_basic_rate(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t rtw_debugfs_set_dm_cap(struct file *filp,
-				      const char __user *buffer,
-				      size_t count, loff_t *loff)
+static ssize_t rtw_debugfs_set_dm_cap(struct kiocb *iocb,
+				      struct iov_iter *from)
 {
-	struct seq_file *seqpriv = (struct seq_file *)filp->private_data;
+	struct seq_file *seqpriv = iocb->ki_filp->private_data;
 	struct rtw_debugfs_priv *debugfs_priv = seqpriv->private;
 	struct rtw_dev *rtwdev = debugfs_priv->rtwdev;
 	struct rtw_dm_info *dm_info = &rtwdev->dm_info;
+	size_t count = iov_iter_count(from);
 	int ret, bit;
 	bool en;
 
-	ret = kstrtoint_from_user(buffer, count, 10, &bit);
+	ret = kstrtoint_from_iter(from, count, 10, &bit);
 	if (ret)
 		return ret;
 
