@@ -189,12 +189,12 @@ static int dpaa2_console_close(struct inode *node, struct file *fp)
 	return 0;
 }
 
-static ssize_t dpaa2_console_read(struct file *fp, char __user *buf,
-				  size_t count, loff_t *f_pos)
+static ssize_t dpaa2_console_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct console_data *cd = fp->private_data;
+	struct console_data *cd = iocb->ki_filp->private_data;
 	size_t bytes = dpaa2_console_size(cd);
 	size_t bytes_end = cd->end_addr - cd->cur_ptr;
+	size_t count = iov_iter_count(to);
 	size_t written = 0;
 	void *kbuf;
 	int err;
@@ -214,18 +214,17 @@ static ssize_t dpaa2_console_read(struct file *fp, char __user *buf,
 
 	if (bytes > bytes_end) {
 		memcpy_fromio(kbuf, cd->cur_ptr, bytes_end);
-		if (copy_to_user(buf, kbuf, bytes_end)) {
+		if (!copy_to_iter_full(kbuf, bytes_end, to)) {
 			err = -EFAULT;
 			goto err_free_buf;
 		}
-		buf += bytes_end;
 		cd->cur_ptr = cd->start_addr;
 		bytes -= bytes_end;
 		written += bytes_end;
 	}
 
 	memcpy_fromio(kbuf, cd->cur_ptr, bytes);
-	if (copy_to_user(buf, kbuf, bytes)) {
+	if (!copy_to_iter_full(kbuf, bytes, to)) {
 		err = -EFAULT;
 		goto err_free_buf;
 	}
@@ -245,7 +244,7 @@ static const struct file_operations dpaa2_mc_console_fops = {
 	.owner          = THIS_MODULE,
 	.open           = dpaa2_mc_console_open,
 	.release        = dpaa2_console_close,
-	.read           = dpaa2_console_read,
+	.read_iter      = dpaa2_console_read,
 };
 
 static struct miscdevice dpaa2_mc_console_dev = {
@@ -258,7 +257,7 @@ static const struct file_operations dpaa2_aiop_console_fops = {
 	.owner          = THIS_MODULE,
 	.open           = dpaa2_aiop_console_open,
 	.release        = dpaa2_console_close,
-	.read           = dpaa2_console_read,
+	.read_iter      = dpaa2_console_read,
 };
 
 static struct miscdevice dpaa2_aiop_console_dev = {
