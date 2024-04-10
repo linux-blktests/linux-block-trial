@@ -1261,24 +1261,24 @@ static int mdesc_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t mdesc_read(struct file *file, char __user *buf,
-			  size_t len, loff_t *offp)
+static ssize_t mdesc_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct mdesc_handle *hp = file->private_data;
+	struct mdesc_handle *hp = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	unsigned char *mdesc;
 	int bytes_left, count = len;
 
-	if (*offp >= hp->handle_size)
+	if (iocb->ki_pos >= hp->handle_size)
 		return 0;
 
-	bytes_left = hp->handle_size - *offp;
+	bytes_left = hp->handle_size - iocb->ki_pos;
 	if (count > bytes_left)
 		count = bytes_left;
 
 	mdesc = (unsigned char *)&hp->mdesc;
-	mdesc += *offp;
-	if (!copy_to_user(buf, mdesc, count)) {
-		*offp += count;
+	mdesc += iocb->ki_pos;
+	if (!copy_to_iter_full(mdesc, count, to)) {
+		iocb->ki_pos += count;
 		return count;
 	} else {
 		return -EFAULT;
@@ -1303,7 +1303,7 @@ static int mdesc_close(struct inode *inode, struct file *file)
 
 static const struct file_operations mdesc_fops = {
 	.open    = mdesc_open,
-	.read	 = mdesc_read,
+	.read_iter	 = mdesc_read,
 	.llseek  = mdesc_llseek,
 	.release = mdesc_close,
 	.owner	 = THIS_MODULE,
