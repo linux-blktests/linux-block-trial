@@ -1352,11 +1352,11 @@ static int watchdog_close(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t watchdog_write(struct file *filp, const char __user *buf,
-	size_t count, loff_t *offset)
+static ssize_t watchdog_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	ssize_t ret;
-	struct w83793_data *data = filp->private_data;
+	struct w83793_data *data = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 
 	if (count) {
 		if (!nowayout) {
@@ -1367,7 +1367,7 @@ static ssize_t watchdog_write(struct file *filp, const char __user *buf,
 
 			for (i = 0; i != count; i++) {
 				char c;
-				if (get_user(c, buf + i))
+				if (get_iter(c, from))
 					return -EFAULT;
 				if (c == 'V')
 					data->watchdog_expect_close = 1;
@@ -1453,7 +1453,7 @@ static const struct file_operations watchdog_fops = {
 	.owner = THIS_MODULE,
 	.open = watchdog_open,
 	.release = watchdog_close,
-	.write = watchdog_write,
+	.write_iter = watchdog_write,
 	.unlocked_ioctl = watchdog_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
 };
