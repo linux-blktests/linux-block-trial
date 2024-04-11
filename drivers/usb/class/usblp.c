@@ -838,6 +838,7 @@ collect_error:		/* Out of raise sequence */
 raise_biglock:
 	return writecount ? writecount : rv;
 }
+FOPS_WRITE_ITER_HELPER(usblp_write);
 
 /*
  * Notice that we fail to restart in a few cases: on EFAULT, on restart
@@ -893,6 +894,7 @@ done:
 	mutex_unlock(&usblp->mut);
 	return count;
 }
+FOPS_READ_ITER_HELPER(usblp_read);
 
 /*
  * Wait for the write path to come idle.
@@ -1090,8 +1092,8 @@ static unsigned int usblp_quirks(__u16 vendor, __u16 product)
 
 static const struct file_operations usblp_fops = {
 	.owner =	THIS_MODULE,
-	.read =		usblp_read,
-	.write =	usblp_write,
+	.read_iter =	usblp_read_iter,
+	.write_iter =	usblp_write_iter,
 	.poll =		usblp_poll,
 	.unlocked_ioctl =	usblp_ioctl,
 	.compat_ioctl =		usblp_ioctl,

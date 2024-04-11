@@ -378,11 +378,12 @@ static void cleanup(struct wdm_device *desc)
 }
 
 static ssize_t wdm_write
-(struct file *file, const char __user *buffer, size_t count, loff_t *ppos)
+(struct kiocb *iocb, struct iov_iter *from)
 {
 	u8 *buf;
 	int rv = -EMSGSIZE, r, we;
-	struct wdm_device *desc = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct wdm_device *desc = iocb->ki_filp->private_data;
 	struct usb_ctrlrequest *req;
 
 	if (count > desc->wMaxCommand)
@@ -395,7 +396,7 @@ static ssize_t wdm_write
 	if (we < 0)
 		return usb_translate_errors(we);
 
-	buf = memdup_user(buffer, count);
+	buf = iterdup(from, count);
 	if (IS_ERR(buf))
 		return PTR_ERR(buf);
 
@@ -416,7 +417,7 @@ static ssize_t wdm_write
 		goto out_free_mem_lock;
 	}
 
-	if (!(file->f_flags & O_NONBLOCK))
+	if (!(iocb->ki_filp->f_flags & O_NONBLOCK))
 		r = wait_event_interruptible(desc->wait, !test_bit(WDM_IN_USE,
 								&desc->flags));
 	else
@@ -521,13 +522,12 @@ out:
 	return rv;
 }
 
-static ssize_t wdm_read
-(struct file *file, char __user *buffer, size_t count, loff_t *ppos)
+static ssize_t wdm_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	int rv, cntr;
 	int i = 0;
-	struct wdm_device *desc = file->private_data;
-
+	struct wdm_device *desc = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 
 	rv = mutex_lock_interruptible(&desc->rlock); /*concurrent reads */
 	if (rv < 0)
@@ -548,7 +548,7 @@ retry:
 			goto err;
 		}
 		i++;
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			if (!test_bit(WDM_READ, &desc->flags)) {
 				rv = -EAGAIN;
 				goto err;
@@ -597,8 +597,8 @@ retry:
 
 	if (cntr > count)
 		cntr = count;
-	rv = copy_to_user(buffer, desc->ubuf, cntr);
-	if (rv > 0) {
+	rv = !copy_to_iter_full(desc->ubuf, cntr, to);
+	if (rv) {
 		rv = -EFAULT;
 		goto err;
 	}
@@ -803,8 +803,8 @@ static long wdm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 static const struct file_operations wdm_fops = {
 	.owner =	THIS_MODULE,
-	.read =		wdm_read,
-	.write =	wdm_write,
+	.read_iter =	wdm_read,
+	.write_iter =	wdm_write,
 	.fsync =	wdm_fsync,
 	.open =		wdm_open,
 	.flush =	wdm_flush,

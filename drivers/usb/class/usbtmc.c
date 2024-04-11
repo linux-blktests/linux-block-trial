@@ -1522,6 +1522,7 @@ exit_nolock:
 	kfree(buffer);
 	return retval;
 }
+FOPS_READ_ITER_HELPER(usbtmc_read);
 
 static ssize_t usbtmc_write(struct file *filp, const char __user *buf,
 			    size_t count, loff_t *f_pos)
@@ -1660,6 +1661,7 @@ exit:
 	mutex_unlock(&data->io_mutex);
 	return retval;
 }
+FOPS_WRITE_ITER_HELPER(usbtmc_write);
 
 static int usbtmc_ioctl_clear(struct usbtmc_device_data *data)
 {
@@ -2273,8 +2275,8 @@ no_poll:
 
 static const struct file_operations fops = {
 	.owner		= THIS_MODULE,
-	.read		= usbtmc_read,
-	.write		= usbtmc_write,
+	.read_iter	= usbtmc_read_iter,
+	.write_iter	= usbtmc_write_iter,
 	.open		= usbtmc_open,
 	.release	= usbtmc_release,
 	.flush		= usbtmc_flush,
