@@ -2428,6 +2428,7 @@ static ssize_t sisusb_read(struct file *file, char __user *buffer,
 
 	return errno ? errno : bytes_read;
 }
+FOPS_READ_ITER_HELPER(sisusb_read);
 
 static ssize_t sisusb_write(struct file *file, const char __user *buffer,
 		size_t count, loff_t *ppos)
@@ -2572,6 +2573,7 @@ static ssize_t sisusb_write(struct file *file, const char __user *buffer,
 
 	return errno ? errno : bytes_written;
 }
+FOPS_WRITE_ITER_HELPER(sisusb_write);
 
 static loff_t sisusb_lseek(struct file *file, loff_t offset, int orig)
 {
@@ -2757,8 +2759,8 @@ static const struct file_operations usb_sisusb_fops = {
 	.owner =	THIS_MODULE,
 	.open =		sisusb_open,
 	.release =	sisusb_release,
-	.read =		sisusb_read,
-	.write =	sisusb_write,
+	.read_iter =	sisusb_read_iter,
+	.write_iter =	sisusb_write_iter,
 	.llseek =	sisusb_lseek,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = sisusb_compat_ioctl,

@@ -433,16 +433,16 @@ static __poll_t ld_usb_poll(struct file *file, poll_table *wait)
 /*
  *	ld_usb_read
  */
-static ssize_t ld_usb_read(struct file *file, char __user *buffer, size_t count,
-			   loff_t *ppos)
+static ssize_t ld_usb_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	struct ld_usb *dev;
 	size_t *actual_buffer;
 	size_t bytes_to_read;
 	int retval = 0;
 	int rv;
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
 	/* verify that we actually have some data to read */
 	if (count == 0)
@@ -466,7 +466,7 @@ static ssize_t ld_usb_read(struct file *file, char __user *buffer, size_t count,
 	while (dev->ring_head == dev->ring_tail) {
 		dev->interrupt_in_done = 0;
 		spin_unlock_irq(&dev->rbsl);
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			retval = -EAGAIN;
 			goto unlock_exit;
 		}
@@ -490,7 +490,7 @@ static ssize_t ld_usb_read(struct file *file, char __user *buffer, size_t count,
 			 *actual_buffer-bytes_to_read);
 
 	/* copy one interrupt_in_buffer from ring_buffer into userspace */
-	if (copy_to_user(buffer, actual_buffer+1, bytes_to_read)) {
+	if (!copy_to_iter_full(actual_buffer+1, bytes_to_read, to)) {
 		retval = -EFAULT;
 		goto unlock_exit;
 	}
@@ -520,14 +520,14 @@ exit:
 /*
  *	ld_usb_write
  */
-static ssize_t ld_usb_write(struct file *file, const char __user *buffer,
-			    size_t count, loff_t *ppos)
+static ssize_t ld_usb_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct ld_usb *dev;
 	size_t bytes_to_write;
 	int retval = 0;
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
 	/* verify that we actually have some data to write */
 	if (count == 0)
@@ -548,7 +548,7 @@ static ssize_t ld_usb_write(struct file *file, const char __user *buffer,
 
 	/* wait until previous transfer is finished */
 	if (dev->interrupt_out_busy) {
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			retval = -EAGAIN;
 			goto unlock_exit;
 		}
@@ -566,7 +566,7 @@ static ssize_t ld_usb_write(struct file *file, const char __user *buffer,
 	dev_dbg(&dev->intf->dev, "%s: count = %zu, bytes_to_write = %zu\n",
 		__func__, count, bytes_to_write);
 
-	if (copy_from_user(dev->interrupt_out_buffer, buffer, bytes_to_write)) {
+	if (!copy_from_iter_full(dev->interrupt_out_buffer, bytes_to_write, from)) {
 		retval = -EFAULT;
 		goto unlock_exit;
 	}
@@ -622,8 +622,8 @@ exit:
 /* file operations needed when we register this driver */
 static const struct file_operations ld_usb_fops = {
 	.owner =	THIS_MODULE,
-	.read  =	ld_usb_read,
-	.write =	ld_usb_write,
+	.read_iter  =	ld_usb_read,
+	.write_iter =	ld_usb_write,
 	.open =		ld_usb_open,
 	.release =	ld_usb_release,
 	.poll =		ld_usb_poll,

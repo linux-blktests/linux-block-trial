@@ -271,17 +271,17 @@ static int read_index(struct iowarrior *dev)
 /*
  *  iowarrior_read
  */
-static ssize_t iowarrior_read(struct file *file, char __user *buffer,
-			      size_t count, loff_t *ppos)
+static ssize_t iowarrior_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct iowarrior *dev;
 	int read_idx;
 	int offset;
 	int retval;
+	size_t count = iov_iter_count(to);
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
-	if (file->f_flags & O_NONBLOCK) {
+	if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 		retval = mutex_trylock(&dev->mutex);
 		if (!retval)
 			return -EAGAIN;
@@ -312,7 +312,7 @@ static ssize_t iowarrior_read(struct file *file, char __user *buffer,
 		atomic_set(&dev->overflow_flag, 0);
 		if ((read_idx = read_index(dev)) == -1) {
 			/* queue empty */
-			if (file->f_flags & O_NONBLOCK) {
+			if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 				retval = -EAGAIN;
 				goto exit;
 			}
@@ -343,7 +343,7 @@ static ssize_t iowarrior_read(struct file *file, char __user *buffer,
 		}
 
 		offset = read_idx * (dev->report_size + 1);
-		if (copy_to_user(buffer, dev->read_queue + offset, count)) {
+		if (!copy_to_iter_full(dev->read_queue + offset, count, to)) {
 			retval = -EFAULT;
 			goto exit;
 		}
@@ -362,16 +362,15 @@ exit:
 /*
  * iowarrior_write
  */
-static ssize_t iowarrior_write(struct file *file,
-			       const char __user *user_buffer,
-			       size_t count, loff_t *ppos)
+static ssize_t iowarrior_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct iowarrior *dev;
 	int retval = 0;
 	char *buf = NULL;	/* for IOW24 and IOW56 we need a buffer */
 	struct urb *int_out_urb = NULL;
+	size_t count = iov_iter_count(from);
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
 	mutex_lock(&dev->mutex);
 	/* verify that the device wasn't unplugged */
@@ -398,7 +397,7 @@ static ssize_t iowarrior_write(struct file *file,
 	case USB_DEVICE_ID_CODEMERCS_IOWPV2:
 	case USB_DEVICE_ID_CODEMERCS_IOW40:
 		/* IOW24 and IOW40 use a synchronous call */
-		buf = memdup_user(user_buffer, count);
+		buf = iterdup(from, count);
 		if (IS_ERR(buf)) {
 			retval = PTR_ERR(buf);
 			goto exit;
@@ -414,7 +413,7 @@ static ssize_t iowarrior_write(struct file *file,
 		/* The IOW56 uses asynchronous IO and more urbs */
 		if (atomic_read(&dev->write_busy) == MAX_WRITES_IN_FLIGHT) {
 			/* Wait until we are below the limit for submitted urbs */
-			if (file->f_flags & O_NONBLOCK) {
+			if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 				retval = -EAGAIN;
 				goto exit;
 			} else {
@@ -458,7 +457,7 @@ static ssize_t iowarrior_write(struct file *file,
 				 iowarrior_write_callback, dev,
 				 dev->int_out_endpoint->bInterval);
 		int_out_urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
-		if (copy_from_user(buf, user_buffer, count)) {
+		if (!copy_from_iter_full(buf, count, from)) {
 			retval = -EFAULT;
 			goto error;
 		}
@@ -733,8 +732,8 @@ static __poll_t iowarrior_poll(struct file *file, poll_table * wait)
  */
 static const struct file_operations iowarrior_fops = {
 	.owner = THIS_MODULE,
-	.write = iowarrior_write,
-	.read = iowarrior_read,
+	.write_iter = iowarrior_write,
+	.read_iter = iowarrior_read,
 	.unlocked_ioctl = iowarrior_ioctl,
 	.open = iowarrior_open,
 	.release = iowarrior_release,

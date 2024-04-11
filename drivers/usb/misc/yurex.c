@@ -396,15 +396,14 @@ static int yurex_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t yurex_read(struct file *file, char __user *buffer, size_t count,
-			  loff_t *ppos)
+static ssize_t yurex_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct usb_yurex *dev;
 	int len;
 	char in_buffer[20];
 	unsigned long flags;
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
 	mutex_lock(&dev->io_mutex);
 	if (dev->disconnected) {		/* already disconnected */
@@ -420,11 +419,10 @@ static ssize_t yurex_read(struct file *file, char __user *buffer, size_t count,
 	if (WARN_ON_ONCE(len >= sizeof(in_buffer)))
 		return -EIO;
 
-	return simple_read_from_buffer(buffer, count, ppos, in_buffer, len);
+	return simple_copy_to_iter(in_buffer, &iocb->ki_pos, len, to);
 }
 
-static ssize_t yurex_write(struct file *file, const char __user *user_buffer,
-			   size_t count, loff_t *ppos)
+static ssize_t yurex_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct usb_yurex *dev;
 	int i, set = 0, retval = 0;
@@ -432,10 +430,11 @@ static ssize_t yurex_write(struct file *file, const char __user *user_buffer,
 	char *data = buffer;
 	unsigned long long c, c2 = 0;
 	signed long timeout = 0;
+	size_t count = iov_iter_count(from);
 	DEFINE_WAIT(wait);
 
 	count = min(sizeof(buffer) - 1, count);
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
 	/* verify that we actually have some data to write */
 	if (count == 0)
@@ -451,7 +450,7 @@ static ssize_t yurex_write(struct file *file, const char __user *user_buffer,
 		goto error;
 	}
 
-	if (copy_from_user(buffer, user_buffer, count)) {
+	if (!copy_from_iter_full(buffer, count, from)) {
 		mutex_unlock(&dev->io_mutex);
 		retval = -EFAULT;
 		goto error;
@@ -523,8 +522,8 @@ error:
 
 static const struct file_operations yurex_fops = {
 	.owner =	THIS_MODULE,
-	.read =		yurex_read,
-	.write =	yurex_write,
+	.read_iter =	yurex_read,
+	.write_iter =	yurex_write,
 	.open =		yurex_open,
 	.release =	yurex_release,
 	.fasync	=	yurex_fasync,

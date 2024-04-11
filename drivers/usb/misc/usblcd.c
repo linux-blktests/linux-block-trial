@@ -121,14 +121,14 @@ static int lcd_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t lcd_read(struct file *file, char __user * buffer,
-			size_t count, loff_t *ppos)
+static ssize_t lcd_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	struct usb_lcd *dev;
 	int retval = 0;
 	int bytes_read;
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
 	down_read(&dev->io_rwsem);
 
@@ -147,7 +147,7 @@ static ssize_t lcd_read(struct file *file, char __user * buffer,
 
 	/* if the read was successful, copy the data to userspace */
 	if (!retval) {
-		if (copy_to_user(buffer, dev->bulk_in_buffer, bytes_read))
+		if (!copy_to_iter_full(dev->bulk_in_buffer, bytes_read, to))
 			retval = -EFAULT;
 		else
 			retval = bytes_read;
@@ -214,15 +214,15 @@ static void lcd_write_bulk_callback(struct urb *urb)
 	up(&dev->limit_sem);
 }
 
-static ssize_t lcd_write(struct file *file, const char __user * user_buffer,
-			 size_t count, loff_t *ppos)
+static ssize_t lcd_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct usb_lcd *dev;
 	int retval = 0, r;
 	struct urb *urb = NULL;
 	char *buf = NULL;
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
 	/* verify that we actually have some data to write */
 	if (count == 0)
@@ -253,7 +253,7 @@ static ssize_t lcd_write(struct file *file, const char __user * user_buffer,
 		goto error;
 	}
 
-	if (copy_from_user(buf, user_buffer, count)) {
+	if (!copy_from_iter_full(buf, count, from)) {
 		retval = -EFAULT;
 		goto error;
 	}
@@ -296,8 +296,8 @@ err_up_io:
 
 static const struct file_operations lcd_fops = {
 	.owner =        THIS_MODULE,
-	.read =         lcd_read,
-	.write =        lcd_write,
+	.read_iter =    lcd_read,
+	.write_iter =   lcd_write,
 	.open =         lcd_open,
 	.unlocked_ioctl = lcd_ioctl,
 	.release =      lcd_release,

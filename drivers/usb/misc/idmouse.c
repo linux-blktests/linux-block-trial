@@ -79,9 +79,7 @@ struct usb_idmouse {
 };
 
 /* local function prototypes */
-static ssize_t idmouse_read(struct file *file, char __user *buffer,
-				size_t count, loff_t * ppos);
-
+static ssize_t idmouse_read(struct kiocb *iocb, struct iov_iter *to);
 static int idmouse_open(struct inode *inode, struct file *file);
 static int idmouse_release(struct inode *inode, struct file *file);
 
@@ -95,7 +93,7 @@ static int idmouse_resume(struct usb_interface *intf);
 /* file operation pointers */
 static const struct file_operations idmouse_fops = {
 	.owner = THIS_MODULE,
-	.read = idmouse_read,
+	.read_iter = idmouse_read,
 	.open = idmouse_open,
 	.release = idmouse_release,
 	.llseek = default_llseek,
@@ -290,10 +288,9 @@ static int idmouse_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t idmouse_read(struct file *file, char __user *buffer, size_t count,
-				loff_t * ppos)
+static ssize_t idmouse_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct usb_idmouse *dev = file->private_data;
+	struct usb_idmouse *dev = iocb->ki_filp->private_data;
 	int result;
 
 	/* lock this object */
@@ -305,8 +302,8 @@ static ssize_t idmouse_read(struct file *file, char __user *buffer, size_t count
 		return -ENODEV;
 	}
 
-	result = simple_read_from_buffer(buffer, count, ppos,
-					dev->bulk_in_buffer, IMGSIZE);
+	result = simple_copy_to_iter(dev->bulk_in_buffer, &iocb->ki_pos,
+					IMGSIZE, to);
 	/* unlock the device */
 	mutex_unlock(&dev->lock);
 	return result;

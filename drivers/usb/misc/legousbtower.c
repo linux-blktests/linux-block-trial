@@ -218,8 +218,8 @@ struct lego_usb_tower {
 
 
 /* local function prototypes */
-static ssize_t tower_read(struct file *file, char __user *buffer, size_t count, loff_t *ppos);
-static ssize_t tower_write(struct file *file, const char __user *buffer, size_t count, loff_t *ppos);
+static ssize_t tower_read(struct kiocb *iocb, struct iov_iter *to);
+static ssize_t tower_write(struct kiocb *iocb, struct iov_iter *from);
 static inline void tower_delete(struct lego_usb_tower *dev);
 static int tower_open(struct inode *inode, struct file *file);
 static int tower_release(struct inode *inode, struct file *file);
@@ -237,8 +237,8 @@ static void tower_disconnect(struct usb_interface *interface);
 /* file operations needed when we register this driver */
 static const struct file_operations tower_fops = {
 	.owner =	THIS_MODULE,
-	.read  =	tower_read,
-	.write =	tower_write,
+	.read_iter  =	tower_read,
+	.write_iter =	tower_write,
 	.open =		tower_open,
 	.release =	tower_release,
 	.poll =		tower_poll,
@@ -489,15 +489,16 @@ static loff_t tower_llseek(struct file *file, loff_t off, int whence)
 /*
  *	tower_read
  */
-static ssize_t tower_read(struct file *file, char __user *buffer, size_t count, loff_t *ppos)
+static ssize_t tower_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	struct lego_usb_tower *dev;
 	size_t bytes_to_read;
 	int i;
 	int retval = 0;
 	unsigned long timeout = 0;
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
 	/* lock this object */
 	if (mutex_lock_interruptible(&dev->lock)) {
@@ -523,7 +524,7 @@ static ssize_t tower_read(struct file *file, char __user *buffer, size_t count, 
 	/* wait for data */
 	tower_check_for_read_packet(dev);
 	while (dev->read_packet_length == 0) {
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			retval = -EAGAIN;
 			goto unlock_exit;
 		}
@@ -547,7 +548,7 @@ static ssize_t tower_read(struct file *file, char __user *buffer, size_t count, 
 	/* copy the data from read_buffer into userspace */
 	bytes_to_read = min(count, dev->read_packet_length);
 
-	if (copy_to_user(buffer, dev->read_buffer, bytes_to_read)) {
+	if (!copy_to_iter_full(dev->read_buffer, bytes_to_read, to)) {
 		retval = -EFAULT;
 		goto unlock_exit;
 	}
@@ -573,13 +574,14 @@ exit:
 /*
  *	tower_write
  */
-static ssize_t tower_write(struct file *file, const char __user *buffer, size_t count, loff_t *ppos)
+static ssize_t tower_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct lego_usb_tower *dev;
 	size_t bytes_to_write;
 	int retval = 0;
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
 	/* lock this object */
 	if (mutex_lock_interruptible(&dev->lock)) {
@@ -601,7 +603,7 @@ static ssize_t tower_write(struct file *file, const char __user *buffer, size_t 
 
 	/* wait until previous transfer is finished */
 	while (dev->interrupt_out_busy) {
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			retval = -EAGAIN;
 			goto unlock_exit;
 		}
@@ -616,7 +618,7 @@ static ssize_t tower_write(struct file *file, const char __user *buffer, size_t 
 	dev_dbg(&dev->udev->dev, "%s: count = %zd, bytes_to_write = %zd\n",
 		__func__, count, bytes_to_write);
 
-	if (copy_from_user(dev->interrupt_out_buffer, buffer, bytes_to_write)) {
+	if (!copy_from_iter_full(dev->interrupt_out_buffer, bytes_to_write, from)) {
 		retval = -EFAULT;
 		goto unlock_exit;
 	}

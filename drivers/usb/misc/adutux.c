@@ -340,10 +340,10 @@ exit:
 	return retval;
 }
 
-static ssize_t adu_read(struct file *file, __user char *buffer, size_t count,
-			loff_t *ppos)
+static ssize_t adu_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct adu_device *dev;
+	size_t count = iov_iter_count(to);
 	size_t bytes_read = 0;
 	size_t bytes_to_read = count;
 	int retval = 0;
@@ -352,7 +352,7 @@ static ssize_t adu_read(struct file *file, __user char *buffer, size_t count,
 	unsigned long flags;
 	DECLARE_WAITQUEUE(wait, current);
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 	if (mutex_lock_interruptible(&dev->mtx))
 		return -ERESTARTSYS;
 
@@ -382,7 +382,7 @@ static ssize_t adu_read(struct file *file, __user char *buffer, size_t count,
 		if (data_in_secondary) {
 			/* drain secondary buffer */
 			size_t amount = min(bytes_to_read, data_in_secondary);
-			if (copy_to_user(buffer, dev->read_buffer_secondary+dev->secondary_head, amount)) {
+			if (!copy_to_iter_full(dev->read_buffer_secondary+dev->secondary_head, amount, to)) {
 				retval = -EFAULT;
 				goto exit;
 			}
@@ -500,18 +500,18 @@ exit:
 	return retval;
 }
 
-static ssize_t adu_write(struct file *file, const __user char *buffer,
-			 size_t count, loff_t *ppos)
+static ssize_t adu_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	DECLARE_WAITQUEUE(waita, current);
 	struct adu_device *dev;
+	size_t count = iov_iter_count(from);
 	size_t bytes_written = 0;
 	size_t bytes_to_write;
 	size_t buffer_size;
 	unsigned long flags;
 	int retval;
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
 	retval = mutex_lock_interruptible(&dev->mtx);
 	if (retval)
@@ -576,7 +576,7 @@ static ssize_t adu_write(struct file *file, const __user char *buffer,
 				"%s : buffer_size = %zd, count = %zd, bytes_to_write = %zd\n",
 				__func__, buffer_size, count, bytes_to_write);
 
-			if (copy_from_user(dev->interrupt_out_buffer, buffer, bytes_to_write) != 0) {
+			if (!copy_from_iter_full(dev->interrupt_out_buffer, bytes_to_write, from)) {
 				retval = -EFAULT;
 				goto exit;
 			}
@@ -601,7 +601,6 @@ static ssize_t adu_write(struct file *file, const __user char *buffer,
 				goto exit;
 			}
 
-			buffer += bytes_to_write;
 			count -= bytes_to_write;
 
 			bytes_written += bytes_to_write;
@@ -623,8 +622,8 @@ exit_onqueue:
 /* file operations needed when we register this driver */
 static const struct file_operations adu_fops = {
 	.owner = THIS_MODULE,
-	.read  = adu_read,
-	.write = adu_write,
+	.read_iter  = adu_read,
+	.write_iter = adu_write,
 	.open = adu_open,
 	.release = adu_release,
 	.llseek = noop_llseek,

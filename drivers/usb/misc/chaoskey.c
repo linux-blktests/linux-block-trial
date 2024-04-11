@@ -416,18 +416,16 @@ out:
 	return result;
 }
 
-static ssize_t chaoskey_read(struct file *file,
-			     char __user *buffer,
-			     size_t count,
-			     loff_t *ppos)
+static ssize_t chaoskey_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct chaoskey *dev;
 	ssize_t read_count = 0;
 	int this_time;
 	int result = 0;
 	unsigned long remain;
+	size_t count = iov_iter_count(to);
 
-	dev = file->private_data;
+	dev = iocb->ki_filp->private_data;
 
 	if (dev == NULL || !dev->present)
 		return -ENODEV;
@@ -444,7 +442,7 @@ static ssize_t chaoskey_read(struct file *file,
 			goto bail;
 		mutex_unlock(&dev->rng_lock);
 
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			result = mutex_trylock(&dev->lock);
 			if (result == 0) {
 				result = -EAGAIN;
@@ -469,7 +467,7 @@ static ssize_t chaoskey_read(struct file *file,
 		if (this_time > count)
 			this_time = count;
 
-		remain = copy_to_user(buffer, dev->buf + dev->used, this_time);
+		remain = !copy_to_iter_full(dev->buf + dev->used, this_time, to);
 		if (remain) {
 			result = -EFAULT;
 
@@ -483,7 +481,6 @@ static ssize_t chaoskey_read(struct file *file,
 
 		count -= this_time;
 		read_count += this_time;
-		buffer += this_time;
 		dev->used += this_time;
 		mutex_unlock(&dev->lock);
 	}
@@ -577,7 +574,7 @@ static int chaoskey_resume(struct usb_interface *interface)
 /* file operation pointers */
 static const struct file_operations chaoskey_fops = {
 	.owner = THIS_MODULE,
-	.read = chaoskey_read,
+	.read_iter = chaoskey_read,
 	.open = chaoskey_open,
 	.release = chaoskey_release,
 	.llseek = default_llseek,
