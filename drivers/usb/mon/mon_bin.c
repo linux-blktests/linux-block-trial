@@ -869,6 +869,7 @@ static ssize_t mon_bin_read(struct file *file, char __user *buf,
 	mutex_unlock(&rp->fetch_lock);
 	return done;
 }
+FOPS_READ_ITER_HELPER(mon_bin_read);
 
 /*
  * Remove at most nevents from chunked buffer.
@@ -1290,7 +1291,7 @@ static int mon_bin_mmap(struct file *filp, struct vm_area_struct *vma)
 static const struct file_operations mon_fops_binary = {
 	.owner =	THIS_MODULE,
 	.open =		mon_bin_open,
-	.read =		mon_bin_read,
+	.read_iter =	mon_bin_read_iter,
 	/* .write =	mon_text_write, */
 	.poll =		mon_bin_poll,
 	.unlocked_ioctl = mon_bin_ioctl,

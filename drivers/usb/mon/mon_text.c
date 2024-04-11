@@ -428,6 +428,7 @@ static ssize_t mon_text_read_t(struct file *file, char __user *buf,
 	mutex_unlock(&rp->printf_lock);
 	return ret;
 }
+FOPS_READ_ITER_HELPER(mon_text_read_t);
 
 /* ppos is not advanced since the llseek operation is not permitted. */
 static ssize_t mon_text_read_u(struct file *file, char __user *buf,
@@ -476,6 +477,7 @@ static ssize_t mon_text_read_u(struct file *file, char __user *buf,
 	mutex_unlock(&rp->printf_lock);
 	return ret;
 }
+FOPS_READ_ITER_HELPER(mon_text_read_u);
 
 static struct mon_event_text *mon_text_read_wait(struct mon_reader_text *rp,
     struct file *file)
@@ -685,14 +687,14 @@ static int mon_text_release(struct inode *inode, struct file *file)
 static const struct file_operations mon_fops_text_t = {
 	.owner =	THIS_MODULE,
 	.open =		mon_text_open,
-	.read =		mon_text_read_t,
+	.read_iter =	mon_text_read_t_iter,
 	.release =	mon_text_release,
 };
 
 static const struct file_operations mon_fops_text_u = {
 	.owner =	THIS_MODULE,
 	.open =		mon_text_open,
-	.read =		mon_text_read_u,
+	.read_iter =	mon_text_read_u_iter,
 	.release =	mon_text_release,
 };
 

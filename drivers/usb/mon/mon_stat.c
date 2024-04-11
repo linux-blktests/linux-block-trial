@@ -43,12 +43,11 @@ static int mon_stat_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t mon_stat_read(struct file *file, char __user *buf,
-				size_t nbytes, loff_t *ppos)
+static ssize_t mon_stat_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snap *sp = file->private_data;
+	struct snap *sp = iocb->ki_filp->private_data;
 
-	return simple_read_from_buffer(buf, nbytes, ppos, sp->str, sp->slen);
+	return simple_copy_to_iter(sp->str, &iocb->ki_pos, sp->slen, to);
 }
 
 static int mon_stat_release(struct inode *inode, struct file *file)
@@ -62,7 +61,7 @@ static int mon_stat_release(struct inode *inode, struct file *file)
 const struct file_operations mon_fops_stat = {
 	.owner =	THIS_MODULE,
 	.open =		mon_stat_open,
-	.read =		mon_stat_read,
+	.read_iter =	mon_stat_read,
 	/* .write =	mon_stat_write, */
 	/* .poll =		mon_stat_poll, */
 	/* .unlocked_ioctl =	mon_stat_ioctl, */
