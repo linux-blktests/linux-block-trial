@@ -83,16 +83,16 @@ static ssize_t htm_return_check(long rc)
 	return 1;
 }
 
-static ssize_t htmdump_read(struct file *filp, char __user *ubuf,
-			     size_t count, loff_t *ppos)
+static ssize_t htmdump_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	void *htm_buf = filp->private_data;
+	size_t count = iov_iter_count(to);
+	void *htm_buf = iocb->ki_filp->private_data;
 	unsigned long page, read_size, available;
 	loff_t offset;
 	long rc, ret;
 
-	page = ALIGN_DOWN(*ppos, PAGE_SIZE);
-	offset = (*ppos) % PAGE_SIZE;
+	page = ALIGN_DOWN(iocb->ki_pos, PAGE_SIZE);
+	offset = (iocb->ki_pos) % PAGE_SIZE;
 
 	/*
 	 * Invoke H_HTM call with:
@@ -111,13 +111,13 @@ static ssize_t htmdump_read(struct file *filp, char __user *ubuf,
 
 	available = PAGE_SIZE;
 	read_size = min(count, available);
-	*ppos += read_size;
-	return simple_read_from_buffer(ubuf, count, &offset, htm_buf, available);
+	iocb->ki_pos += read_size;
+	return simple_copy_to_iter(htm_buf, &iocb->ki_pos, available, to);
 }
 
 static const struct file_operations htmdump_fops = {
 	.llseek = NULL,
-	.read	= htmdump_read,
+	.read_iter	= htmdump_read,
 	.open	= simple_open,
 };
 
@@ -223,10 +223,10 @@ static int htmstart_get(void *data, u64 *val)
 	return 0;
 }
 
-static ssize_t htmstatus_read(struct file *filp, char __user *ubuf,
-			     size_t count, loff_t *ppos)
+static ssize_t htmstatus_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	void *htm_status_buf = filp->private_data;
+	size_t count = iov_iter_count(to);
+	void *htm_status_buf = iocb->ki_filp->private_data;
 	long rc, ret;
 	u64 *num_entries;
 	u64 to_copy;
@@ -261,19 +261,19 @@ static ssize_t htmstatus_read(struct file *filp, char __user *ubuf,
 	else
 		htmstatus_flag = 0x6;
 	to_copy = 32 + (be64_to_cpu(*num_entries) * htmstatus_flag);
-	return simple_read_from_buffer(ubuf, count, ppos, htm_status_buf, to_copy);
+	return simple_copy_to_iter(htm_status_buf, &iocb->ki_pos, to_copy, to);
 }
 
 static const struct file_operations htmstatus_fops = {
 	.llseek = NULL,
-	.read	= htmstatus_read,
+	.read_iter	= htmstatus_read,
 	.open	= simple_open,
 };
 
-static ssize_t htminfo_read(struct file *filp, char __user *ubuf,
-			     size_t count, loff_t *ppos)
+static ssize_t htminfo_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	void *htm_info_buf = filp->private_data;
+	size_t count = iov_iter_count(to);
+	void *htm_info_buf = iocb->ki_filp->private_data;
 	long rc, ret;
 	u64 *num_entries;
 	u64 to_copy;
@@ -303,13 +303,12 @@ static ssize_t htminfo_read(struct file *filp, char __user *ubuf,
 	 */
 	num_entries = htm_info_buf + 0x10;
 	to_copy = 32 + (be64_to_cpu(*num_entries) * 16);
-	return simple_read_from_buffer(ubuf, count, ppos, htm_info_buf, to_copy);
+	return simple_copy_to_iter(htm_info_buf, &iocb->ki_pos, to_copy, to);
 }
 
-static ssize_t htmcaps_read(struct file *filp, char __user *ubuf,
-			     size_t count, loff_t *ppos)
+static ssize_t htmcaps_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	void *htm_caps_buf = filp->private_data;
+	void *htm_caps_buf = iocb->ki_filp->private_data;
 	long rc, ret;
 
 	/*
@@ -328,18 +327,18 @@ static ssize_t htmcaps_read(struct file *filp, char __user *ubuf,
 		return ret;
 	}
 
-	return simple_read_from_buffer(ubuf, count, ppos, htm_caps_buf, 0x80);
+	return simple_copy_to_iter(htm_caps_buf, &iocb->ki_pos, 0x80, to);
 }
 
 static const struct file_operations htminfo_fops = {
 	.llseek = NULL,
-	.read   = htminfo_read,
+	.read_iter   = htminfo_read,
 	.open   = simple_open,
 };
 
 static const struct file_operations htmcaps_fops = {
 	.llseek = NULL,
-	.read   = htmcaps_read,
+	.read_iter   = htmcaps_read,
 	.open   = simple_open,
 };
 

@@ -207,6 +207,7 @@ static ssize_t papr_platform_dump_handle_read(struct file *file,
 
 	return total_bytes;
 }
+FOPS_READ_ITER_HELPER(papr_platform_dump_handle_read);
 
 static int papr_platform_dump_handle_release(struct inode *inode,
 					struct file *file)
@@ -274,7 +275,7 @@ static long papr_platform_dump_invalidate_ioctl(struct file *file,
 }
 
 static const struct file_operations papr_platform_dump_handle_ops = {
-	.read = papr_platform_dump_handle_read,
+	.read_iter = papr_platform_dump_handle_read_iter,
 	.release = papr_platform_dump_handle_release,
 	.unlocked_ioctl	= papr_platform_dump_invalidate_ioctl,
 };

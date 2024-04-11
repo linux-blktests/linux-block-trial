@@ -312,6 +312,7 @@ out:
 	mutex_unlock(&rtas_ibm_send_hvpipe_msg_lock);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(papr_hvpipe_handle_write);
 
 /*
  * papr_hvpipe_handle_read - If the payload for the specific
@@ -400,6 +401,7 @@ static ssize_t papr_hvpipe_handle_read(struct file *file,
 
 	return ret;
 }
+FOPS_READ_ITER_HELPER(papr_hvpipe_handle_read);
 
 /*
  * The user space waits for the payload to receive.
@@ -471,8 +473,8 @@ static int papr_hvpipe_handle_release(struct inode *inode,
 }
 
 static const struct file_operations papr_hvpipe_handle_ops = {
-	.read		=	papr_hvpipe_handle_read,
-	.write		=	papr_hvpipe_handle_write,
+	.read_iter		=	papr_hvpipe_handle_read_iter,
+	.write_iter		=	papr_hvpipe_handle_write_iter,
 	.release	=	papr_hvpipe_handle_release,
 	.poll		=	papr_hvpipe_handle_poll,
 };

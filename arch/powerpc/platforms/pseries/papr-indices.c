@@ -197,10 +197,10 @@ static const char *indices_sequence_fill_work_area(struct papr_rtas_sequence *se
  * call. So send RTAS_GET_INDICES_BUF_SIZE buffer to the user space
  * for each read().
  */
-static ssize_t papr_indices_handle_read(struct file *file,
-		char __user *buf, size_t size, loff_t *off)
+static ssize_t papr_indices_handle_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	const struct papr_rtas_blob *blob = file->private_data;
+	size_t size = iov_iter_count(to);
+	const struct papr_rtas_blob *blob = iocb->ki_filp->private_data;
 
 	/* we should not instantiate a handle without any data attached. */
 	if (!papr_rtas_blob_has_data(blob)) {
@@ -215,11 +215,11 @@ static ssize_t papr_indices_handle_read(struct file *file,
 	} else if (size > RTAS_GET_INDICES_BUF_SIZE)
 		size = RTAS_GET_INDICES_BUF_SIZE;
 
-	return simple_read_from_buffer(buf, size, off, blob->data, blob->len);
+	return simple_copy_to_iter(blob->data, &iocb->ki_pos, blob->len, to);
 }
 
 static const struct file_operations papr_indices_handle_ops = {
-	.read = papr_indices_handle_read,
+	.read_iter = papr_indices_handle_read,
 	.llseek = papr_rtas_common_handle_seek,
 	.release = papr_rtas_common_handle_release,
 };

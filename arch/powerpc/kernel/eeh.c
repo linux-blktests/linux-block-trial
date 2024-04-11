@@ -1672,9 +1672,8 @@ int eeh_pe_inject_mmio_error(struct pci_dev *pdev)
 #ifdef CONFIG_DEBUG_FS
 
 
-static struct pci_dev *eeh_debug_lookup_pdev(struct file *filp,
-					     const char __user *user_buf,
-					     size_t count, loff_t *ppos)
+static struct pci_dev *eeh_debug_lookup_pdev(struct kiocb *iocb,
+					     struct iov_iter *from)
 {
 	uint32_t domain, bus, dev, fn;
 	struct pci_dev *pdev;
@@ -1682,7 +1681,7 @@ static struct pci_dev *eeh_debug_lookup_pdev(struct file *filp,
 	int ret;
 
 	memset(buf, 0, sizeof(buf));
-	ret = simple_write_to_buffer(buf, sizeof(buf)-1, ppos, user_buf, count);
+	ret = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf)-1, from);
 	if (!ret)
 		return ERR_PTR(-EFAULT);
 
@@ -1721,17 +1720,16 @@ static int eeh_enable_dbgfs_get(void *data, u64 *val)
 DEFINE_DEBUGFS_ATTRIBUTE(eeh_enable_dbgfs_ops, eeh_enable_dbgfs_get,
 			 eeh_enable_dbgfs_set, "0x%llx\n");
 
-static ssize_t eeh_force_recover_write(struct file *filp,
-				const char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t eeh_force_recover_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct pci_controller *hose;
 	uint32_t phbid, pe_no;
 	struct eeh_pe *pe;
 	char buf[20];
 	int ret;
 
-	ret = simple_write_to_buffer(buf, sizeof(buf), ppos, user_buf, count);
+	ret = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf), from);
 	if (!ret)
 		return -EFAULT;
 
@@ -1773,28 +1771,23 @@ static ssize_t eeh_force_recover_write(struct file *filp,
 
 static const struct file_operations eeh_force_recover_fops = {
 	.open	= simple_open,
-	.write	= eeh_force_recover_write,
+	.write_iter = eeh_force_recover_write,
 };
 
-static ssize_t eeh_debugfs_dev_usage(struct file *filp,
-				char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t eeh_debugfs_dev_usage(struct kiocb *iocb, struct iov_iter *to)
 {
 	static const char usage[] = "input format: <domain>:<bus>:<dev>.<fn>\n";
 
-	return simple_read_from_buffer(user_buf, count, ppos,
-				       usage, sizeof(usage) - 1);
+	return simple_copy_to_iter(usage, &iocb->ki_pos, sizeof(usage) - 1, to);
 }
 
-static ssize_t eeh_dev_check_write(struct file *filp,
-				const char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t eeh_dev_check_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct pci_dev *pdev;
 	struct eeh_dev *edev;
 	int ret;
 
-	pdev = eeh_debug_lookup_pdev(filp, user_buf, count, ppos);
+	pdev = eeh_debug_lookup_pdev(iocb, from);
 	if (IS_ERR(pdev))
 		return PTR_ERR(pdev);
 
@@ -1811,23 +1804,21 @@ static ssize_t eeh_dev_check_write(struct file *filp,
 
 	pci_dev_put(pdev);
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations eeh_dev_check_fops = {
 	.open	= simple_open,
-	.write	= eeh_dev_check_write,
-	.read   = eeh_debugfs_dev_usage,
+	.write_iter = eeh_dev_check_write,
+	.read_iter = eeh_debugfs_dev_usage,
 };
 
-static ssize_t eeh_dev_break_write(struct file *filp,
-				const char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t eeh_dev_break_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct pci_dev *pdev;
 	int ret;
 
-	pdev = eeh_debug_lookup_pdev(filp, user_buf, count, ppos);
+	pdev = eeh_debug_lookup_pdev(iocb, from);
 	if (IS_ERR(pdev))
 		return PTR_ERR(pdev);
 
@@ -1837,24 +1828,23 @@ static ssize_t eeh_dev_break_write(struct file *filp,
 	if (ret < 0)
 		return ret;
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations eeh_dev_break_fops = {
 	.open	= simple_open,
-	.write	= eeh_dev_break_write,
-	.read   = eeh_debugfs_dev_usage,
+	.write_iter = eeh_dev_break_write,
+	.read_iter = eeh_debugfs_dev_usage,
 };
 
-static ssize_t eeh_dev_can_recover(struct file *filp,
-				   const char __user *user_buf,
-				   size_t count, loff_t *ppos)
+static ssize_t eeh_dev_can_recover(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct pci_driver *drv;
 	struct pci_dev *pdev;
 	size_t ret;
 
-	pdev = eeh_debug_lookup_pdev(filp, user_buf, count, ppos);
+	pdev = eeh_debug_lookup_pdev(iocb, from);
 	if (IS_ERR(pdev))
 		return PTR_ERR(pdev);
 
@@ -1888,8 +1878,8 @@ static ssize_t eeh_dev_can_recover(struct file *filp,
 
 static const struct file_operations eeh_dev_can_recover_fops = {
 	.open	= simple_open,
-	.write	= eeh_dev_can_recover,
-	.read   = eeh_debugfs_dev_usage,
+	.write_iter = eeh_dev_can_recover,
+	.read_iter = eeh_debugfs_dev_usage,
 };
 
 #endif
