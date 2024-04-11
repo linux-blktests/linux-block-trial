@@ -1992,19 +1992,18 @@ machine_device_initcall(pseries, reserve_vrma_context_id);
 
 #ifdef CONFIG_DEBUG_FS
 /* debugfs file interface for vpa data */
-static ssize_t vpa_file_read(struct file *filp, char __user *buf, size_t len,
-			      loff_t *pos)
+static ssize_t vpa_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	int cpu = (long)filp->private_data;
+	int cpu = (long)iocb->ki_filp->private_data;
 	struct lppaca *lppaca = &lppaca_of(cpu);
 
-	return simple_read_from_buffer(buf, len, pos, lppaca,
-				sizeof(struct lppaca));
+	return simple_copy_to_iter(lppaca, &iocb->ki_pos, sizeof(struct lppaca),
+					to);
 }
 
 static const struct file_operations vpa_fops = {
 	.open		= simple_open,
-	.read		= vpa_file_read,
+	.read_iter	= vpa_file_read,
 	.llseek		= default_llseek,
 };
 

@@ -84,12 +84,11 @@ struct scom_debug_entry {
 	char name[16];
 };
 
-static ssize_t scom_debug_read(struct file *filp, char __user *ubuf,
-			       size_t count, loff_t *ppos)
+static ssize_t scom_debug_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct scom_debug_entry *ent = filp->private_data;
-	u64 __user *ubuf64 = (u64 __user *)ubuf;
-	loff_t off = *ppos;
+	struct scom_debug_entry *ent = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
+	loff_t off = iocb->ki_pos;
 	ssize_t done = 0;
 	u64 reg, reg_base, reg_cnt, val;
 	int rc;
@@ -102,25 +101,23 @@ static ssize_t scom_debug_read(struct file *filp, char __user *ubuf,
 	for (reg = 0; reg < reg_cnt; reg++) {
 		rc = opal_scom_read(ent->chip, reg_base, reg, &val);
 		if (!rc)
-			rc = put_user(val, ubuf64);
+			rc = put_iter(val, to);
 		if (rc) {
 			if (!done)
 				done = rc;
 			break;
 		}
-		ubuf64++;
-		*ppos += 8;
+		iocb->ki_pos += 8;
 		done += 8;
 	}
 	return done;
 }
 
-static ssize_t scom_debug_write(struct file *filp, const char __user *ubuf,
-				size_t count, loff_t *ppos)
+static ssize_t scom_debug_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct scom_debug_entry *ent = filp->private_data;
-	u64 __user *ubuf64 = (u64 __user *)ubuf;
-	loff_t off = *ppos;
+	struct scom_debug_entry *ent = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
+	loff_t off = iocb->ki_pos;
 	ssize_t done = 0;
 	u64 reg, reg_base, reg_cnt, val;
 	int rc;
@@ -131,7 +128,7 @@ static ssize_t scom_debug_write(struct file *filp, const char __user *ubuf,
 	reg_cnt = count >> 3;
 
 	for (reg = 0; reg < reg_cnt; reg++) {
-		rc = get_user(val, ubuf64);
+		rc = get_iter(val, from);
 		if (!rc)
 			rc = opal_scom_write(ent->chip, reg_base, reg,  val);
 		if (rc) {
@@ -139,15 +136,14 @@ static ssize_t scom_debug_write(struct file *filp, const char __user *ubuf,
 				done = rc;
 			break;
 		}
-		ubuf64++;
 		done += 8;
 	}
 	return done;
 }
 
 static const struct file_operations scom_debug_fops = {
-	.read =		scom_debug_read,
-	.write =	scom_debug_write,
+	.read_iter =	scom_debug_read,
+	.write_iter =	scom_debug_write,
 	.open =		simple_open,
 	.llseek =	default_llseek,
 };

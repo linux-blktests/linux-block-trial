@@ -257,17 +257,17 @@ static int dtl_file_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t dtl_file_read(struct file *filp, char __user *buf, size_t len,
-		loff_t *pos)
+static ssize_t dtl_file_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	long int rc, n_read, n_req, read_size;
+	size_t len = iov_iter_count(to);
 	struct dtl *dtl;
 	u64 cur_idx, last_idx, i;
 
 	if ((len % sizeof(struct dtl_entry)) != 0)
 		return -EINVAL;
 
-	dtl = filp->private_data;
+	dtl = iocb->ki_filp->private_data;
 
 	/* requested number of entries to read */
 	n_req = len / sizeof(struct dtl_entry);
@@ -300,19 +300,19 @@ static ssize_t dtl_file_read(struct file *filp, char __user *buf, size_t len,
 	if (i + n_req > dtl->buf_entries) {
 		read_size = dtl->buf_entries - i;
 
-		rc = copy_to_user(buf, &dtl->buf[i],
-				read_size * sizeof(struct dtl_entry));
+		rc = !copy_to_iter_full(&dtl->buf[i],
+				read_size * sizeof(struct dtl_entry), to);
 		if (rc)
 			return -EFAULT;
 
 		i = 0;
 		n_req -= read_size;
 		n_read += read_size;
-		buf += read_size * sizeof(struct dtl_entry);
 	}
 
 	/* .. and now the head */
-	rc = copy_to_user(buf, &dtl->buf[i], n_req * sizeof(struct dtl_entry));
+	rc = !copy_to_iter_full(&dtl->buf[i], n_req * sizeof(struct dtl_entry),
+				to);
 	if (rc)
 		return -EFAULT;
 
@@ -324,7 +324,7 @@ static ssize_t dtl_file_read(struct file *filp, char __user *buf, size_t len,
 static const struct file_operations dtl_fops = {
 	.open		= dtl_file_open,
 	.release	= dtl_file_release,
-	.read		= dtl_file_read,
+	.read_iter	= dtl_file_read,
 };
 
 static struct dentry *dtl_dir;

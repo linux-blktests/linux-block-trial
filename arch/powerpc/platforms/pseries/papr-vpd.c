@@ -185,8 +185,10 @@ static const char *vpd_sequence_fill_work_area(struct papr_rtas_sequence *seq,
 	return rtas_work_area_raw_buf(p->work_area);
 }
 
+FOPS_READ_ITER_HELPER(papr_rtas_common_handle_read);
+
 static const struct file_operations papr_vpd_handle_ops = {
-	.read = papr_rtas_common_handle_read,
+	.read_iter = papr_rtas_common_handle_read_iter,
 	.llseek = papr_rtas_common_handle_seek,
 	.release = papr_rtas_common_handle_release,
 };

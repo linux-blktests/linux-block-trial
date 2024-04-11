@@ -156,10 +156,10 @@ static __poll_t opal_prd_poll(struct file *file,
 	return 0;
 }
 
-static ssize_t opal_prd_read(struct file *file, char __user *buf,
-		size_t count, loff_t *ppos)
+static ssize_t opal_prd_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct opal_prd_msg_queue_item *item;
+	size_t count = iov_iter_count(to);
 	unsigned long flags;
 	ssize_t size, err;
 	int rc;
@@ -168,7 +168,7 @@ static ssize_t opal_prd_read(struct file *file, char __user *buf,
 	if (count < sizeof(item->msg.header))
 		return -EINVAL;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return -ESPIPE;
 
 	item = NULL;
@@ -186,7 +186,7 @@ static ssize_t opal_prd_read(struct file *file, char __user *buf,
 		if (item)
 			break;
 
-		if (file->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 
 		rc = wait_event_interruptible(opal_prd_msg_wait,
@@ -201,7 +201,7 @@ static ssize_t opal_prd_read(struct file *file, char __user *buf,
 		goto err_requeue;
 	}
 
-	rc = copy_to_user(buf, &item->msg, size);
+	rc = !copy_to_iter_full(&item->msg, size, to);
 	if (rc) {
 		err = -EFAULT;
 		goto err_requeue;
@@ -219,9 +219,9 @@ err_requeue:
 	return err;
 }
 
-static ssize_t opal_prd_write(struct file *file, const char __user *buf,
-		size_t count, loff_t *ppos)
+static ssize_t opal_prd_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	struct opal_prd_msg_header hdr;
 	struct opal_prd_msg *msg;
 	ssize_t size;
@@ -233,13 +233,13 @@ static ssize_t opal_prd_write(struct file *file, const char __user *buf,
 		return -EINVAL;
 
 	/* grab the header */
-	rc = copy_from_user(&hdr, buf, sizeof(hdr));
+	rc = !copy_from_iter_full(&hdr, sizeof(hdr), from);
 	if (rc)
 		return -EFAULT;
 
 	size = be16_to_cpu(hdr.size);
 
-	msg = memdup_user(buf, size);
+	msg = iterdup(from, size);
 	if (IS_ERR(msg))
 		return PTR_ERR(msg);
 
@@ -325,8 +325,8 @@ static const struct file_operations opal_prd_fops = {
 	.open		= opal_prd_open,
 	.mmap		= opal_prd_mmap,
 	.poll		= opal_prd_poll,
-	.read		= opal_prd_read,
-	.write		= opal_prd_write,
+	.read_iter	= opal_prd_read,
+	.write_iter	= opal_prd_write,
 	.unlocked_ioctl	= opal_prd_ioctl,
 	.release	= opal_prd_release,
 	.owner		= THIS_MODULE,

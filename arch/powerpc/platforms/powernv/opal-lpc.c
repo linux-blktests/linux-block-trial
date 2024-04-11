@@ -271,6 +271,7 @@ static ssize_t lpc_debug_read(struct file *filp, char __user *ubuf,
 
 	return count;
 }
+FOPS_READ_ITER_HELPER(lpc_debug_read);
 
 static ssize_t lpc_debug_write(struct file *filp, const char __user *ubuf,
 			       size_t count, loff_t *ppos)
@@ -342,10 +343,11 @@ static ssize_t lpc_debug_write(struct file *filp, const char __user *ubuf,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(lpc_debug_write);
 
 static const struct file_operations lpc_fops = {
-	.read =		lpc_debug_read,
-	.write =	lpc_debug_write,
+	.read_iter =	lpc_debug_read_iter,
+	.write_iter =	lpc_debug_write_iter,
 	.open =		simple_open,
 	.llseek =	default_llseek,
 };

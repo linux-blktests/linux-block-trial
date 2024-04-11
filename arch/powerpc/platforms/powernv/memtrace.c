@@ -37,12 +37,11 @@ static struct memtrace_entry *memtrace_array;
 static unsigned int memtrace_array_nr;
 
 
-static ssize_t memtrace_read(struct file *filp, char __user *ubuf,
-			     size_t count, loff_t *ppos)
+static ssize_t memtrace_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct memtrace_entry *ent = filp->private_data;
+	struct memtrace_entry *ent = iocb->ki_filp->private_data;
 
-	return simple_read_from_buffer(ubuf, count, ppos, ent->mem, ent->size);
+	return simple_copy_to_iter(ent->mem, &iocb->ki_pos, ent->size, to);
 }
 
 static int memtrace_mmap(struct file *filp, struct vm_area_struct *vma)
@@ -66,7 +65,7 @@ static int memtrace_mmap(struct file *filp, struct vm_area_struct *vma)
 
 static const struct file_operations memtrace_fops = {
 	.llseek = default_llseek,
-	.read	= memtrace_read,
+	.read_iter = memtrace_read,
 	.open	= simple_open,
 	.mmap   = memtrace_mmap,
 };

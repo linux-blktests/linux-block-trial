@@ -62,11 +62,10 @@ static irqreturn_t pnv_eeh_event(int irq, void *data)
 }
 
 #ifdef CONFIG_DEBUG_FS
-static ssize_t pnv_eeh_ei_write(struct file *filp,
-				const char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t pnv_eeh_ei_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct pci_controller *hose = filp->private_data;
+	struct pci_controller *hose = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct eeh_pe *pe;
 	int pe_no, type, func;
 	unsigned long addr, mask;
@@ -77,7 +76,7 @@ static ssize_t pnv_eeh_ei_write(struct file *filp,
 		return -ENXIO;
 
 	/* Copy over argument buffer */
-	ret = simple_write_to_buffer(buf, sizeof(buf), ppos, user_buf, count);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, sizeof(buf), from);
 	if (!ret)
 		return -EFAULT;
 
@@ -99,7 +98,7 @@ static ssize_t pnv_eeh_ei_write(struct file *filp,
 
 static const struct file_operations pnv_eeh_ei_fops = {
 	.open	= simple_open,
-	.write	= pnv_eeh_ei_write,
+	.write_iter	= pnv_eeh_ei_write,
 };
 
 static int pnv_eeh_dbgfs_set(void *data, int offset, u64 val)

@@ -532,10 +532,9 @@ static inline void mpc52xx_gpt_wdt_ping(struct mpc52xx_gpt_priv *gpt_wdt)
 }
 
 /* wdt misc device api */
-static ssize_t mpc52xx_wdt_write(struct file *file, const char __user *data,
-				 size_t len, loff_t *ppos)
+static ssize_t mpc52xx_wdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mpc52xx_gpt_priv *gpt_wdt = file->private_data;
+	struct mpc52xx_gpt_priv *gpt_wdt = iocb->ki_filp->private_data;
 	mpc52xx_gpt_wdt_ping(gpt_wdt);
 	return 0;
 }
@@ -646,7 +645,7 @@ static int mpc52xx_wdt_release(struct inode *inode, struct file *file)
 
 static const struct file_operations mpc52xx_wdt_fops = {
 	.owner		= THIS_MODULE,
-	.write		= mpc52xx_wdt_write,
+	.write_iter	= mpc52xx_wdt_write,
 	.unlocked_ioctl = mpc52xx_wdt_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
 	.open		= mpc52xx_wdt_open,
