@@ -216,10 +216,10 @@ static int monwrite_close(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t monwrite_write(struct file *filp, const char __user *data,
-			      size_t count, loff_t *ppos)
+static ssize_t monwrite_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct mon_private *monpriv = filp->private_data;
+	struct mon_private *monpriv = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	size_t len, written;
 	void *to;
 	int rc;
@@ -230,7 +230,7 @@ static ssize_t monwrite_write(struct file *filp, const char __user *data,
 			len = min(count - written, monpriv->hdr_to_read);
 			to = (char *) &monpriv->hdr +
 				sizeof(monpriv->hdr) - monpriv->hdr_to_read;
-			if (copy_from_user(to, data + written, len)) {
+			if (!copy_from_iter_full(to, len, from)) {
 				rc = -EFAULT;
 				goto out_error;
 			}
@@ -249,7 +249,7 @@ static ssize_t monwrite_write(struct file *filp, const char __user *data,
 			len = min(count - written, monpriv->data_to_read);
 			to = monpriv->current_buf->data +
 				monpriv->hdr.datalen - monpriv->data_to_read;
-			if (copy_from_user(to, data + written, len)) {
+			if (!copy_from_iter_full(to, len, from)) {
 				rc = -EFAULT;
 				goto out_error;
 			}
@@ -277,7 +277,7 @@ static const struct file_operations monwrite_fops = {
 	.owner	 = THIS_MODULE,
 	.open	 = &monwrite_open,
 	.release = &monwrite_close,
-	.write	 = &monwrite_write,
+	.write_iter	 = &monwrite_write,
 	.llseek  = noop_llseek,
 };
 
