@@ -589,11 +589,10 @@ static loff_t uhci_debug_lseek(struct file *file, loff_t off, int whence)
 	return no_seek_end_llseek_size(file, off, whence, up->size);
 }
 
-static ssize_t uhci_debug_read(struct file *file, char __user *buf,
-				size_t nbytes, loff_t *ppos)
+static ssize_t uhci_debug_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct uhci_debug *up = file->private_data;
-	return simple_read_from_buffer(buf, nbytes, ppos, up->data, up->size);
+	struct uhci_debug *up = iocb->ki_filp->private_data;
+	return simple_copy_to_iter(up->data, &iocb->ki_pos, up->size, to);
 }
 
 static int uhci_debug_release(struct inode *inode, struct file *file)
@@ -610,7 +609,7 @@ static const struct file_operations uhci_debug_operations = {
 	.owner =	THIS_MODULE,
 	.open =		uhci_debug_open,
 	.llseek =	uhci_debug_lseek,
-	.read =		uhci_debug_read,
+	.read_iter =	uhci_debug_read,
 	.release =	uhci_debug_release,
 };
 #define UHCI_DEBUG_OPS
