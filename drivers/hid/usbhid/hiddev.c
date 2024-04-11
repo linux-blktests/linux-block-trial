@@ -308,7 +308,7 @@ static int hiddev_open(struct inode *inode, struct file *file)
 /*
  * "write" file op
  */
-static ssize_t hiddev_write(struct file * file, const char __user * buffer, size_t count, loff_t *ppos)
+static ssize_t hiddev_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return -EINVAL;
 }
@@ -316,10 +316,11 @@ static ssize_t hiddev_write(struct file * file, const char __user * buffer, size
 /*
  * "read" file op
  */
-static ssize_t hiddev_read(struct file * file, char __user * buffer, size_t count, loff_t *ppos)
+static ssize_t hiddev_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	DEFINE_WAIT(wait);
-	struct hiddev_list *list = file->private_data;
+	struct hiddev_list *list = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	int event_size;
 	int retval;
 
@@ -347,7 +348,7 @@ static ssize_t hiddev_read(struct file * file, char __user * buffer, size_t coun
 					retval = -EIO;
 					break;
 				}
-				if (file->f_flags & O_NONBLOCK) {
+				if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 					retval = -EAGAIN;
 					break;
 				}
@@ -379,7 +380,7 @@ static ssize_t hiddev_read(struct file * file, char __user * buffer, size_t coun
 
 					event.hid = list->buffer[list->tail].usage_code;
 					event.value = list->buffer[list->tail].value;
-					if (copy_to_user(buffer + retval, &event, sizeof(struct hiddev_event))) {
+					if (!copy_to_iter_full(&event, sizeof(struct hiddev_event), to)) {
 						mutex_unlock(&list->thread_lock);
 						return -EFAULT;
 					}
@@ -389,7 +390,7 @@ static ssize_t hiddev_read(struct file * file, char __user * buffer, size_t coun
 				if (list->buffer[list->tail].field_index != HID_FIELD_INDEX_NONE ||
 				    (list->flags & HIDDEV_FLAG_REPORT) != 0) {
 
-					if (copy_to_user(buffer + retval, list->buffer + list->tail, sizeof(struct hiddev_usage_ref))) {
+					if (!copy_to_iter_full(list->buffer + list->tail, sizeof(struct hiddev_usage_ref), to)) {
 						mutex_unlock(&list->thread_lock);
 						return -EFAULT;
 					}
@@ -846,8 +847,8 @@ ret_unlock:
 
 static const struct file_operations hiddev_fops = {
 	.owner =	THIS_MODULE,
-	.read =		hiddev_read,
-	.write =	hiddev_write,
+	.read_iter =	hiddev_read,
+	.write_iter =	hiddev_write,
 	.poll =		hiddev_poll,
 	.open =		hiddev_open,
 	.release =	hiddev_release,
