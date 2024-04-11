@@ -2862,10 +2862,10 @@ static int debugfs_timings_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t debugfs_timings_read(struct file *file, char __user *buf,
-				    size_t len, loff_t *ppos)
+static ssize_t debugfs_timings_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct debugfs_timings_state *p = file->private_data;
+	struct debugfs_timings_state *p = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	struct kvm_vcpu *vcpu = p->vcpu;
 	char *s, *buf_end;
 	struct kvmhv_tb_accumulator tb;
@@ -2912,23 +2912,19 @@ static ssize_t debugfs_timings_read(struct file *file, char __user *buf,
 		p->buflen = s - p->buf;
 	}
 
-	pos = *ppos;
+	pos = iocb->ki_pos;
 	if (pos >= p->buflen)
 		return 0;
 	if (len > p->buflen - pos)
 		len = p->buflen - pos;
-	n = copy_to_user(buf, p->buf + pos, len);
-	if (n) {
-		if (n == len)
-			return -EFAULT;
-		len -= n;
-	}
-	*ppos = pos + len;
+	n = !copy_to_iter_full(p->buf + pos, len, to);
+	if (n)
+		return -EFAULT;
+	iocb->ki_pos = pos + len;
 	return len;
 }
 
-static ssize_t debugfs_timings_write(struct file *file, const char __user *buf,
-				     size_t len, loff_t *ppos)
+static ssize_t debugfs_timings_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return -EACCES;
 }
@@ -2937,8 +2933,8 @@ static const struct file_operations debugfs_timings_ops = {
 	.owner	 = THIS_MODULE,
 	.open	 = debugfs_timings_open,
 	.release = debugfs_timings_release,
-	.read	 = debugfs_timings_read,
-	.write	 = debugfs_timings_write,
+	.read_iter = debugfs_timings_read,
+	.write_iter = debugfs_timings_write,
 	.llseek	 = generic_file_llseek,
 };
 

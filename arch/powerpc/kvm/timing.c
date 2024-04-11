@@ -158,10 +158,10 @@ static int kvmppc_exit_timing_show(struct seq_file *m, void *private)
 }
 
 /* Write 'c' to clear the timing statistics. */
-static ssize_t kvmppc_exit_timing_write(struct file *file,
-				       const char __user *user_buf,
-				       size_t count, loff_t *ppos)
+static ssize_t kvmppc_exit_timing_write(struct kiocb *iocb,
+					struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	int err = -EINVAL;
 	char c;
 
@@ -169,13 +169,13 @@ static ssize_t kvmppc_exit_timing_write(struct file *file,
 		goto done;
 	}
 
-	if (get_user(c, user_buf)) {
+	if (get_iter(&c, from)) {
 		err = -EFAULT;
 		goto done;
 	}
 
 	if (c == 'c') {
-		struct seq_file *seqf = file->private_data;
+		struct seq_file *seqf = iocb->ki_filp->private_data;
 		struct kvm_vcpu *vcpu = seqf->private;
 		/* Write does not affect our buffers previously generated with
 		 * show. seq_file is locked here to prevent races of init with
@@ -198,8 +198,8 @@ static int kvmppc_exit_timing_open(struct inode *inode, struct file *file)
 static const struct file_operations kvmppc_exit_timing_fops = {
 	.owner   = THIS_MODULE,
 	.open    = kvmppc_exit_timing_open,
-	.read    = seq_read,
-	.write   = kvmppc_exit_timing_write,
+	.read_iter = seq_read_iter,
+	.write_iter = kvmppc_exit_timing_write,
 	.llseek  = seq_lseek,
 	.release = single_release,
 };

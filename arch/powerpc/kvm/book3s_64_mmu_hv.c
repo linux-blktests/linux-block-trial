@@ -1791,6 +1791,7 @@ static ssize_t kvm_htab_read(struct file *file, char __user *buf,
 
 	return nb;
 }
+FOPS_READ_ITER_HELPER(kvm_htab_read);
 
 static ssize_t kvm_htab_write(struct file *file, const char __user *buf,
 			      size_t count, loff_t *ppos)
@@ -1914,6 +1915,7 @@ static ssize_t kvm_htab_write(struct file *file, const char __user *buf,
 		return err;
 	return nb;
 }
+FOPS_WRITE_ITER_HELPER(kvm_htab_write);
 
 static int kvm_htab_release(struct inode *inode, struct file *filp)
 {
@@ -1928,8 +1930,8 @@ static int kvm_htab_release(struct inode *inode, struct file *filp)
 }
 
 static const struct file_operations kvm_htab_fops = {
-	.read		= kvm_htab_read,
-	.write		= kvm_htab_write,
+	.read_iter	= kvm_htab_read_iter,
+	.write_iter	= kvm_htab_write_iter,
 	.llseek		= default_llseek,
 	.release	= kvm_htab_release,
 };
@@ -2006,10 +2008,10 @@ static int debugfs_htab_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t debugfs_htab_read(struct file *file, char __user *buf,
-				 size_t len, loff_t *ppos)
+static ssize_t debugfs_htab_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct debugfs_htab_state *p = file->private_data;
+	struct debugfs_htab_state *p = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	ssize_t ret, r;
 	unsigned long i, n;
 	unsigned long v, hr, gr;
@@ -2028,11 +2030,10 @@ static ssize_t debugfs_htab_read(struct file *file, char __user *buf,
 		n = p->chars_left;
 		if (n > len)
 			n = len;
-		r = copy_to_user(buf, p->buf + p->buf_index, n);
+		r = copy_to_iter(p->buf + p->buf_index, n, to);
 		n -= r;
 		p->chars_left -= n;
 		p->buf_index += n;
-		buf += n;
 		len -= n;
 		ret = n;
 		if (r) {
@@ -2068,11 +2069,10 @@ static ssize_t debugfs_htab_read(struct file *file, char __user *buf,
 		p->chars_left = n;
 		if (n > len)
 			n = len;
-		r = copy_to_user(buf, p->buf, n);
+		r = copy_to_iter(p->buf, n, to);
 		n -= r;
 		p->chars_left -= n;
 		p->buf_index = n;
-		buf += n;
 		len -= n;
 		ret += n;
 		if (r) {
@@ -2088,8 +2088,7 @@ static ssize_t debugfs_htab_read(struct file *file, char __user *buf,
 	return ret;
 }
 
-static ssize_t debugfs_htab_write(struct file *file, const char __user *buf,
-			   size_t len, loff_t *ppos)
+static ssize_t debugfs_htab_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return -EACCES;
 }
@@ -2098,8 +2097,8 @@ static const struct file_operations debugfs_htab_fops = {
 	.owner	 = THIS_MODULE,
 	.open	 = debugfs_htab_open,
 	.release = debugfs_htab_release,
-	.read	 = debugfs_htab_read,
-	.write	 = debugfs_htab_write,
+	.read_iter  = debugfs_htab_read,
+	.write_iter = debugfs_htab_write,
 	.llseek	 = generic_file_llseek,
 };
 

@@ -1277,10 +1277,10 @@ static int debugfs_radix_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t debugfs_radix_read(struct file *file, char __user *buf,
-				 size_t len, loff_t *ppos)
+static ssize_t debugfs_radix_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct debugfs_radix_state *p = file->private_data;
+	struct debugfs_radix_state *p = iocb->ki_filp->private_data;
+	size_t len = iov_iter_count(to);
 	ssize_t ret, r;
 	unsigned long n;
 	struct kvm *kvm;
@@ -1307,11 +1307,10 @@ static ssize_t debugfs_radix_read(struct file *file, char __user *buf,
 		n = p->chars_left;
 		if (n > len)
 			n = len;
-		r = copy_to_user(buf, p->buf + p->buf_index, n);
+		r = copy_to_iter(p->buf + p->buf_index, n, to);
 		n -= r;
 		p->chars_left -= n;
 		p->buf_index += n;
-		buf += n;
 		len -= n;
 		ret = n;
 		if (r) {
@@ -1407,11 +1406,10 @@ static ssize_t debugfs_radix_read(struct file *file, char __user *buf,
 		p->chars_left = n;
 		if (n > len)
 			n = len;
-		r = copy_to_user(buf, p->buf, n);
+		r = copy_to_iter(p->buf, n, to);
 		n -= r;
 		p->chars_left -= n;
 		p->buf_index = n;
-		buf += n;
 		len -= n;
 		ret += n;
 		if (r) {
@@ -1429,8 +1427,7 @@ static ssize_t debugfs_radix_read(struct file *file, char __user *buf,
 	return ret;
 }
 
-static ssize_t debugfs_radix_write(struct file *file, const char __user *buf,
-			   size_t len, loff_t *ppos)
+static ssize_t debugfs_radix_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	return -EACCES;
 }
@@ -1439,8 +1436,8 @@ static const struct file_operations debugfs_radix_fops = {
 	.owner	 = THIS_MODULE,
 	.open	 = debugfs_radix_open,
 	.release = debugfs_radix_release,
-	.read	 = debugfs_radix_read,
-	.write	 = debugfs_radix_write,
+	.read_iter  = debugfs_radix_read,
+	.write_iter = debugfs_radix_write,
 	.llseek	 = generic_file_llseek,
 };
 
