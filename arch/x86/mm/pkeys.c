@@ -127,25 +127,24 @@ u32 init_pkru_value = PKRU_AD_MASK( 1) | PKRU_AD_MASK( 2) |
 		      PKRU_AD_MASK(13) | PKRU_AD_MASK(14) |
 		      PKRU_AD_MASK(15);
 
-static ssize_t init_pkru_read_file(struct file *file, char __user *user_buf,
-			     size_t count, loff_t *ppos)
+static ssize_t init_pkru_read_file(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[32];
 	unsigned int len;
 
 	len = sprintf(buf, "0x%x\n", init_pkru_value);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t init_pkru_write_file(struct file *file,
-		 const char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t init_pkru_write_file(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char buf[32];
 	ssize_t len;
 	u32 new_init_pkru;
 
 	len = min(count, sizeof(buf) - 1);
-	if (copy_from_user(buf, user_buf, len))
+	if (!copy_from_iter_full(buf, len, from))
 		return -EFAULT;
 
 	/* Make the buffer a valid string that we can not overrun */
@@ -166,8 +165,8 @@ static ssize_t init_pkru_write_file(struct file *file,
 }
 
 static const struct file_operations fops_init_pkru = {
-	.read = init_pkru_read_file,
-	.write = init_pkru_write_file,
+	.read_iter = init_pkru_read_file,
+	.write_iter = init_pkru_write_file,
 	.llseek = default_llseek,
 };
 

@@ -1789,25 +1789,24 @@ bool nmi_uaccess_okay(void)
 	return true;
 }
 
-static ssize_t tlbflush_read_file(struct file *file, char __user *user_buf,
-			     size_t count, loff_t *ppos)
+static ssize_t tlbflush_read_file(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[32];
 	unsigned int len;
 
 	len = sprintf(buf, "%ld\n", tlb_single_page_flush_ceiling);
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t tlbflush_write_file(struct file *file,
-		 const char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t tlbflush_write_file(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char buf[32];
 	ssize_t len;
 	int ceiling;
 
 	len = min(count, sizeof(buf) - 1);
-	if (copy_from_user(buf, user_buf, len))
+	if (!copy_from_iter_full(buf, len, from))
 		return -EFAULT;
 
 	buf[len] = '\0';
@@ -1822,8 +1821,8 @@ static ssize_t tlbflush_write_file(struct file *file,
 }
 
 static const struct file_operations fops_tlbflush = {
-	.read = tlbflush_read_file,
-	.write = tlbflush_write_file,
+	.read_iter = tlbflush_read_file,
+	.write_iter = tlbflush_write_file,
 	.llseek = default_llseek,
 };
 
