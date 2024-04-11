@@ -24,16 +24,16 @@
  * @count: The ubuf size.
  * @ppos: Unused parameter.
  */
-static ssize_t testmode_write(struct file *file, const char __user *ubuf, size_t
-		count, loff_t *ppos)
+static ssize_t testmode_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file		*s = file->private_data;
+	struct seq_file		*s = iocb->ki_filp->private_data;
+	size_t			count = iov_iter_count(from);
 	struct dwc2_hsotg	*hsotg = s->private;
 	unsigned long		flags;
 	u32			testmode = 0;
 	char			buf[32];
 
-	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
+	if (!copy_from_iter_full(&buf, min_t(size_t, sizeof(buf) - 1, count), from))
 		return -EFAULT;
 
 	if (!strncmp(buf, "test_j", 6))
@@ -108,8 +108,8 @@ static int testmode_open(struct inode *inode, struct file *file)
 static const struct file_operations testmode_fops = {
 	.owner		= THIS_MODULE,
 	.open		= testmode_open,
-	.write		= testmode_write,
-	.read		= seq_read,
+	.write_iter	= testmode_write,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
