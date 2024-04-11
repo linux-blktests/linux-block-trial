@@ -457,21 +457,20 @@ static int severities_coverage_open(struct inode *inode, struct file *file)
 	return seq_open(file, &severities_seq_ops);
 }
 
-static ssize_t severities_coverage_write(struct file *file,
-					 const char __user *ubuf,
-					 size_t count, loff_t *ppos)
+static ssize_t severities_coverage_write(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
 	int i;
 	for (i = 0; i < ARRAY_SIZE(severities); i++)
 		severities[i].covered = 0;
-	return count;
+	return iov_iter_count(from);
 }
 
 static const struct file_operations severities_coverage_fops = {
 	.open		= severities_coverage_open,
 	.release	= seq_release,
-	.read		= seq_read,
-	.write		= severities_coverage_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= severities_coverage_write,
 	.llseek		= seq_lseek,
 };
 

@@ -1430,24 +1430,25 @@ static int check_apm_user(struct apm_user *as, const char *func)
 	return 0;
 }
 
-static ssize_t do_read(struct file *fp, char __user *buf, size_t count, loff_t *ppos)
+static ssize_t do_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	struct apm_user *as;
 	int i;
 	apm_event_t event;
 
-	as = fp->private_data;
+	as = iocb->ki_filp->private_data;
 	if (check_apm_user(as, "read"))
 		return -EIO;
 	if ((int)count < sizeof(apm_event_t))
 		return -EINVAL;
-	if ((queue_empty(as)) && (fp->f_flags & O_NONBLOCK))
+	if ((queue_empty(as)) && (iocb->ki_filp->f_flags & O_NONBLOCK))
 		return -EAGAIN;
 	wait_event_interruptible(apm_waitqueue, !queue_empty(as));
 	i = count;
 	while ((i >= sizeof(event)) && !queue_empty(as)) {
 		event = get_queued_event(as);
-		if (copy_to_user(buf, &event, sizeof(event))) {
+		if (!copy_to_iter_full(&event, sizeof(event), to)) {
 			if (i < count)
 				break;
 			return -EFAULT;
@@ -1463,7 +1464,6 @@ static ssize_t do_read(struct file *fp, char __user *buf, size_t count, loff_t *
 			as->standbys_read++;
 			break;
 		}
-		buf += sizeof(event);
 		i -= sizeof(event);
 	}
 	if (i < count)
@@ -1875,7 +1875,7 @@ __setup("apm=", apm_setup);
 
 static const struct file_operations apm_bios_fops = {
 	.owner		= THIS_MODULE,
-	.read		= do_read,
+	.read_iter	= do_read,
 	.poll		= do_poll,
 	.unlocked_ioctl	= do_ioctl,
 	.open		= do_open,

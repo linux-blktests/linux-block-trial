@@ -26,12 +26,12 @@ struct setup_data_node {
 	u32 len;
 };
 
-static ssize_t setup_data_read(struct file *file, char __user *user_buf,
-			       size_t count, loff_t *ppos)
+static ssize_t setup_data_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct setup_data_node *node = file->private_data;
+	struct setup_data_node *node = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(to);
 	unsigned long remain;
-	loff_t pos = *ppos;
+	loff_t pos = iocb->ki_pos;
 	void *p;
 	u64 pa;
 
@@ -54,20 +54,20 @@ static ssize_t setup_data_read(struct file *file, char __user *user_buf,
 	if (!p)
 		return -ENOMEM;
 
-	remain = copy_to_user(user_buf, p, count);
+	remain = !copy_to_iter_full(p, count, to);
 
 	memunmap(p);
 
 	if (remain)
 		return -EFAULT;
 
-	*ppos = pos + count;
+	iocb->ki_pos = pos + count;
 
 	return count;
 }
 
 static const struct file_operations fops_setup_data = {
-	.read		= setup_data_read,
+	.read_iter	= setup_data_read,
 	.open		= simple_open,
 	.llseek		= default_llseek,
 };

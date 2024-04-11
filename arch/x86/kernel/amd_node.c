@@ -141,13 +141,13 @@ static struct dentry *debugfs_dir;
 static u16 debug_node;
 static u32 debug_address;
 
-static ssize_t smn_node_write(struct file *file, const char __user *userbuf,
-			      size_t count, loff_t *ppos)
+static ssize_t smn_node_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	u16 node;
 	int ret;
 
-	ret = kstrtou16_from_user(userbuf, count, 0, &node);
+	ret = kstrtou16_from_iter(from, count, 0, &node);
 	if (ret)
 		return ret;
 
@@ -164,12 +164,12 @@ static int smn_node_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t smn_address_write(struct file *file, const char __user *userbuf,
-				 size_t count, loff_t *ppos)
+static ssize_t smn_address_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	int ret;
 
-	ret = kstrtouint_from_user(userbuf, count, 0, &debug_address);
+	ret = kstrtouint_from_iter(from, count, 0, &debug_address);
 	if (ret)
 		return ret;
 
@@ -195,13 +195,13 @@ static int smn_value_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t smn_value_write(struct file *file, const char __user *userbuf,
-			       size_t count, loff_t *ppos)
+static ssize_t smn_value_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	u32 val;
 	int ret;
 
-	ret = kstrtouint_from_user(userbuf, count, 0, &val);
+	ret = kstrtouint_from_iter(from, count, 0, &val);
 	if (ret)
 		return ret;
 
@@ -214,9 +214,47 @@ static ssize_t smn_value_write(struct file *file, const char __user *userbuf,
 	return count;
 }
 
-DEFINE_SHOW_STORE_ATTRIBUTE(smn_node);
-DEFINE_SHOW_STORE_ATTRIBUTE(smn_address);
-DEFINE_SHOW_STORE_ATTRIBUTE(smn_value);
+static int smn_node_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, smn_node_show, inode->i_private);
+}
+
+static const struct file_operations smn_node_fops = {
+	.owner		= THIS_MODULE,
+	.open		= smn_node_open,
+	.read_iter	= seq_read_iter,
+	.write_iter	= smn_node_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int smn_address_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, smn_address_show, inode->i_private);
+}
+
+static const struct file_operations smn_address_fops = {
+	.owner		= THIS_MODULE,
+	.open		= smn_address_open,
+	.read_iter	= seq_read_iter,
+	.write_iter	= smn_address_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int smn_value_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, smn_value_show, inode->i_private);
+}
+
+static const struct file_operations smn_value_fops = {
+	.owner		= THIS_MODULE,
+	.open		= smn_value_open,
+	.read_iter	= seq_read_iter,
+	.write_iter	= smn_value_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 
 static struct pci_dev *get_next_root(struct pci_dev *root)
 {

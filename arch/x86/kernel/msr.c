@@ -49,13 +49,12 @@ enum allow_write_msrs {
 
 static enum allow_write_msrs allow_writes = MSR_WRITES_DEFAULT;
 
-static ssize_t msr_read(struct file *file, char __user *buf,
-			size_t count, loff_t *ppos)
+static ssize_t msr_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	u32 __user *tmp = (u32 __user *) buf;
 	u32 data[2];
-	u32 reg = *ppos;
-	int cpu = iminor(file_inode(file));
+	u32 reg = iocb->ki_pos;
+	int cpu = iminor(file_inode(iocb->ki_filp));
+	size_t count = iov_iter_count(to);
 	int err = 0;
 	ssize_t bytes = 0;
 
@@ -66,11 +65,10 @@ static ssize_t msr_read(struct file *file, char __user *buf,
 		err = rdmsr_safe_on_cpu(cpu, reg, &data[0], &data[1]);
 		if (err)
 			break;
-		if (copy_to_user(tmp, &data, 8)) {
+		if (!copy_to_iter_full(&data, 8, to)) {
 			err = -EFAULT;
 			break;
 		}
-		tmp += 2;
 		bytes += 8;
 	}
 
@@ -105,13 +103,12 @@ static int filter_write(u32 reg)
 	return 0;
 }
 
-static ssize_t msr_write(struct file *file, const char __user *buf,
-			 size_t count, loff_t *ppos)
+static ssize_t msr_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	const u32 __user *tmp = (const u32 __user *)buf;
+	size_t count = iov_iter_count(from);
 	u32 data[2];
-	u32 reg = *ppos;
-	int cpu = iminor(file_inode(file));
+	u32 reg = iocb->ki_pos;
+	int cpu = iminor(file_inode(iocb->ki_filp));
 	int err = 0;
 	ssize_t bytes = 0;
 
@@ -127,7 +124,7 @@ static ssize_t msr_write(struct file *file, const char __user *buf,
 		return -EINVAL;	/* Invalid chunk size */
 
 	for (; count; count -= 8) {
-		if (copy_from_user(&data, tmp, 8)) {
+		if (!copy_from_iter_full(&data, 8, from)) {
 			err = -EFAULT;
 			break;
 		}
@@ -138,7 +135,6 @@ static ssize_t msr_write(struct file *file, const char __user *buf,
 		if (err)
 			break;
 
-		tmp += 2;
 		bytes += 8;
 	}
 
@@ -227,8 +223,8 @@ static int msr_open(struct inode *inode, struct file *file)
 static const struct file_operations msr_fops = {
 	.owner = THIS_MODULE,
 	.llseek = no_seek_end_llseek,
-	.read = msr_read,
-	.write = msr_write,
+	.read_iter = msr_read,
+	.write_iter = msr_write,
 	.open = msr_open,
 	.unlocked_ioctl = msr_ioctl,
 	.compat_ioctl = msr_ioctl,

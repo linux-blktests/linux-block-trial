@@ -58,13 +58,12 @@ static void cpuid_smp_cpuid(void *cmd_block)
 	complete(&cmd->done);
 }
 
-static ssize_t cpuid_read(struct file *file, char __user *buf,
-			  size_t count, loff_t *ppos)
+static ssize_t cpuid_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	char __user *tmp = buf;
 	struct cpuid_regs_done cmd;
-	int cpu = iminor(file_inode(file));
-	u64 pos = *ppos;
+	int cpu = iminor(file_inode(iocb->ki_filp));
+	size_t count = iov_iter_count(to);
+	u64 pos = iocb->ki_pos;
 	ssize_t bytes = 0;
 	int err = 0;
 
@@ -84,13 +83,12 @@ static ssize_t cpuid_read(struct file *file, char __user *buf,
 		if (err)
 			break;
 		wait_for_completion(&cmd.done);
-		if (copy_to_user(tmp, &cmd.regs, 16)) {
+		if (!copy_to_iter_full(&cmd.regs, 16, to)) {
 			err = -EFAULT;
 			break;
 		}
-		tmp += 16;
 		bytes += 16;
-		*ppos = ++pos;
+		iocb->ki_pos = ++pos;
 		reinit_completion(&cmd.done);
 	}
 
@@ -119,7 +117,7 @@ static int cpuid_open(struct inode *inode, struct file *file)
 static const struct file_operations cpuid_fops = {
 	.owner = THIS_MODULE,
 	.llseek = no_seek_end_llseek,
-	.read = cpuid_read,
+	.read_iter = cpuid_read,
 	.open = cpuid_open,
 };
 

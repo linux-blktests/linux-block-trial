@@ -349,27 +349,26 @@ static int __set_inj(const char *buf)
 	return -EINVAL;
 }
 
-static ssize_t flags_read(struct file *filp, char __user *ubuf,
-			  size_t cnt, loff_t *ppos)
+static ssize_t flags_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char buf[MAX_FLAG_OPT_SIZE];
 	int n;
 
 	n = sprintf(buf, "%s\n", flags_options[inj_type]);
 
-	return simple_read_from_buffer(ubuf, cnt, ppos, buf, n);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, n, to);
 }
 
-static ssize_t flags_write(struct file *filp, const char __user *ubuf,
-			   size_t cnt, loff_t *ppos)
+static ssize_t flags_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char buf[MAX_FLAG_OPT_SIZE], *__buf;
+	size_t cnt = iov_iter_count(from);
 	int err;
 
 	if (!cnt || cnt > MAX_FLAG_OPT_SIZE)
 		return -EINVAL;
 
-	if (copy_from_user(&buf, ubuf, cnt))
+	if (!copy_from_iter_full(&buf, cnt, from))
 		return -EFAULT;
 
 	buf[cnt - 1] = 0;
@@ -383,14 +382,14 @@ static ssize_t flags_write(struct file *filp, const char __user *ubuf,
 		return err;
 	}
 
-	*ppos += cnt;
+	iocb->ki_pos += cnt;
 
 	return cnt;
 }
 
 static const struct file_operations flags_fops = {
-	.read           = flags_read,
-	.write          = flags_write,
+	.read_iter      = flags_read,
+	.write_iter     = flags_write,
 	.llseek         = generic_file_llseek,
 };
 
@@ -685,16 +684,14 @@ static const char readme_msg[] =
 "ipid:\t IPID (AMD-specific)\n"
 "\n";
 
-static ssize_t
-inj_readme_read(struct file *filp, char __user *ubuf,
-		       size_t cnt, loff_t *ppos)
+static ssize_t inj_readme_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return simple_read_from_buffer(ubuf, cnt, ppos,
-					readme_msg, strlen(readme_msg));
+	return simple_copy_to_iter(readme_msg, &iocb->ki_pos,
+					strlen(readme_msg), to);
 }
 
 static const struct file_operations readme_fops = {
-	.read		= inj_readme_read,
+	.read_iter	= inj_readme_read,
 };
 
 static struct dfs_node {

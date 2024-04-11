@@ -355,8 +355,9 @@ static int tboot_dying_cpu(unsigned int cpu)
 
 static uint8_t tboot_log_uuid[16] = TBOOT_LOG_UUID;
 
-static ssize_t tboot_log_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
+static ssize_t tboot_log_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t count = iov_iter_count(to);
 	void __iomem *log_base;
 	u8 log_uuid[16];
 	u32 max_size;
@@ -372,13 +373,13 @@ static ssize_t tboot_log_read(struct file *file, char __user *user_buf, size_t c
 		goto err_iounmap;
 
 	max_size = readl(log_base + LOG_MAX_SIZE_OFF);
-	if (*ppos >= max_size) {
+	if (iocb->ki_pos >= max_size) {
 		ret = 0;
 		goto err_iounmap;
 	}
 
-	if (*ppos + count > max_size)
-		count = max_size - *ppos;
+	if (iocb->ki_pos + count > max_size)
+		count = max_size - iocb->ki_pos;
 
 	kbuf = kmalloc(count, GFP_KERNEL);
 	if (!kbuf) {
@@ -386,11 +387,11 @@ static ssize_t tboot_log_read(struct file *file, char __user *user_buf, size_t c
 		goto err_iounmap;
 	}
 
-	memcpy_fromio(kbuf, log_base + LOG_BUF_OFF + *ppos, count);
-	if (copy_to_user(user_buf, kbuf, count))
+	memcpy_fromio(kbuf, log_base + LOG_BUF_OFF + iocb->ki_pos, count);
+	if (!copy_to_iter_full(kbuf, count, to))
 		goto err_kfree;
 
-	*ppos += count;
+	iocb->ki_pos += count;
 
 	ret = count;
 
@@ -404,7 +405,7 @@ err_iounmap:
 }
 
 static const struct file_operations tboot_log_fops = {
-	.read	= tboot_log_read,
+	.read_iter	= tboot_log_read,
 	.llseek	= default_llseek,
 };
 

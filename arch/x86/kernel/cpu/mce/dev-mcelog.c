@@ -159,7 +159,7 @@ static int mce_chrdev_release(struct inode *inode, struct file *file)
 static int mce_apei_read_done;
 
 /* Collect MCE record of previous boot in persistent storage via APEI ERST. */
-static int __mce_read_apei(char __user **ubuf, size_t usize)
+static int __mce_read_apei(struct iov_iter *to, size_t usize)
 {
 	int rc;
 	u64 record_id;
@@ -181,7 +181,7 @@ static int __mce_read_apei(char __user **ubuf, size_t usize)
 		return rc;
 	}
 	rc = -EFAULT;
-	if (copy_to_user(*ubuf, &m, sizeof(struct mce)))
+	if (!copy_to_iter_full(&m, sizeof(struct mce), to))
 		return rc;
 	/*
 	 * In fact, we should have cleared the record after that has
@@ -194,51 +194,49 @@ static int __mce_read_apei(char __user **ubuf, size_t usize)
 		mce_apei_read_done = 1;
 		return rc;
 	}
-	*ubuf += sizeof(struct mce);
 
 	return 0;
 }
 
-static ssize_t mce_chrdev_read(struct file *filp, char __user *ubuf,
-				size_t usize, loff_t *off)
+static ssize_t mce_chrdev_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	char __user *buf = ubuf;
+	size_t copied, usize = iov_iter_count(to);
 	unsigned next;
 	int i, err;
 
 	mutex_lock(&mce_chrdev_read_mutex);
 
 	if (!mce_apei_read_done) {
-		err = __mce_read_apei(&buf, usize);
-		if (err || buf != ubuf)
+		err = __mce_read_apei(to, usize);
+		if (err)
 			goto out;
 	}
 
 	/* Only supports full reads right now */
 	err = -EINVAL;
-	if (*off != 0 || usize < mcelog->len * sizeof(struct mce))
+	if (iocb->ki_pos != 0 || usize < mcelog->len * sizeof(struct mce))
 		goto out;
 
 	next = mcelog->next;
 	err = 0;
+	copied = 0;
 
 	for (i = 0; i < next; i++) {
 		struct mce *m = &mcelog->entry[i];
 
-		err |= copy_to_user(buf, m, sizeof(*m));
-		buf += sizeof(*m);
+		if (copy_to_iter_full(m, sizeof(*m), to))
+			copied += sizeof(*m);
+		else
+			err = -EFAULT;
 	}
 
 	memset(mcelog->entry, 0, next * sizeof(struct mce));
 	mcelog->next = 0;
 
-	if (err)
-		err = -EFAULT;
-
 out:
 	mutex_unlock(&mce_chrdev_read_mutex);
 
-	return err ? err : buf - ubuf;
+	return err ? err : copied;
 }
 
 static __poll_t mce_chrdev_poll(struct file *file, poll_table *wait)
@@ -283,9 +281,9 @@ void mce_unregister_injector_chain(struct notifier_block *nb)
 }
 EXPORT_SYMBOL_GPL(mce_unregister_injector_chain);
 
-static ssize_t mce_chrdev_write(struct file *filp, const char __user *ubuf,
-				size_t usize, loff_t *off)
+static ssize_t mce_chrdev_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t usize = iov_iter_count(from);
 	struct mce m;
 
 	if (!capable(CAP_SYS_ADMIN))
@@ -299,7 +297,7 @@ static ssize_t mce_chrdev_write(struct file *filp, const char __user *ubuf,
 
 	if ((unsigned long)usize > sizeof(struct mce))
 		usize = sizeof(struct mce);
-	if (copy_from_user(&m, ubuf, usize))
+	if (!copy_from_iter_full(&m, usize, from))
 		return -EFAULT;
 
 	if (m.extcpu >= num_possible_cpus() || !cpu_online(m.extcpu))
@@ -319,8 +317,8 @@ static ssize_t mce_chrdev_write(struct file *filp, const char __user *ubuf,
 static const struct file_operations mce_chrdev_ops = {
 	.open			= mce_chrdev_open,
 	.release		= mce_chrdev_release,
-	.read			= mce_chrdev_read,
-	.write			= mce_chrdev_write,
+	.read_iter		= mce_chrdev_read,
+	.write_iter		= mce_chrdev_write,
 	.poll			= mce_chrdev_poll,
 	.unlocked_ioctl		= mce_chrdev_ioctl,
 	.compat_ioctl		= compat_ptr_ioctl,
