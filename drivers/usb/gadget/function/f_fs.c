@@ -497,6 +497,7 @@ done_spin:
 	mutex_unlock(&ffs->mutex);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(ffs_ep0_write);
 
 /* Called with ffs->ev.waitq.lock and ffs->mutex held, both released on exit. */
 static ssize_t __ffs_ep0_read_events(struct ffs_data *ffs, char __user *buf,
@@ -634,6 +635,7 @@ done_mutex:
 	kfree(data);
 	return ret;
 }
+FOPS_READ_ITER_HELPER(ffs_ep0_read);
 
 
 static void ffs_data_reset(struct ffs_data *ffs);
@@ -732,8 +734,8 @@ static __poll_t ffs_ep0_poll(struct file *file, poll_table *wait)
 static const struct file_operations ffs_ep0_operations = {
 
 	.open =		ffs_ep0_open,
-	.write =	ffs_ep0_write,
-	.read =		ffs_ep0_read,
+	.write_iter =	ffs_ep0_write_iter,
+	.read_iter =	ffs_ep0_read_iter,
 	.release =	ffs_ep0_release,
 	.unlocked_ioctl =	ffs_ep0_ioctl,
 	.poll =		ffs_ep0_poll,

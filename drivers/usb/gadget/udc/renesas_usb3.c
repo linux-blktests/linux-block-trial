@@ -2602,18 +2602,18 @@ static int renesas_usb3_b_device_open(struct inode *inode, struct file *file)
 	return single_open(file, renesas_usb3_b_device_show, inode->i_private);
 }
 
-static ssize_t renesas_usb3_b_device_write(struct file *file,
-					   const char __user *ubuf,
-					   size_t count, loff_t *ppos)
+static ssize_t renesas_usb3_b_device_write(struct kiocb *iocb,
+					   struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct renesas_usb3 *usb3 = s->private;
+	size_t count = iov_iter_count(from);
 	char buf[32];
 
 	if (!usb3->driver)
 		return -ENODEV;
 
-	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
+	if (!copy_from_iter_full(&buf, min_t(size_t, sizeof(buf) - 1, count), from))
 		return -EFAULT;
 
 	usb3->start_to_connect = false;
@@ -2636,8 +2636,8 @@ static ssize_t renesas_usb3_b_device_write(struct file *file,
 
 static const struct file_operations renesas_usb3_b_device_fops = {
 	.open = renesas_usb3_b_device_open,
-	.write = renesas_usb3_b_device_write,
-	.read = seq_read,
+	.write_iter = renesas_usb3_b_device_write,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };

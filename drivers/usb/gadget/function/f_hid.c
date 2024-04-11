@@ -431,6 +431,7 @@ static ssize_t f_hidg_read(struct file *file, char __user *buffer,
 	else
 		return f_hidg_ssreport_read(file, buffer, count, ptr);
 }
+FOPS_READ_ITER_HELPER(f_hidg_read);
 
 static void f_hidg_req_complete(struct usb_ep *ep, struct usb_request *req)
 {
@@ -448,10 +449,10 @@ static void f_hidg_req_complete(struct usb_ep *ep, struct usb_request *req)
 	wake_up(&hidg->write_queue);
 }
 
-static ssize_t f_hidg_write(struct file *file, const char __user *buffer,
-			    size_t count, loff_t *offp)
+static ssize_t f_hidg_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct f_hidg *hidg  = file->private_data;
+	struct f_hidg *hidg  = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct usb_request *req;
 	unsigned long flags;
 	ssize_t status = -ENOMEM;
@@ -468,7 +469,7 @@ try_again:
 	/* write queue */
 	while (!WRITE_COND) {
 		spin_unlock_irqrestore(&hidg->write_spinlock, flags);
-		if (file->f_flags & O_NONBLOCK)
+		if (iocb->ki_filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 
 		if (wait_event_interruptible_exclusive(
@@ -490,8 +491,8 @@ try_again:
 		goto release_write_pending;
 	}
 
-	status = copy_from_user(req->buf, buffer, count);
-	if (status != 0) {
+	status = copy_from_iter_full(req->buf, count, from);
+	if (!status) {
 		ERROR(hidg->func.config->cdev,
 			"copy_from_user error\n");
 		status = -EINVAL;
@@ -1133,8 +1134,8 @@ static const struct file_operations f_hidg_fops = {
 	.owner		= THIS_MODULE,
 	.open		= f_hidg_open,
 	.release	= f_hidg_release,
-	.write		= f_hidg_write,
-	.read		= f_hidg_read,
+	.write_iter	= f_hidg_write,
+	.read_iter	= f_hidg_read_iter,
 	.poll		= f_hidg_poll,
 	.unlocked_ioctl	= f_hidg_ioctl,
 #ifdef CONFIG_COMPAT

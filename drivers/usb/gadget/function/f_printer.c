@@ -427,10 +427,10 @@ setup_rx_reqs(struct printer_dev *dev)
 	}
 }
 
-static ssize_t
-printer_read(struct file *fd, char __user *buf, size_t len, loff_t *ptr)
+static ssize_t printer_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct printer_dev		*dev = fd->private_data;
+	struct printer_dev		*dev = iocb->ki_filp->private_data;
+	size_t				len = iov_iter_count(to);
 	unsigned long			flags;
 	size_t				size;
 	size_t				bytes_copied;
@@ -486,7 +486,7 @@ printer_read(struct file *fd, char __user *buf, size_t len, loff_t *ptr)
 		 * If no data is available check if this is a NON-Blocking
 		 * call or not.
 		 */
-		if (fd->f_flags & (O_NONBLOCK|O_NDELAY)) {
+		if (iocb->ki_filp->f_flags & (O_NONBLOCK|O_NDELAY)) {
 			mutex_unlock(&dev->lock_printer_io);
 			return -EAGAIN;
 		}
@@ -525,10 +525,9 @@ printer_read(struct file *fd, char __user *buf, size_t len, loff_t *ptr)
 		else
 			size = len;
 
-		size -= copy_to_user(buf, current_rx_buf, size);
+		size -= copy_to_iter(current_rx_buf, size, to);
 		bytes_copied += size;
 		len -= size;
-		buf += size;
 
 		spin_lock_irqsave(&dev->lock, flags);
 
@@ -579,10 +578,10 @@ out_disabled:
 	return -ENODEV;
 }
 
-static ssize_t
-printer_write(struct file *fd, const char __user *buf, size_t len, loff_t *ptr)
+static ssize_t printer_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct printer_dev	*dev = fd->private_data;
+	struct printer_dev	*dev = iocb->ki_filp->private_data;
+	size_t			len = iov_iter_count(from);
 	unsigned long		flags;
 	size_t			size;	/* Amount of data in a TX request. */
 	size_t			bytes_copied = 0;
@@ -612,7 +611,7 @@ printer_write(struct file *fd, const char __user *buf, size_t len, loff_t *ptr)
 		 * If write buffers are available check if this is
 		 * a NON-Blocking call or not.
 		 */
-		if (fd->f_flags & (O_NONBLOCK|O_NDELAY)) {
+		if (iocb->ki_filp->f_flags & (O_NONBLOCK|O_NDELAY)) {
 			mutex_unlock(&dev->lock_printer_io);
 			return -EAGAIN;
 		}
@@ -652,7 +651,7 @@ printer_write(struct file *fd, const char __user *buf, size_t len, loff_t *ptr)
 		/* Don't leave irqs off while doing memory copies */
 		spin_unlock_irqrestore(&dev->lock, flags);
 
-		if (copy_from_user(req->buf, buf, size)) {
+		if (!copy_from_iter_full(req->buf, size, from)) {
 			list_add(&req->list, &dev->tx_reqs);
 			mutex_unlock(&dev->lock_printer_io);
 			return bytes_copied;
@@ -660,7 +659,6 @@ printer_write(struct file *fd, const char __user *buf, size_t len, loff_t *ptr)
 
 		bytes_copied += size;
 		len -= size;
-		buf += size;
 
 		spin_lock_irqsave(&dev->lock, flags);
 
@@ -814,8 +812,8 @@ printer_ioctl(struct file *fd, unsigned int code, unsigned long arg)
 static const struct file_operations printer_io_operations = {
 	.owner =	THIS_MODULE,
 	.open =		printer_open,
-	.read =		printer_read,
-	.write =	printer_write,
+	.read_iter =	printer_read,
+	.write_iter =	printer_write,
 	.fsync =	printer_fsync,
 	.poll =		printer_poll,
 	.unlocked_ioctl = printer_ioctl,
