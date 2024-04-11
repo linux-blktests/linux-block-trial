@@ -158,17 +158,17 @@ static int musb_test_mode_open(struct inode *inode, struct file *file)
 	return single_open(file, musb_test_mode_show, inode->i_private);
 }
 
-static ssize_t musb_test_mode_write(struct file *file,
-		const char __user *ubuf, size_t count, loff_t *ppos)
+static ssize_t musb_test_mode_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file		*s = file->private_data;
+	struct seq_file		*s = iocb->ki_filp->private_data;
+	size_t			count = iov_iter_count(from);
 	struct musb		*musb = s->private;
 	u8			test;
 	char			buf[24];
 
 	memset(buf, 0x00, sizeof(buf));
 
-	if (copy_from_user(buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
+	if (!copy_from_iter_full(buf, min_t(size_t, sizeof(buf) - 1, count), from))
 		return -EFAULT;
 
 	pm_runtime_get_sync(musb->controller);
@@ -220,8 +220,8 @@ ret:
 
 static const struct file_operations musb_test_mode_fops = {
 	.open			= musb_test_mode_open,
-	.write			= musb_test_mode_write,
-	.read			= seq_read,
+	.write_iter		= musb_test_mode_write,
+	.read_iter		= seq_read_iter,
 	.llseek			= seq_lseek,
 	.release		= single_release,
 };
@@ -256,17 +256,17 @@ static int musb_softconnect_open(struct inode *inode, struct file *file)
 	return single_open(file, musb_softconnect_show, inode->i_private);
 }
 
-static ssize_t musb_softconnect_write(struct file *file,
-		const char __user *ubuf, size_t count, loff_t *ppos)
+static ssize_t musb_softconnect_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file		*s = file->private_data;
+	struct seq_file		*s = iocb->ki_filp->private_data;
+	size_t			count = iov_iter_count(from);
 	struct musb		*musb = s->private;
 	char			buf[2];
 	u8			reg;
 
 	memset(buf, 0x00, sizeof(buf));
 
-	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
+	if (!copy_from_iter_full(&buf, min_t(size_t, sizeof(buf) - 1, count), from))
 		return -EFAULT;
 
 	pm_runtime_get_sync(musb->controller);
@@ -310,8 +310,8 @@ static ssize_t musb_softconnect_write(struct file *file,
  */
 static const struct file_operations musb_softconnect_fops = {
 	.open			= musb_softconnect_open,
-	.write			= musb_softconnect_write,
-	.read			= seq_read,
+	.write_iter		= musb_softconnect_write,
+	.read_iter		= seq_read_iter,
 	.llseek			= seq_lseek,
 	.release		= single_release,
 };
