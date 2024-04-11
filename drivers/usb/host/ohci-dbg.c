@@ -361,27 +361,27 @@ static int debug_async_open(struct inode *, struct file *);
 static int debug_periodic_open(struct inode *, struct file *);
 static int debug_registers_open(struct inode *, struct file *);
 static int debug_async_open(struct inode *, struct file *);
-static ssize_t debug_output(struct file*, char __user*, size_t, loff_t*);
+static ssize_t debug_output(struct kiocb *, struct iov_iter *);
 static int debug_close(struct inode *, struct file *);
 
 static const struct file_operations debug_async_fops = {
 	.owner		= THIS_MODULE,
 	.open		= debug_async_open,
-	.read		= debug_output,
+	.read_iter	= debug_output,
 	.release	= debug_close,
 	.llseek		= default_llseek,
 };
 static const struct file_operations debug_periodic_fops = {
 	.owner		= THIS_MODULE,
 	.open		= debug_periodic_open,
-	.read		= debug_output,
+	.read_iter	= debug_output,
 	.release	= debug_close,
 	.llseek		= default_llseek,
 };
 static const struct file_operations debug_registers_fops = {
 	.owner		= THIS_MODULE,
 	.open		= debug_registers_open,
-	.read		= debug_output,
+	.read_iter	= debug_output,
 	.release	= debug_close,
 	.llseek		= default_llseek,
 };
@@ -701,10 +701,9 @@ out:
 	return ret;
 }
 
-static ssize_t debug_output(struct file *file, char __user *user_buf,
-			size_t len, loff_t *offset)
+static ssize_t debug_output(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct debug_buffer *buf = file->private_data;
+	struct debug_buffer *buf = iocb->ki_filp->private_data;
 	int ret;
 
 	mutex_lock(&buf->mutex);
@@ -717,9 +716,7 @@ static ssize_t debug_output(struct file *file, char __user *user_buf,
 	}
 	mutex_unlock(&buf->mutex);
 
-	ret = simple_read_from_buffer(user_buf, len, offset,
-				      buf->page, buf->count);
-
+	ret = simple_copy_to_iter(buf->page, &iocb->ki_pos, buf->count, to);
 out:
 	return ret;
 
