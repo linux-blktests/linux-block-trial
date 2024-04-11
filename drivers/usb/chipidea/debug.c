@@ -6,6 +6,7 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
 #include <linux/usb/phy.h>
@@ -70,10 +71,10 @@ static int ci_port_test_show(struct seq_file *s, void *data)
 /*
  * ci_port_test_write: writes port test mode
  */
-static ssize_t ci_port_test_write(struct file *file, const char __user *ubuf,
-				  size_t count, loff_t *ppos)
+static ssize_t ci_port_test_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct ci_hdrc *ci = s->private;
 	unsigned long flags;
 	unsigned mode;
@@ -81,7 +82,7 @@ static ssize_t ci_port_test_write(struct file *file, const char __user *ubuf,
 	int ret;
 
 	count = min_t(size_t, sizeof(buf) - 1, count);
-	if (copy_from_user(buf, ubuf, count))
+	if (!copy_from_iter_full(buf, count, from))
 		return -EFAULT;
 
 	/* sscanf requires a zero terminated string */
@@ -109,8 +110,8 @@ static int ci_port_test_open(struct inode *inode, struct file *file)
 
 static const struct file_operations ci_port_test_fops = {
 	.open		= ci_port_test_open,
-	.write		= ci_port_test_write,
-	.read		= seq_read,
+	.write_iter	= ci_port_test_write,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
