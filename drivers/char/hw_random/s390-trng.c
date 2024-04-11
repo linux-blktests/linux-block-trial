@@ -52,9 +52,9 @@ static int trng_open(struct inode *inode, struct file *file)
 	return nonseekable_open(inode, file);
 }
 
-static ssize_t trng_read(struct file *file, char __user *ubuf,
-			 size_t nbytes, loff_t *ppos)
+static ssize_t trng_read(struct kiocb *iocb, struct iov_iter *to)
 {
+	size_t nbytes = iov_iter_count(to);
 	u8 buf[32];
 	u8 *p = buf;
 	unsigned int n;
@@ -84,12 +84,11 @@ static ssize_t trng_read(struct file *file, char __user *ubuf,
 		n = nbytes > PAGE_SIZE ? PAGE_SIZE : nbytes;
 		cpacf_trng(NULL, 0, p, n);
 		atomic64_add(n, &trng_dev_counter);
-		if (copy_to_user(ubuf, p, n)) {
+		if (!copy_to_iter_full(p, n, to)) {
 			ret = -EFAULT;
 			break;
 		}
 		nbytes -= n;
-		ubuf += n;
 		ret += n;
 	}
 
@@ -138,7 +137,7 @@ static const struct file_operations trng_fops = {
 	.owner		= THIS_MODULE,
 	.open		= &trng_open,
 	.release	= NULL,
-	.read		= &trng_read,
+	.read_iter	= trng_read,
 	.llseek		= noop_llseek,
 };
 
