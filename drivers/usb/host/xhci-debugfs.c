@@ -239,7 +239,7 @@ static int xhci_ring_open(struct inode *inode, struct file *file)
 
 static const struct file_operations xhci_ring_fops = {
 	.open			= xhci_ring_open,
-	.read			= seq_read,
+	.read_iter		= seq_read_iter,
 	.llseek			= seq_lseek,
 	.release		= single_release,
 };
@@ -316,7 +316,7 @@ static int xhci_context_open(struct inode *inode, struct file *file)
 
 static const struct file_operations xhci_context_fops = {
 	.open			= xhci_context_open,
-	.read			= seq_read,
+	.read_iter		= seq_read_iter,
 	.llseek			= seq_lseek,
 	.release		= single_release,
 };
@@ -340,17 +340,17 @@ static int xhci_port_open(struct inode *inode, struct file *file)
 	return single_open(file, xhci_portsc_show, inode->i_private);
 }
 
-static ssize_t xhci_port_write(struct file *file,  const char __user *ubuf,
-			       size_t count, loff_t *ppos)
+static ssize_t xhci_port_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file         *s = file->private_data;
+	struct seq_file         *s = iocb->ki_filp->private_data;
+	size_t			count = iov_iter_count(from);
 	struct xhci_port	*port = s->private;
 	struct xhci_hcd		*xhci = hcd_to_xhci(port->rhub->hcd);
 	char                    buf[32];
 	u32			portsc;
 	unsigned long		flags;
 
-	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
+	if (!copy_from_iter_full(&buf, min_t(size_t, sizeof(buf) - 1, count), from))
 		return -EFAULT;
 
 	if (!strncmp(buf, "compliance", 10)) {
@@ -377,8 +377,8 @@ static ssize_t xhci_port_write(struct file *file,  const char __user *ubuf,
 
 static const struct file_operations port_fops = {
 	.open			= xhci_port_open,
-	.write                  = xhci_port_write,
-	.read			= seq_read,
+	.write_iter             = xhci_port_write,
+	.read_iter		= seq_read_iter,
 	.llseek			= seq_lseek,
 	.release		= single_release,
 };
@@ -419,7 +419,7 @@ static int xhci_portli_open(struct inode *inode, struct file *file)
 
 static const struct file_operations portli_fops = {
 	.open			= xhci_portli_open,
-	.read			= seq_read,
+	.read_iter		= seq_read_iter,
 	.llseek			= seq_lseek,
 	.release		= single_release,
 };
@@ -524,10 +524,10 @@ static int xhci_stream_id_open(struct inode *inode, struct file *file)
 	return single_open(file, xhci_stream_id_show, inode->i_private);
 }
 
-static ssize_t xhci_stream_id_write(struct file *file,  const char __user *ubuf,
-			       size_t count, loff_t *ppos)
+static ssize_t xhci_stream_id_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file         *s = file->private_data;
+	struct seq_file         *s = iocb->ki_filp->private_data;
+	size_t			count = iov_iter_count(from);
 	struct xhci_ep_priv	*epriv = s->private;
 	int			ret;
 	u16			stream_id; /* MaxPStreams + 1 <= 16 */
@@ -536,7 +536,7 @@ static ssize_t xhci_stream_id_write(struct file *file,  const char __user *ubuf,
 		return -EPERM;
 
 	/* Decimal number */
-	ret = kstrtou16_from_user(ubuf, count, 10, &stream_id);
+	ret = kstrtou16_from_iter(from, count, 10, &stream_id);
 	if (ret)
 		return ret;
 
@@ -551,8 +551,8 @@ static ssize_t xhci_stream_id_write(struct file *file,  const char __user *ubuf,
 
 static const struct file_operations stream_id_fops = {
 	.open			= xhci_stream_id_open,
-	.write                  = xhci_stream_id_write,
-	.read			= seq_read,
+	.write_iter             = xhci_stream_id_write,
+	.read_iter		= seq_read_iter,
 	.llseek			= seq_lseek,
 	.release		= single_release,
 };
@@ -756,7 +756,7 @@ static int bw_context_open(struct inode *inode, struct file *file)
 
 static const struct file_operations bw_fops = {
 	.open			= bw_context_open,
-	.read			= seq_read,
+	.read_iter		= seq_read_iter,
 	.llseek			= seq_lseek,
 	.release		= single_release,
 };
