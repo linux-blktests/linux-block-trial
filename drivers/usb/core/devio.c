@@ -393,6 +393,7 @@ err:
 	usb_unlock_device(dev);
 	return ret;
 }
+FOPS_READ_ITER_HELPER(usbdev_read);
 
 /*
  * async list handling
@@ -2848,7 +2849,7 @@ static __poll_t usbdev_poll(struct file *file,
 const struct file_operations usbdev_file_operations = {
 	.owner =	  THIS_MODULE,
 	.llseek =	  no_seek_end_llseek,
-	.read =		  usbdev_read,
+	.read_iter =	  usbdev_read_iter,
 	.poll =		  usbdev_poll,
 	.unlocked_ioctl = usbdev_ioctl,
 	.compat_ioctl =   compat_ptr_ioctl,

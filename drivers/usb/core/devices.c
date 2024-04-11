@@ -538,8 +538,9 @@ static ssize_t usb_device_read(struct file *file, char __user *buf,
 	mutex_unlock(&usb_bus_idr_lock);
 	return total_written;
 }
+FOPS_READ_ITER_HELPER(usb_device_read);
 
 const struct file_operations usbfs_devices_fops = {
 	.llseek =	no_seek_end_llseek,
-	.read =		usb_device_read,
+	.read_iter =	usb_device_read_iter,
 };
