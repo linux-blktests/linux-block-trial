@@ -6107,6 +6107,7 @@ static ssize_t ath12k_read_htt_stats_type(struct file *file,
 
 	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
 }
+FOPS_READ_ITER_HELPER(ath12k_read_htt_stats_type);
 
 static ssize_t ath12k_write_htt_stats_type(struct file *file,
 					   const char __user *user_buf,
@@ -6149,10 +6150,11 @@ static ssize_t ath12k_write_htt_stats_type(struct file *file,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(ath12k_write_htt_stats_type);
 
 static const struct file_operations fops_htt_stats_type = {
-	.read = ath12k_read_htt_stats_type,
-	.write = ath12k_write_htt_stats_type,
+	.read_iter = ath12k_read_htt_stats_type_iter,
+	.write_iter = ath12k_write_htt_stats_type_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -6288,11 +6290,12 @@ static ssize_t ath12k_read_htt_stats(struct file *file,
 	length = min_t(u32, stats_req->buf_len, ATH12K_HTT_STATS_BUF_SIZE);
 	return simple_read_from_buffer(user_buf, count, ppos, buf, length);
 }
+FOPS_READ_ITER_HELPER(ath12k_read_htt_stats);
 
 static const struct file_operations fops_dump_htt_stats = {
 	.open = ath12k_open_htt_stats,
 	.release = ath12k_release_htt_stats,
-	.read = ath12k_read_htt_stats,
+	.read_iter = ath12k_read_htt_stats_iter,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
@@ -6304,10 +6307,15 @@ static ssize_t ath12k_write_htt_stats_reset(struct file *file,
 	struct ath12k *ar = file->private_data;
 	enum ath12k_dbg_htt_ext_stats_type type;
 	struct htt_ext_stats_cfg_params cfg_params = {};
+	char kbuf[16];
+	size_t len = min(count, sizeof(kbuf) - 1);
 	u8 param_pos;
 	int ret;
 
-	ret = kstrtou32_from_user(user_buf, count, 0, &type);
+	if (copy_from_user(kbuf, user_buf, len))
+		return -EFAULT;
+	kbuf[len] = '\0';
+	ret = kstrtou32(kbuf, 0, &type);
 	if (ret)
 		return ret;
 
@@ -6350,9 +6358,10 @@ static ssize_t ath12k_write_htt_stats_reset(struct file *file,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(ath12k_write_htt_stats_reset);
 
 static const struct file_operations fops_htt_stats_reset = {
-	.write = ath12k_write_htt_stats_reset,
+	.write_iter = ath12k_write_htt_stats_reset_iter,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,

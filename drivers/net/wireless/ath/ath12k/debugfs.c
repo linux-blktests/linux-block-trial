@@ -10,11 +10,11 @@
 #include "debugfs.h"
 #include "debugfs_htt_stats.h"
 
-static ssize_t ath12k_write_simulate_radar(struct file *file,
-					   const char __user *user_buf,
-					   size_t count, loff_t *ppos)
+static ssize_t ath12k_write_simulate_radar(struct kiocb *iocb,
+					   struct iov_iter *from)
 {
-	struct ath12k *ar = file->private_data;
+	struct ath12k *ar = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	int ret;
 
 	wiphy_lock(ath12k_ar_to_hw(ar)->wiphy);
@@ -29,7 +29,7 @@ exit:
 }
 
 static const struct file_operations fops_simulate_radar = {
-	.write = ath12k_write_simulate_radar,
+	.write_iter = ath12k_write_simulate_radar,
 	.open = simple_open
 };
 
