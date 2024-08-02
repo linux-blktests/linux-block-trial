@@ -272,18 +272,20 @@ static ssize_t data_read(struct file *file, char __user *buf, size_t count, loff
 
 	return xe_sriov_pf_migration_read(xe, vfid, buf, count);
 }
+FOPS_WRITE_ITER_HELPER(data_write);
+FOPS_READ_ITER_HELPER(data_read);
 
 static const struct file_operations data_vf_fops = {
 	.owner		= THIS_MODULE,
 	.open		= simple_open,
-	.write		= data_write,
-	.read		= data_read,
+	.write_iter	= data_write_iter,
+	.read_iter	= data_read_iter,
 	.llseek		= default_llseek,
 };
 
-static ssize_t size_read(struct file *file, char __user *ubuf, size_t count, loff_t *ppos)
+static ssize_t size_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dentry *dent = file_dentry(file)->d_parent;
+	struct dentry *dent = file_dentry(iocb->ki_filp)->d_parent;
 	struct xe_device *xe = extract_xe(dent);
 	unsigned int vfid = extract_vfid(dent);
 	char buf[21];
@@ -298,13 +300,13 @@ static ssize_t size_read(struct file *file, char __user *ubuf, size_t count, lof
 
 	len = scnprintf(buf, sizeof(buf), "%zd\n", ret);
 
-	return simple_read_from_buffer(ubuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations size_vf_fops = {
 	.owner		= THIS_MODULE,
 	.open		= simple_open,
-	.read		= size_read,
+	.read_iter	= size_read,
 	.llseek		= default_llseek,
 };
 

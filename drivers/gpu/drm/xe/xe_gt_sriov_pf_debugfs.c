@@ -291,26 +291,26 @@ static int sched_groups_config_show(struct seq_file *m, void *data,
 	return 0;
 }
 
-static ssize_t sched_groups_config_write(struct file *file, const char __user *ubuf,
-					 size_t size, loff_t *pos,
+static ssize_t sched_groups_config_write(struct kiocb *iocb, struct iov_iter *from,
 					 int (*set)(struct xe_gt *, unsigned int, u32 *, u32))
 {
-	struct dentry *parent = file_inode(file)->i_private;
+	struct dentry *parent = file_inode(iocb->ki_filp)->i_private;
 	unsigned int vfid = extract_vfid(parent);
 	struct xe_gt *gt = extract_gt(parent);
+	size_t size = iov_iter_count(from);
 	u32 values[GUC_MAX_SCHED_GROUPS];
 	int *input __free(kfree) = NULL;
 	u32 count;
 	int ret;
 	int i;
 
-	if (*pos)
+	if (iocb->ki_pos)
 		return -ESPIPE;
 
 	if (!size)
 		return -ENODATA;
 
-	ret = parse_int_array_user(ubuf, min(size, GUC_MAX_SCHED_GROUPS * sizeof(u32)), &input);
+	ret = parse_int_array_iter(from, &input);
 	if (ret)
 		return ret;
 
@@ -344,20 +344,19 @@ static int sched_groups_##CONFIG##_open(struct inode *inode, struct file *file)	
 			   inode->i_private);					\
 }										\
 										\
-static ssize_t sched_groups_##CONFIG##_write(struct file *file,			\
-					      const char __user *ubuf,		\
-					      size_t size, loff_t *pos)		\
+static ssize_t sched_groups_##CONFIG##_write(struct kiocb *iocb,		\
+					     struct iov_iter *from)		\
 {										\
-	return sched_groups_config_write(file, ubuf, size, pos,			\
+	return sched_groups_config_write(iocb, from,				\
 					 xe_gt_sriov_pf_config_set_groups_##CONFIG); \
 }										\
 										\
 static const struct file_operations sched_groups_##CONFIG##_fops = {		\
 	.owner = THIS_MODULE,							\
 	.open = sched_groups_##CONFIG##_open,					\
-	.read = seq_read,							\
+	.read_iter = seq_read_iter,						\
 	.llseek = seq_lseek,							\
-	.write = sched_groups_##CONFIG##_write,					\
+	.write_iter = sched_groups_##CONFIG##_write,				\
 	.release = single_release,						\
 }
 
@@ -621,13 +620,14 @@ static const struct {
 	{ "resume", xe_gt_sriov_pf_control_resume_vf },
 };
 
-static ssize_t control_write(struct file *file, const char __user *buf, size_t count, loff_t *pos)
+static ssize_t control_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct dentry *dent = file_dentry(file);
+	struct dentry *dent = file_dentry(iocb->ki_filp);
 	struct dentry *parent = dent->d_parent;
 	struct xe_gt *gt = extract_gt(parent);
 	struct xe_device *xe = gt_to_xe(gt);
 	unsigned int vfid = extract_vfid(parent);
+	size_t count = iov_iter_count(from);
 	int ret = -EINVAL;
 	char cmd[32];
 	size_t n;
@@ -635,13 +635,13 @@ static ssize_t control_write(struct file *file, const char __user *buf, size_t c
 	xe_gt_assert(gt, vfid);
 	xe_gt_sriov_pf_assert_vfid(gt, vfid);
 
-	if (*pos)
+	if (iocb->ki_pos)
 		return -ESPIPE;
 
 	if (count > sizeof(cmd) - 1)
 		return -EINVAL;
 
-	ret = simple_write_to_buffer(cmd, sizeof(cmd) - 1, pos, buf, count);
+	ret = simple_copy_from_iter(cmd, &iocb->ki_pos, sizeof(cmd) - 1, from);
 	if (ret < 0)
 		return ret;
 	cmd[ret] = '\0';
@@ -659,7 +659,7 @@ static ssize_t control_write(struct file *file, const char __user *buf, size_t c
 	return (ret < 0) ? ret : count;
 }
 
-static ssize_t control_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+static ssize_t control_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char help[128];
 	size_t n;
@@ -670,14 +670,14 @@ static ssize_t control_read(struct file *file, char __user *buf, size_t count, l
 		strlcat(help, "\n", sizeof(help));
 	}
 
-	return simple_read_from_buffer(buf, count, ppos, help, strlen(help));
+	return simple_copy_to_iter(help, &iocb->ki_pos, strlen(help), to);
 }
 
 static const struct file_operations control_ops = {
 	.owner		= THIS_MODULE,
 	.open		= simple_open,
-	.write		= control_write,
-	.read		= control_read,
+	.write_iter	= control_write,
+	.read_iter	= control_read,
 	.llseek		= default_llseek,
 };
 

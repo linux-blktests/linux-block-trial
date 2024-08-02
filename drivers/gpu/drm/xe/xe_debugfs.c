@@ -6,6 +6,8 @@
 #include "xe_debugfs.h"
 
 #include <linux/debugfs.h>
+#include <linux/kstrtox.h>
+#include <linux/uio.h>
 #include <linux/fault-inject.h>
 #include <linux/string_helpers.h>
 
@@ -242,16 +244,15 @@ static const struct file_operations forcewake_all_fops = {
 	.release = forcewake_release,
 };
 
-static ssize_t wedged_mode_show(struct file *f, char __user *ubuf,
-				size_t size, loff_t *pos)
+static ssize_t wedged_mode_show(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct xe_device *xe = file_inode(f)->i_private;
+	struct xe_device *xe = file_inode(iocb->ki_filp)->i_private;
 	char buf[32];
 	int len = 0;
 
 	len = scnprintf(buf, sizeof(buf), "%d\n", xe->wedged.mode);
 
-	return simple_read_from_buffer(ubuf, size, pos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static int __wedged_mode_set_reset_policy(struct xe_gt *gt, enum xe_wedged_mode mode)
@@ -306,14 +307,14 @@ static bool wedged_mode_needs_policy_update(struct xe_device *xe, enum xe_wedged
 	return false;
 }
 
-static ssize_t wedged_mode_set(struct file *f, const char __user *ubuf,
-			       size_t size, loff_t *pos)
+static ssize_t wedged_mode_set(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct xe_device *xe = file_inode(f)->i_private;
+	struct xe_device *xe = file_inode(iocb->ki_filp)->i_private;
+	size_t size = iov_iter_count(from);
 	u32 wedged_mode;
 	ssize_t ret;
 
-	ret = kstrtouint_from_user(ubuf, size, 0, &wedged_mode);
+	ret = kstrtouint_from_iter(from, size, 0, &wedged_mode);
 	if (ret)
 		return ret;
 
@@ -334,29 +335,28 @@ static ssize_t wedged_mode_set(struct file *f, const char __user *ubuf,
 
 static const struct file_operations wedged_mode_fops = {
 	.owner = THIS_MODULE,
-	.read = wedged_mode_show,
-	.write = wedged_mode_set,
+	.read_iter = wedged_mode_show,
+	.write_iter = wedged_mode_set,
 };
 
-static ssize_t page_reclaim_hw_assist_show(struct file *f, char __user *ubuf,
-					   size_t size, loff_t *pos)
+static ssize_t page_reclaim_hw_assist_show(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct xe_device *xe = file_inode(f)->i_private;
+	struct xe_device *xe = file_inode(iocb->ki_filp)->i_private;
 	char buf[8];
 	int len;
 
 	len = scnprintf(buf, sizeof(buf), "%d\n", xe->info.has_page_reclaim_hw_assist);
-	return simple_read_from_buffer(ubuf, size, pos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t page_reclaim_hw_assist_set(struct file *f, const char __user *ubuf,
-					  size_t size, loff_t *pos)
+static ssize_t page_reclaim_hw_assist_set(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct xe_device *xe = file_inode(f)->i_private;
+	struct xe_device *xe = file_inode(iocb->ki_filp)->i_private;
+	size_t size = iov_iter_count(from);
 	bool val;
 	ssize_t ret;
 
-	ret = kstrtobool_from_user(ubuf, size, &val);
+	ret = kstrtobool_from_iter(from, size, &val);
 	if (ret)
 		return ret;
 
@@ -367,31 +367,29 @@ static ssize_t page_reclaim_hw_assist_set(struct file *f, const char __user *ubu
 
 static const struct file_operations page_reclaim_hw_assist_fops = {
 	.owner = THIS_MODULE,
-	.read = page_reclaim_hw_assist_show,
-	.write = page_reclaim_hw_assist_set,
+	.read_iter = page_reclaim_hw_assist_show,
+	.write_iter = page_reclaim_hw_assist_set,
 };
 
-static ssize_t atomic_svm_timeslice_ms_show(struct file *f, char __user *ubuf,
-					    size_t size, loff_t *pos)
+static ssize_t atomic_svm_timeslice_ms_show(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct xe_device *xe = file_inode(f)->i_private;
+	struct xe_device *xe = file_inode(iocb->ki_filp)->i_private;
 	char buf[32];
 	int len = 0;
 
 	len = scnprintf(buf, sizeof(buf), "%d\n", xe->atomic_svm_timeslice_ms);
 
-	return simple_read_from_buffer(ubuf, size, pos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t atomic_svm_timeslice_ms_set(struct file *f,
-					   const char __user *ubuf,
-					   size_t size, loff_t *pos)
+static ssize_t atomic_svm_timeslice_ms_set(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct xe_device *xe = file_inode(f)->i_private;
+	struct xe_device *xe = file_inode(iocb->ki_filp)->i_private;
+	size_t size = iov_iter_count(from);
 	u32 atomic_svm_timeslice_ms;
 	ssize_t ret;
 
-	ret = kstrtouint_from_user(ubuf, size, 0, &atomic_svm_timeslice_ms);
+	ret = kstrtouint_from_iter(from, size, 0, &atomic_svm_timeslice_ms);
 	if (ret)
 		return ret;
 
@@ -402,30 +400,29 @@ static ssize_t atomic_svm_timeslice_ms_set(struct file *f,
 
 static const struct file_operations atomic_svm_timeslice_ms_fops = {
 	.owner = THIS_MODULE,
-	.read = atomic_svm_timeslice_ms_show,
-	.write = atomic_svm_timeslice_ms_set,
+	.read_iter = atomic_svm_timeslice_ms_show,
+	.write_iter = atomic_svm_timeslice_ms_set,
 };
 
-static ssize_t min_run_period_lr_ms_show(struct file *f, char __user *ubuf,
-					 size_t size, loff_t *pos)
+static ssize_t min_run_period_lr_ms_show(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct xe_device *xe = file_inode(f)->i_private;
+	struct xe_device *xe = file_inode(iocb->ki_filp)->i_private;
 	char buf[32];
 	int len = 0;
 
 	len = scnprintf(buf, sizeof(buf), "%d\n", xe->min_run_period_lr_ms);
 
-	return simple_read_from_buffer(ubuf, size, pos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t min_run_period_lr_ms_set(struct file *f, const char __user *ubuf,
-					size_t size, loff_t *pos)
+static ssize_t min_run_period_lr_ms_set(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct xe_device *xe = file_inode(f)->i_private;
+	struct xe_device *xe = file_inode(iocb->ki_filp)->i_private;
+	size_t size = iov_iter_count(from);
 	u32 min_run_period_lr_ms;
 	ssize_t ret;
 
-	ret = kstrtouint_from_user(ubuf, size, 0, &min_run_period_lr_ms);
+	ret = kstrtouint_from_iter(from, size, 0, &min_run_period_lr_ms);
 	if (ret)
 		return ret;
 
@@ -436,30 +433,29 @@ static ssize_t min_run_period_lr_ms_set(struct file *f, const char __user *ubuf,
 
 static const struct file_operations min_run_period_lr_ms_fops = {
 	.owner = THIS_MODULE,
-	.read = min_run_period_lr_ms_show,
-	.write = min_run_period_lr_ms_set,
+	.read_iter = min_run_period_lr_ms_show,
+	.write_iter = min_run_period_lr_ms_set,
 };
 
-static ssize_t min_run_period_pf_ms_show(struct file *f, char __user *ubuf,
-					 size_t size, loff_t *pos)
+static ssize_t min_run_period_pf_ms_show(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct xe_device *xe = file_inode(f)->i_private;
+	struct xe_device *xe = file_inode(iocb->ki_filp)->i_private;
 	char buf[32];
 	int len = 0;
 
 	len = scnprintf(buf, sizeof(buf), "%d\n", xe->min_run_period_pf_ms);
 
-	return simple_read_from_buffer(ubuf, size, pos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t min_run_period_pf_ms_set(struct file *f, const char __user *ubuf,
-					size_t size, loff_t *pos)
+static ssize_t min_run_period_pf_ms_set(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct xe_device *xe = file_inode(f)->i_private;
+	struct xe_device *xe = file_inode(iocb->ki_filp)->i_private;
+	size_t size = iov_iter_count(from);
 	u32 min_run_period_pf_ms;
 	ssize_t ret;
 
-	ret = kstrtouint_from_user(ubuf, size, 0, &min_run_period_pf_ms);
+	ret = kstrtouint_from_iter(from, size, 0, &min_run_period_pf_ms);
 	if (ret)
 		return ret;
 
@@ -470,32 +466,31 @@ static ssize_t min_run_period_pf_ms_set(struct file *f, const char __user *ubuf,
 
 static const struct file_operations min_run_period_pf_ms_fops = {
 	.owner = THIS_MODULE,
-	.read = min_run_period_pf_ms_show,
-	.write = min_run_period_pf_ms_set,
+	.read_iter = min_run_period_pf_ms_show,
+	.write_iter = min_run_period_pf_ms_set,
 };
 
-static ssize_t disable_late_binding_show(struct file *f, char __user *ubuf,
-					 size_t size, loff_t *pos)
+static ssize_t disable_late_binding_show(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct xe_device *xe = file_inode(f)->i_private;
+	struct xe_device *xe = file_inode(iocb->ki_filp)->i_private;
 	struct xe_late_bind *late_bind = &xe->late_bind;
 	char buf[32];
 	int len;
 
 	len = scnprintf(buf, sizeof(buf), "%d\n", late_bind->disable);
 
-	return simple_read_from_buffer(ubuf, size, pos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t disable_late_binding_set(struct file *f, const char __user *ubuf,
-					size_t size, loff_t *pos)
+static ssize_t disable_late_binding_set(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct xe_device *xe = file_inode(f)->i_private;
+	struct xe_device *xe = file_inode(iocb->ki_filp)->i_private;
 	struct xe_late_bind *late_bind = &xe->late_bind;
+	size_t size = iov_iter_count(from);
 	bool val;
 	int ret;
 
-	ret = kstrtobool_from_user(ubuf, size, &val);
+	ret = kstrtobool_from_iter(from, size, &val);
 	if (ret)
 		return ret;
 
@@ -505,8 +500,8 @@ static ssize_t disable_late_binding_set(struct file *f, const char __user *ubuf,
 
 static const struct file_operations disable_late_binding_fops = {
 	.owner = THIS_MODULE,
-	.read = disable_late_binding_show,
-	.write = disable_late_binding_set,
+	.read_iter = disable_late_binding_show,
+	.write_iter = disable_late_binding_set,
 };
 
 void xe_debugfs_register(struct xe_device *xe)

@@ -579,6 +579,7 @@ static ssize_t xe_oa_read(struct file *file, char __user *buf,
 	/* Possible values for ret are 0, -EFAULT, -ENOSPC, -EIO, -EINVAL, ... */
 	return offset ?: (ret ?: -EAGAIN);
 }
+FOPS_READ_ITER_HELPER(xe_oa_read);
 
 static __poll_t xe_oa_poll_locked(struct xe_oa_stream *stream,
 				  struct file *file, poll_table *wait)
@@ -1712,7 +1713,7 @@ static const struct file_operations xe_oa_fops = {
 	.owner		= THIS_MODULE,
 	.release	= xe_oa_release,
 	.poll		= xe_oa_poll,
-	.read		= xe_oa_read,
+	.read_iter	= xe_oa_read_iter,
 	.unlocked_ioctl	= xe_oa_ioctl,
 	.mmap		= xe_oa_mmap,
 };
