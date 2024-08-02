@@ -1116,11 +1116,10 @@ static int ad9467_test_mode_available_show(struct seq_file *s, void *ignored)
 }
 DEFINE_SHOW_ATTRIBUTE(ad9467_test_mode_available);
 
-static ssize_t ad9467_chan_test_mode_read(struct file *file,
-					  char __user *userbuf, size_t count,
-					  loff_t *ppos)
+static ssize_t ad9467_chan_test_mode_read(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
-	struct ad9467_chan_test_mode *chan = file->private_data;
+	struct ad9467_chan_test_mode *chan = iocb->ki_filp->private_data;
 	struct ad9467_state *st = chan->st;
 	char buf[128] = {0};
 	size_t len;
@@ -1144,21 +1143,21 @@ static ssize_t ad9467_chan_test_mode_read(struct file *file,
 				ad9467_test_modes[chan->mode], chan->idx);
 	}
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t ad9467_chan_test_mode_write(struct file *file,
-					   const char __user *userbuf,
-					   size_t count, loff_t *ppos)
+static ssize_t ad9467_chan_test_mode_write(struct kiocb *iocb,
+					   struct iov_iter *from)
 {
-	struct ad9467_chan_test_mode *chan = file->private_data;
+	struct ad9467_chan_test_mode *chan = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct ad9467_state *st = chan->st;
 	char test_mode[32] = {0};
 	unsigned int mode;
 	int ret;
 
-	ret = simple_write_to_buffer(test_mode, sizeof(test_mode) - 1, ppos,
-				     userbuf, count);
+	ret = simple_copy_from_iter(test_mode, &iocb->ki_pos,
+				    sizeof(test_mode) - 1, from);
 	if (ret < 0)
 		return ret;
 
@@ -1225,24 +1224,22 @@ static ssize_t ad9467_chan_test_mode_write(struct file *file,
 
 static const struct file_operations ad9467_chan_test_mode_fops = {
 	.open = simple_open,
-	.read = ad9467_chan_test_mode_read,
-	.write = ad9467_chan_test_mode_write,
+	.read_iter = ad9467_chan_test_mode_read,
+	.write_iter = ad9467_chan_test_mode_write,
 	.llseek = default_llseek,
 	.owner = THIS_MODULE,
 };
 
-static ssize_t ad9467_dump_calib_table(struct file *file,
-				       char __user *userbuf,
-				       size_t count, loff_t *ppos)
+static ssize_t ad9467_dump_calib_table(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ad9467_state *st = file->private_data;
+	struct ad9467_state *st = iocb->ki_filp->private_data;
 	unsigned int bit;
 	/* +2 for the newline and +1 for the string termination */
 	unsigned char map[AD9647_MAX_TEST_POINTS * 2 + 3];
 	ssize_t len = 0;
 
 	guard(mutex)(&st->lock);
-	if (*ppos)
+	if (iocb->ki_pos)
 		goto out_read;
 
 	for (bit = 0; bit < st->calib_map_size; bit++) {
@@ -1255,12 +1252,12 @@ static ssize_t ad9467_dump_calib_table(struct file *file,
 
 	len += scnprintf(map + len, sizeof(map) - len, "\n");
 out_read:
-	return simple_read_from_buffer(userbuf, count, ppos, map, len);
+	return simple_copy_to_iter(map, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations ad9467_calib_table_fops = {
 	.open = simple_open,
-	.read = ad9467_dump_calib_table,
+	.read_iter = ad9467_dump_calib_table,
 	.llseek = default_llseek,
 	.owner = THIS_MODULE,
 };
