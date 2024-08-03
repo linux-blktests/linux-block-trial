@@ -970,13 +970,13 @@ static void drm_panic(struct kmsg_dumper *dumper, struct kmsg_dump_detail *detai
 #ifdef CONFIG_DRM_PANIC_DEBUG
 #include <linux/debugfs.h>
 
-static ssize_t debugfs_trigger_write(struct file *file, const char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t debugfs_trigger_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	bool run;
 
-	if (kstrtobool_from_user(user_buf, count, &run) == 0 && run) {
-		struct drm_plane *plane = file->private_data;
+	if (kstrtobool_from_iter(from, count, &run) == 0 && run) {
+		struct drm_plane *plane = iocb->ki_filp->private_data;
 
 		draw_panic_plane(plane, "Test from debugfs");
 	}
@@ -985,7 +985,7 @@ static ssize_t debugfs_trigger_write(struct file *file, const char __user *user_
 
 static const struct file_operations dbg_drm_panic_ops = {
 	.owner = THIS_MODULE,
-	.write = debugfs_trigger_write,
+	.write_iter = debugfs_trigger_write,
 	.open = simple_open,
 };
 
