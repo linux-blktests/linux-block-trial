@@ -177,11 +177,11 @@ out:
 	return collected_data;
 }
 
-static int jent_testing_extract_user(struct file *file, char __user *buf,
-				     size_t nbytes, loff_t *ppos,
+static int jent_testing_extract_user(struct kiocb *iocb, struct iov_iter *to,
 				     int (*reader)(u8 *outbuf, u32 outbuflen))
 {
 	u8 *tmp, *tmp_aligned;
+	size_t nbytes = iov_iter_count(to);
 	int ret = 0, large_request = (nbytes > 256);
 
 	if (!nbytes)
@@ -220,20 +220,19 @@ static int jent_testing_extract_user(struct file *file, char __user *buf,
 				ret = i;
 			break;
 		}
-		if (copy_to_user(buf, tmp_aligned, i)) {
+		if (!copy_to_iter_full(tmp_aligned, i, to)) {
 			ret = -EFAULT;
 			break;
 		}
 
 		nbytes -= i;
-		buf += i;
 		ret += i;
 	}
 
 	kfree_sensitive(tmp);
 
 	if (ret > 0)
-		*ppos += ret;
+		iocb->ki_pos += ret;
 
 	return ret;
 }
@@ -264,16 +263,14 @@ static int jent_raw_hires_entropy_reader(u8 *outbuf, u32 outbuflen)
 				   outbuf, outbuflen);
 }
 
-static ssize_t jent_raw_hires_read(struct file *file, char __user *to,
-				   size_t count, loff_t *ppos)
+static ssize_t jent_raw_hires_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return jent_testing_extract_user(file, to, count, ppos,
-					 jent_raw_hires_entropy_reader);
+	return jent_testing_extract_user(iocb, to, jent_raw_hires_entropy_reader);
 }
 
 static const struct file_operations jent_raw_hires_fops = {
 	.owner = THIS_MODULE,
-	.read = jent_raw_hires_read,
+	.read_iter = jent_raw_hires_read,
 };
 
 /******************************* Initialization *******************************/
