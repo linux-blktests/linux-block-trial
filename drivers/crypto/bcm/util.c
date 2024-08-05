@@ -347,8 +347,7 @@ char *spu_alg_name(enum spu_cipher_alg alg, enum spu_cipher_mode mode)
 	}
 }
 
-static ssize_t spu_debugfs_read(struct file *filp, char __user *ubuf,
-				size_t count, loff_t *offp)
+static ssize_t spu_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct bcm_device_private *ipriv;
 	char *buf;
@@ -366,7 +365,7 @@ static ssize_t spu_debugfs_read(struct file *filp, char __user *ubuf,
 	if (!buf)
 		return -ENOMEM;
 
-	ipriv = filp->private_data;
+	ipriv = iocb->ki_filp->private_data;
 	out_offset = 0;
 	out_offset += scnprintf(buf + out_offset, out_count - out_offset,
 			       "Number of SPUs.........%u\n",
@@ -466,7 +465,7 @@ static ssize_t spu_debugfs_read(struct file *filp, char __user *ubuf,
 	if (out_offset > out_count)
 		out_offset = out_count;
 
-	ret = simple_read_from_buffer(ubuf, count, offp, buf, out_offset);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, out_offset, to);
 	kfree(buf);
 	return ret;
 }
@@ -474,7 +473,7 @@ static ssize_t spu_debugfs_read(struct file *filp, char __user *ubuf,
 static const struct file_operations spu_debugfs_stats = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = spu_debugfs_read,
+	.read_iter = spu_debugfs_read,
 };
 
 /*
