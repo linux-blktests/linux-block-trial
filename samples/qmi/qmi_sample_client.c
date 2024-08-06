@@ -286,10 +286,8 @@ static const struct qmi_elem_info test_data_resp_msg_v01_ei[] = {
 
 /*
  * ping_write() - ping_pong debugfs file write handler
- * @file:	debugfs file context
- * @user_buf:	reference to the user data (ignored)
- * @count:	number of bytes in @user_buf
- * @ppos:	offset in @file to write
+ * @iocb:	the kernel io callback (kiocb) struct
+ * @from:	iovec iterator
  *
  * This function allows user space to send out a ping_pong QMI encoded message
  * to the associated remote test service and will return with the result of the
@@ -298,11 +296,11 @@ static const struct qmi_elem_info test_data_resp_msg_v01_ei[] = {
  *
  * Return: @count, or negative errno on failure.
  */
-static ssize_t ping_write(struct file *file, const char __user *user_buf,
-			  size_t count, loff_t *ppos)
+static ssize_t ping_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct qmi_handle *qmi = file->private_data;
+	struct qmi_handle *qmi = iocb->ki_filp->private_data;
 	struct test_ping_req_msg_v01 req = {};
+	size_t count = iov_iter_count(from);
 	struct qmi_txn txn;
 	int ret;
 
@@ -330,7 +328,7 @@ static ssize_t ping_write(struct file *file, const char __user *user_buf,
 
 static const struct file_operations ping_fops = {
 	.open = simple_open,
-	.write = ping_write,
+	.write_iter = ping_write,
 };
 
 static void ping_pong_cb(struct qmi_handle *qmi, struct sockaddr_qrtr *sq,
@@ -353,10 +351,8 @@ static void ping_pong_cb(struct qmi_handle *qmi, struct sockaddr_qrtr *sq,
 
 /*
  * data_write() - data debugfs file write handler
- * @file:	debugfs file context
- * @user_buf:	reference to the user data
- * @count:	number of bytes in @user_buf
- * @ppos:	offset in @file to write
+ * @iocb:	the kernel io callback (kiocb) struct
+ * @from:	iovec iterator
  *
  * This function allows user space to send out a data QMI encoded message to
  * the associated remote test service and will return with the result of the
@@ -365,11 +361,11 @@ static void ping_pong_cb(struct qmi_handle *qmi, struct sockaddr_qrtr *sq,
  *
  * Return: @count, or negative errno on failure.
  */
-static ssize_t data_write(struct file *file, const char __user *user_buf,
-			  size_t count, loff_t *ppos)
+static ssize_t data_write(struct kiocb *iocb, struct iov_iter *from)
 
 {
-	struct qmi_handle *qmi = file->private_data;
+	struct qmi_handle *qmi = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct test_data_resp_msg_v01 *resp;
 	struct test_data_req_msg_v01 *req;
 	struct qmi_txn txn;
@@ -386,7 +382,7 @@ static ssize_t data_write(struct file *file, const char __user *user_buf,
 	}
 
 	req->data_len = min_t(size_t, sizeof(req->data), count);
-	if (copy_from_user(req->data, user_buf, req->data_len)) {
+	if (!copy_from_iter_full(req->data, req->data_len, from)) {
 		ret = -EFAULT;
 		goto out;
 	}
@@ -426,7 +422,7 @@ out:
 
 static const struct file_operations data_fops = {
 	.open = simple_open,
-	.write = data_write,
+	.write_iter = data_write,
 };
 
 static const struct qmi_msg_handler qmi_sample_handlers[] = {
