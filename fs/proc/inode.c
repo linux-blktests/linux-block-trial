@@ -291,12 +291,18 @@ static ssize_t proc_reg_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 	struct proc_dir_entry *pde = PDE(file_inode(iocb->ki_filp));
 	ssize_t ret;
 
-	if (pde_is_permanent(pde))
+	if (pde_is_permanent(pde)) {
+		if (!pde->proc_ops->proc_read_iter)
+			return vfs_read_iter(iocb, iter, pde->proc_ops->proc_read);
 		return pde->proc_ops->proc_read_iter(iocb, iter);
+	}
 
 	if (!use_pde(pde))
 		return -EIO;
-	ret = pde->proc_ops->proc_read_iter(iocb, iter);
+	if (!pde->proc_ops->proc_read_iter)
+		ret = vfs_read_iter(iocb, iter, pde->proc_ops->proc_read);
+	else
+		ret = pde->proc_ops->proc_read_iter(iocb, iter);
 	unuse_pde(pde);
 	return ret;
 }
