@@ -140,32 +140,6 @@ Eoverflow:
 	return !m->buf ? -ENOMEM : -EAGAIN;
 }
 
-/**
- *	seq_read -	->read() method for sequential files.
- *	@file: the file to read from
- *	@buf: the buffer to read to
- *	@size: the maximum number of bytes to read
- *	@ppos: the current position in the file
- *
- *	Ready-made ->f_op->read()
- */
-ssize_t seq_read(struct file *file, char __user *buf, size_t size, loff_t *ppos)
-{
-	struct iovec iov = { .iov_base = buf, .iov_len = size};
-	struct kiocb kiocb;
-	struct iov_iter iter;
-	ssize_t ret;
-
-	init_sync_kiocb(&kiocb, file);
-	iov_iter_init(&iter, ITER_DEST, &iov, 1, size);
-
-	kiocb.ki_pos = *ppos;
-	ret = seq_read_iter(&kiocb, &iter);
-	*ppos = kiocb.ki_pos;
-	return ret;
-}
-EXPORT_SYMBOL(seq_read);
-
 /*
  * Ready-made ->f_op->read_iter()
  */
