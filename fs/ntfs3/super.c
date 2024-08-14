@@ -566,14 +566,14 @@ static int ntfs3_label_open(struct inode *inode, struct file *file)
 }
 
 static const struct proc_ops ntfs3_volinfo_fops = {
-	.proc_read = seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek = seq_lseek,
 	.proc_release = single_release,
 	.proc_open = ntfs3_volinfo_open,
 };
 
 static const struct proc_ops ntfs3_label_fops = {
-	.proc_read = seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek = seq_lseek,
 	.proc_release = single_release,
 	.proc_open = ntfs3_label_open,

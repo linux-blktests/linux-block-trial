@@ -1612,7 +1612,7 @@ static int psi_fop_release(struct inode *inode, struct file *file)
 
 static const struct proc_ops psi_io_proc_ops = {
 	.proc_open	= psi_io_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_write	= psi_io_write,
 	.proc_poll	= psi_fop_poll,
@@ -1621,7 +1621,7 @@ static const struct proc_ops psi_io_proc_ops = {
 
 static const struct proc_ops psi_memory_proc_ops = {
 	.proc_open	= psi_memory_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_write	= psi_memory_write,
 	.proc_poll	= psi_fop_poll,
@@ -1630,7 +1630,7 @@ static const struct proc_ops psi_memory_proc_ops = {
 
 static const struct proc_ops psi_cpu_proc_ops = {
 	.proc_open	= psi_cpu_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_write	= psi_cpu_write,
 	.proc_poll	= psi_fop_poll,
@@ -1656,7 +1656,7 @@ static ssize_t psi_irq_write(struct file *file, const char __user *user_buf,
 
 static const struct proc_ops psi_irq_proc_ops = {
 	.proc_open	= psi_irq_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_write	= psi_irq_write,
 	.proc_poll	= psi_fop_poll,

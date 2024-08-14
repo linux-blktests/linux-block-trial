@@ -199,7 +199,7 @@ static int irq_affinity_list_proc_open(struct inode *inode, struct file *file)
 
 static const struct proc_ops irq_affinity_proc_ops = {
 	.proc_open	= irq_affinity_proc_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 	.proc_write	= irq_affinity_proc_write,
@@ -207,7 +207,7 @@ static const struct proc_ops irq_affinity_proc_ops = {
 
 static const struct proc_ops irq_affinity_list_proc_ops = {
 	.proc_open	= irq_affinity_list_proc_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 	.proc_write	= irq_affinity_list_proc_write,
@@ -269,7 +269,7 @@ static int default_affinity_open(struct inode *inode, struct file *file)
 
 static const struct proc_ops default_affinity_proc_ops = {
 	.proc_open	= default_affinity_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 	.proc_write	= default_affinity_write,

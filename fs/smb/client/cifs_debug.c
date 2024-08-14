@@ -884,7 +884,7 @@ static int cifs_stats_proc_open(struct inode *inode, struct file *file)
 
 static const struct proc_ops cifs_stats_proc_ops = {
 	.proc_open	= cifs_stats_proc_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 	.proc_write	= cifs_stats_proc_write,
@@ -913,7 +913,7 @@ static int name##_open(struct inode *inode, struct file *file) \
 \
 static const struct proc_ops cifs_##name##_proc_fops = { \
 	.proc_open	= name##_open, \
-	.proc_read	= seq_read, \
+	.proc_read_iter	= seq_read_iter, \
 	.proc_lseek	= seq_lseek, \
 	.proc_release	= single_release, \
 	.proc_write	= name##_write, \
@@ -1055,7 +1055,7 @@ static ssize_t cifsFYI_proc_write(struct file *file, const char __user *buffer,
 
 static const struct proc_ops cifsFYI_proc_ops = {
 	.proc_open	= cifsFYI_proc_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 	.proc_write	= cifsFYI_proc_write,
@@ -1086,7 +1086,7 @@ static ssize_t cifs_linux_ext_proc_write(struct file *file,
 
 static const struct proc_ops cifs_linux_ext_proc_ops = {
 	.proc_open	= cifs_linux_ext_proc_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 	.proc_write	= cifs_linux_ext_proc_write,
@@ -1117,7 +1117,7 @@ static ssize_t cifs_lookup_cache_proc_write(struct file *file,
 
 static const struct proc_ops cifs_lookup_cache_proc_ops = {
 	.proc_open	= cifs_lookup_cache_proc_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 	.proc_write	= cifs_lookup_cache_proc_write,
@@ -1148,7 +1148,7 @@ static ssize_t traceSMB_proc_write(struct file *file, const char __user *buffer,
 
 static const struct proc_ops traceSMB_proc_ops = {
 	.proc_open	= traceSMB_proc_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 	.proc_write	= traceSMB_proc_write,
@@ -1251,7 +1251,7 @@ static ssize_t cifs_security_flags_proc_write(struct file *file,
 
 static const struct proc_ops cifs_security_flags_proc_ops = {
 	.proc_open	= cifs_security_flags_proc_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 	.proc_write	= cifs_security_flags_proc_write,
@@ -1294,7 +1294,7 @@ static int cifs_mount_params_proc_open(struct inode *inode, struct file *file)
 
 static const struct proc_ops cifs_mount_params_proc_ops = {
 	.proc_open	= cifs_mount_params_proc_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 	/* No need for write for now */

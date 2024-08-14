@@ -557,7 +557,7 @@ static int pgctrl_open(struct inode *inode, struct file *file)
 
 static const struct proc_ops pktgen_proc_ops = {
 	.proc_open	= pgctrl_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_write	= pgctrl_write,
 	.proc_release	= single_release,
@@ -1876,7 +1876,7 @@ static int pktgen_if_open(struct inode *inode, struct file *file)
 
 static const struct proc_ops pktgen_if_proc_ops = {
 	.proc_open	= pktgen_if_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_write	= pktgen_if_write,
 	.proc_release	= single_release,
@@ -2016,7 +2016,7 @@ static int pktgen_thread_open(struct inode *inode, struct file *file)
 
 static const struct proc_ops pktgen_thread_proc_ops = {
 	.proc_open	= pktgen_thread_open,
-	.proc_read	= seq_read,
+	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_write	= pktgen_thread_write,
 	.proc_release	= single_release,
