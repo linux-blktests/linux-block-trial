@@ -204,6 +204,16 @@ static void __io_uring_show_fdinfo(struct io_ring_ctx *ctx, struct seq_file *m)
 					task_work_pending(req->tctx->task));
 	}
 
+	if (ctx->flags & IORING_SETUP_DEFER_TASKRUN) {
+		struct io_tw_ring *tw_ring = ctx->tw_ring;
+
+		seq_printf(m, "Defer ring\n");
+		seq_printf(m, "  Entries: %u\n", tw_ring->entries);
+		seq_printf(m, "  Head   : %u\n", tw_ring->head);
+		seq_printf(m, "  CTail  : %u\n", atomic_read(&tw_ring->cons_tail));
+		seq_printf(m, "  TTail  : %u\n", atomic_read(&tw_ring->prod_tail));
+	}
+
 	seq_puts(m, "CqOverflowList:\n");
 	spin_lock(&ctx->completion_lock);
 	list_for_each_entry(ocqe, &ctx->cq_overflow_list, list) {
