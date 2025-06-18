@@ -330,6 +330,26 @@ static void io_free_alloc_caches(struct io_ring_ctx *ctx)
 	io_rsrc_cache_free(ctx);
 }
 
+static __cold int io_tw_ring_alloc(struct io_ring_ctx *ctx)
+{
+	struct io_tw_ring *tw_ring;
+	size_t entries;
+
+	if (!(ctx->flags & IORING_SETUP_DEFER_TASKRUN))
+		return 0;
+
+	entries = (PAGE_SIZE - sizeof(*tw_ring)) / sizeof(struct io_kiocb *);
+	entries = rounddown_pow_of_two(entries);
+	tw_ring = kzalloc(struct_size(tw_ring, reqs, entries), GFP_KERNEL);
+	if (!tw_ring)
+		return -ENOMEM;
+
+	tw_ring->entries = entries;
+	tw_ring->mask = entries - 1;
+	ctx->tw_ring = tw_ring;
+	return 0;
+}
+
 static __cold struct io_ring_ctx *io_ring_ctx_alloc(struct io_uring_params *p)
 {
 	struct io_ring_ctx *ctx;
@@ -376,6 +396,9 @@ static __cold struct io_ring_ctx *io_ring_ctx_alloc(struct io_uring_params *p)
 	ret |= io_rsrc_cache_init(ctx);
 	if (ret)
 		goto free_ref;
+	ret = io_tw_ring_alloc(ctx);
+	if (ret)
+		goto free_ref;
 	init_completion(&ctx->ref_comp);
 	xa_init_flags(&ctx->personalities, XA_FLAGS_ALLOC1);
 	mutex_init(&ctx->uring_lock);
@@ -387,7 +410,6 @@ static __cold struct io_ring_ctx *io_ring_ctx_alloc(struct io_uring_params *p)
 	INIT_LIST_HEAD(&ctx->defer_list);
 	INIT_LIST_HEAD(&ctx->timeout_list);
 	INIT_LIST_HEAD(&ctx->ltimeout_list);
-	init_llist_head(&ctx->work_llist);
 	INIT_LIST_HEAD(&ctx->tctx_list);
 	ctx->submit_state.free_list.next = NULL;
 	INIT_HLIST_HEAD(&ctx->waitid_list);
@@ -1251,8 +1273,10 @@ void tctx_task_work(struct callback_head *cb)
 static void io_req_local_work_add(struct io_kiocb *req, unsigned flags)
 {
 	struct io_ring_ctx *ctx = req->ctx;
+	struct io_tw_ring *tw_ring = ctx->tw_ring;
 	unsigned nr_wait, nr_tw, nr_tw_prev;
-	struct llist_node *head;
+	unsigned head, tail, ntail;
+	bool was_empty = true;
 
 	/* See comment above IO_CQ_WAKE_INIT */
 	BUILD_BUG_ON(IO_CQ_WAKE_FORCE <= IORING_MAX_CQ_ENTRIES);
@@ -1266,42 +1290,61 @@ static void io_req_local_work_add(struct io_kiocb *req, unsigned flags)
 
 	guard(rcu)();
 
-	head = READ_ONCE(ctx->work_llist.first);
+	/*
+	 * Get a slot for this request
+	 */
 	do {
-		nr_tw_prev = 0;
-		if (head) {
-			struct io_kiocb *first_req = container_of(head,
-							struct io_kiocb,
-							io_task_work.node);
-			/*
-			 * Might be executed at any moment, rely on
-			 * SLAB_TYPESAFE_BY_RCU to keep it alive.
-			 */
-			nr_tw_prev = READ_ONCE(first_req->nr_tw);
+		head = READ_ONCE(tw_ring->head);
+		tail = atomic_read(&tw_ring->prod_tail);
+
+		/* FIXME: handle full ring */
+		if (tail - head >= tw_ring->entries) {
+			WARN_ON_ONCE(1);
+			return;
 		}
+		ntail = tail + 1;
+	} while (!atomic_try_cmpxchg_acquire(&tw_ring->prod_tail, &tail, ntail));
+
+	nr_tw_prev = 0;
+	if (tail != head) {
+		struct io_kiocb *treq;
 
 		/*
-		 * Theoretically, it can overflow, but that's fine as one of
-		 * previous adds should've tried to wake the task.
+		 * Might be executed at any moment, rely on
+		 * SLAB_TYPESAFE_BY_RCU to keep it alive.
 		 */
-		nr_tw = nr_tw_prev + 1;
-		if (!(flags & IOU_F_TWQ_LAZY_WAKE))
-			nr_tw = IO_CQ_WAKE_FORCE;
-
-		req->nr_tw = nr_tw;
-		req->io_task_work.node.next = head;
-	} while (!try_cmpxchg(&ctx->work_llist.first, &head,
-			      &req->io_task_work.node));
+		treq = tw_ring->reqs[(tail - 1) & tw_ring->mask];
+		if (treq)
+			nr_tw_prev = READ_ONCE(treq->nr_tw);
+		was_empty = false;
+	}
 
 	/*
-	 * cmpxchg implies a full barrier, which pairs with the barrier
-	 * in set_current_state() on the io_cqring_wait() side. It's used
-	 * to ensure that either we see updated ->cq_wait_nr, or waiters
-	 * going to sleep will observe the work added to the list, which
-	 * is similar to the wait/wawke task state sync.
+	 * Theoretically, it can overflow, but that's fine as one of the
+	 * previous adds should've tried to wake the task.
 	 */
+	nr_tw = nr_tw_prev + 1;
+	if (!(flags & IOU_F_TWQ_LAZY_WAKE))
+		nr_tw = IO_CQ_WAKE_FORCE;
+	req->nr_tw = nr_tw;
 
-	if (!head) {
+	/*
+	 * Store our entry. Once the consumer tail is updated, this will be
+	 * fully visible to the consumer side.
+	 */
+	tw_ring->reqs[tail & tw_ring->mask] = req;
+
+	/*
+	 * Update consumer tail, with full ordering so that ->req store is
+	 * visible. This pairs with the barrier in set_current_state() on the
+	 * io_cqring_wait() side. It's used to ensure that either we see
+	 * updated ->cq_wait_nr, or waiters going to sleep will observe the
+	 * work added to the list, which is similar to the wait/wake task
+	 * state sync.
+	 */
+	atomic_inc_return(&tw_ring->cons_tail);
+
+	if (was_empty) {
 		if (ctx->flags & IORING_SETUP_TASKRUN_FLAG)
 			atomic_or(IORING_SQ_TASKRUN, &ctx->rings->sq_flags);
 		if (ctx->has_evfd)
@@ -1359,11 +1402,23 @@ void io_req_task_work_add_remote(struct io_kiocb *req, unsigned flags)
 
 static void __cold io_move_task_work_from_local(struct io_ring_ctx *ctx)
 {
-	struct llist_node *node = llist_del_all(&ctx->work_llist);
+	struct io_tw_ring *tw_ring = ctx->tw_ring;
+	unsigned head, tail = atomic_read(&tw_ring->cons_tail);
 
-	__io_fallback_tw(node, false);
-	node = llist_del_all(&ctx->retry_llist);
-	__io_fallback_tw(node, false);
+	percpu_ref_get(&ctx->refs);
+
+	head = tw_ring->head;
+	while (head != tail) {
+		struct io_kiocb *req;
+
+		req = tw_ring->reqs[head & tw_ring->mask];
+		if (llist_add(&req->io_task_work.node, &ctx->fallback_llist))
+			schedule_delayed_work(&ctx->fallback_work, 1);
+		head++;
+	}
+
+	WRITE_ONCE(tw_ring->head, head);
+	percpu_ref_put(&ctx->refs);
 }
 
 static bool io_run_local_work_continue(struct io_ring_ctx *ctx, int events,
@@ -1378,31 +1433,33 @@ static bool io_run_local_work_continue(struct io_ring_ctx *ctx, int events,
 	return false;
 }
 
-static int __io_run_local_work_loop(struct llist_node **node,
-				    io_tw_token_t tw,
+static int __io_run_local_work_loop(struct io_ring_ctx *ctx, io_tw_token_t tw,
 				    int events)
 {
+	struct io_tw_ring *tw_ring = ctx->tw_ring;
+	unsigned head, tail;
 	int ret = 0;
 
-	while (*node) {
-		struct llist_node *next = (*node)->next;
-		struct io_kiocb *req = container_of(*node, struct io_kiocb,
-						    io_task_work.node);
+	tail = atomic_read(&tw_ring->cons_tail);
+	head = tw_ring->head;
+	while (head != tail) {
+		struct io_kiocb *req = tw_ring->reqs[head & tw_ring->mask];
+
 		INDIRECT_CALL_2(req->io_task_work.func,
 				io_poll_task_func, io_req_rw_complete,
 				req, tw);
-		*node = next;
+		head++;
 		if (++ret >= events)
 			break;
 	}
 
+	WRITE_ONCE(tw_ring->head, head);
 	return ret;
 }
 
 static int __io_run_local_work(struct io_ring_ctx *ctx, io_tw_token_t tw,
 			       int min_events, int max_events)
 {
-	struct llist_node *node;
 	unsigned int loops = 0;
 	int ret = 0;
 
@@ -1412,23 +1469,11 @@ static int __io_run_local_work(struct io_ring_ctx *ctx, io_tw_token_t tw,
 		atomic_andnot(IORING_SQ_TASKRUN, &ctx->rings->sq_flags);
 again:
 	tw.cancel = io_should_terminate_tw(ctx);
+	ret = __io_run_local_work_loop(ctx, tw, max_events);
 	min_events -= ret;
-	ret = __io_run_local_work_loop(&ctx->retry_llist.first, tw, max_events);
-	if (ctx->retry_llist.first)
-		goto retry_done;
-
-	/*
-	 * llists are in reverse order, flip it back the right way before
-	 * running the pending items.
-	 */
-	node = llist_reverse_order(llist_del_all(&ctx->work_llist));
-	ret += __io_run_local_work_loop(&node, tw, max_events - ret);
-	ctx->retry_llist.first = node;
-	loops++;
 
 	if (io_run_local_work_continue(ctx, ret, min_events))
 		goto again;
-retry_done:
 	io_submit_flush_completions(ctx);
 	if (io_run_local_work_continue(ctx, ret, min_events))
 		goto again;
@@ -2558,7 +2603,7 @@ static enum hrtimer_restart io_cqring_min_timer_wakeup(struct hrtimer *timer)
 	if (ctx->flags & IORING_SETUP_DEFER_TASKRUN) {
 		atomic_set(&ctx->cq_wait_nr, 1);
 		smp_mb();
-		if (!llist_empty(&ctx->work_llist))
+		if (io_local_work_pending(ctx))
 			goto out_wake;
 	}
 
@@ -2890,6 +2935,7 @@ static __cold void io_ring_ctx_free(struct io_ring_ctx *ctx)
 	io_napi_free(ctx);
 	kvfree(ctx->cancel_table.hbs);
 	xa_destroy(&ctx->io_bl_xa);
+	kfree(ctx->tw_ring);
 	kfree(ctx);
 }
 

@@ -255,6 +255,25 @@ struct io_alloc_cache {
 	unsigned int		init_clear;
 };
 
+/*
+ * Defer task_work pending ring. It's a multi-producer single-consumer ring.
+ * 'head' is the head for both the producer and consumer side. Producers can
+ * run in parallel, and queue entries at 'prod_tail'. The consumer is
+ * serialized by ->uring_lock.
+ */
+struct io_tw_ring {
+	struct {
+		u32		entries;
+		u32		mask;
+		u32		head;
+		atomic_t	cons_tail;
+	} ____cacheline_aligned_in_smp;
+	struct {
+		atomic_t	prod_tail;
+	} ____cacheline_aligned_in_smp;
+	struct io_kiocb	*reqs[];
+};
+
 struct io_ring_ctx {
 	/* const or read-mostly hot data */
 	struct {
@@ -372,8 +391,7 @@ struct io_ring_ctx {
 	 * regularly bounce b/w CPUs.
 	 */
 	struct {
-		struct llist_head	work_llist;
-		struct llist_head	retry_llist;
+		struct io_tw_ring	*tw_ring;
 		unsigned long		check_cq;
 		atomic_t		cq_wait_nr;
 		atomic_t		cq_timeouts;

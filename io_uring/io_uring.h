@@ -477,7 +477,13 @@ static inline int io_run_task_work(void)
 
 static inline bool io_local_work_pending(struct io_ring_ctx *ctx)
 {
-	return !llist_empty(&ctx->work_llist) || !llist_empty(&ctx->retry_llist);
+	if (ctx->flags & IORING_SETUP_DEFER_TASKRUN) {
+		struct io_tw_ring *tw_ring = ctx->tw_ring;
+
+		return READ_ONCE(tw_ring->head) != atomic_read(&tw_ring->cons_tail);
+	}
+
+	return false;
 }
 
 static inline bool io_task_work_pending(struct io_ring_ctx *ctx)
