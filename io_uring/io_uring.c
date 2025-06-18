@@ -340,12 +340,14 @@ static __cold int io_tw_ring_alloc(struct io_ring_ctx *ctx)
 
 	entries = (PAGE_SIZE - sizeof(*tw_ring)) / sizeof(struct io_kiocb *);
 	entries = rounddown_pow_of_two(entries);
-	tw_ring = kzalloc(struct_size(tw_ring, reqs, entries), GFP_KERNEL);
+	tw_ring = kzalloc(struct_size(tw_ring, reqs, entries), GFP_KERNEL | __GFP_ACCOUNT);
 	if (!tw_ring)
 		return -ENOMEM;
 
 	tw_ring->entries = entries;
 	tw_ring->mask = entries - 1;
+	spin_lock_init(&tw_ring->overflow_lock);
+	INIT_WQ_LIST(&tw_ring->overflow_list);
 	ctx->tw_ring = tw_ring;
 	return 0;
 }
@@ -1270,13 +1272,25 @@ void tctx_task_work(struct callback_head *cb)
 	WARN_ON_ONCE(ret);
 }
 
+static __cold void io_req_local_work_overflow(struct io_kiocb *req)
+{
+	struct io_ring_ctx *ctx = req->ctx;
+	struct io_tw_ring *tw_ring = ctx->tw_ring;
+	unsigned long flags;
+
+	spin_lock_irqsave(&tw_ring->overflow_lock, flags);
+	wq_list_add_tail(&req->work.list, &tw_ring->overflow_list);
+	spin_unlock_irqrestore(&tw_ring->overflow_lock, flags);
+	wake_up_state(ctx->submitter_task, TASK_INTERRUPTIBLE);
+}
+
 static void io_req_local_work_add(struct io_kiocb *req, unsigned flags)
 {
 	struct io_ring_ctx *ctx = req->ctx;
 	struct io_tw_ring *tw_ring = ctx->tw_ring;
 	unsigned nr_wait, nr_tw, nr_tw_prev;
+	struct io_kiocb *tail_req = NULL;
 	unsigned head, tail, ntail;
-	bool was_empty = true;
 
 	/* See comment above IO_CQ_WAKE_INIT */
 	BUILD_BUG_ON(IO_CQ_WAKE_FORCE <= IORING_MAX_CQ_ENTRIES);
@@ -1297,9 +1311,8 @@ static void io_req_local_work_add(struct io_kiocb *req, unsigned flags)
 		head = READ_ONCE(tw_ring->head);
 		tail = atomic_read(&tw_ring->prod_tail);
 
-		/* FIXME: handle full ring */
-		if (tail - head >= tw_ring->entries) {
-			WARN_ON_ONCE(1);
+		if (unlikely(tail - head >= tw_ring->entries)) {
+			io_req_local_work_overflow(req);
 			return;
 		}
 		ntail = tail + 1;
@@ -1307,16 +1320,13 @@ static void io_req_local_work_add(struct io_kiocb *req, unsigned flags)
 
 	nr_tw_prev = 0;
 	if (tail != head) {
-		struct io_kiocb *treq;
-
 		/*
 		 * Might be executed at any moment, rely on
 		 * SLAB_TYPESAFE_BY_RCU to keep it alive.
 		 */
-		treq = tw_ring->reqs[(tail - 1) & tw_ring->mask];
-		if (treq)
-			nr_tw_prev = READ_ONCE(treq->nr_tw);
-		was_empty = false;
+		tail_req = tw_ring->reqs[(tail - 1) & tw_ring->mask];
+		if (tail_req)
+			nr_tw_prev = READ_ONCE(tail_req->nr_tw);
 	}
 
 	/*
@@ -1344,7 +1354,7 @@ static void io_req_local_work_add(struct io_kiocb *req, unsigned flags)
 	 */
 	atomic_inc_return(&tw_ring->cons_tail);
 
-	if (was_empty) {
+	if (!tail_req) {
 		if (ctx->flags & IORING_SETUP_TASKRUN_FLAG)
 			atomic_or(IORING_SQ_TASKRUN, &ctx->rings->sq_flags);
 		if (ctx->has_evfd)
@@ -1404,8 +1414,20 @@ static void __cold io_move_task_work_from_local(struct io_ring_ctx *ctx)
 {
 	struct io_tw_ring *tw_ring = ctx->tw_ring;
 	unsigned head, tail = atomic_read(&tw_ring->cons_tail);
+	struct io_wq_work_node *node;
 
 	percpu_ref_get(&ctx->refs);
+
+	node = tw_ring->retry_list.first;
+	tw_ring->retry_list.first = NULL;
+	while (node) {
+		struct io_kiocb *req = container_of(node, struct io_kiocb, work.list);
+		struct io_wq_work_node *next = node->next;
+
+		if (llist_add(&req->io_task_work.node, &ctx->fallback_llist))
+			schedule_delayed_work(&ctx->fallback_work, 1);
+		node = next;
+	}
 
 	head = tw_ring->head;
 	while (head != tail) {
@@ -1416,8 +1438,22 @@ static void __cold io_move_task_work_from_local(struct io_ring_ctx *ctx)
 			schedule_delayed_work(&ctx->fallback_work, 1);
 		head++;
 	}
-
 	WRITE_ONCE(tw_ring->head, head);
+
+	spin_lock_irq(&tw_ring->overflow_lock);
+	node = tw_ring->overflow_list.first;
+	tw_ring->overflow_list.first = NULL;
+	spin_unlock_irq(&tw_ring->overflow_lock);
+
+	while (node) {
+		struct io_kiocb *req = container_of(node, struct io_kiocb, work.list);
+		struct io_wq_work_node *next = node->next;
+
+		if (llist_add(&req->io_task_work.node, &ctx->fallback_llist))
+			schedule_delayed_work(&ctx->fallback_work, 1);
+		node = next;
+	}
+
 	percpu_ref_put(&ctx->refs);
 }
 
@@ -1433,10 +1469,53 @@ static bool io_run_local_work_continue(struct io_ring_ctx *ctx, int events,
 	return false;
 }
 
-static int __io_run_local_work_loop(struct io_ring_ctx *ctx, io_tw_token_t tw,
+static int io_run_local_work_list(struct io_wq_work_node **node, io_tw_token_t tw,
+				  int events)
+{
+	int ret = 0;
+
+	while (*node) {
+		struct io_kiocb *req = container_of(*node, struct io_kiocb, work.list);
+		struct io_wq_work_node *next = (*node)->next;
+
+		INDIRECT_CALL_2(req->io_task_work.func,
+				io_poll_task_func, io_req_rw_complete,
+				req, tw);
+		*node = next;
+		if (++ret >= events)
+			break;
+	}
+
+	return ret;
+}
+
+static int tw_overflow_flush(struct io_tw_ring *tw_ring, io_tw_token_t tw,
+			     int events)
+{
+	struct io_wq_work_node *node;
+	int ret;
+
+	spin_lock_irq(&tw_ring->overflow_lock);
+	node = tw_ring->overflow_list.first;
+	tw_ring->overflow_list.first = NULL;
+	spin_unlock_irq(&tw_ring->overflow_lock);
+
+	/*
+	 * If overflow doesn't finish all entries, add them to the retry list.
+	 * The retry list must be empty at this point, or we would not be
+	 * running overflow entries.
+	 */
+	ret = io_run_local_work_list(&node, tw, events);
+	if (node) {
+		WARN_ON_ONCE(tw_ring->retry_list.first);
+		tw_ring->retry_list.first = node;
+	}
+	return ret;
+}
+
+static int __io_run_local_work_loop(struct io_tw_ring *tw_ring, io_tw_token_t tw,
 				    int events)
 {
-	struct io_tw_ring *tw_ring = ctx->tw_ring;
 	unsigned head, tail;
 	int ret = 0;
 
@@ -1445,21 +1524,41 @@ static int __io_run_local_work_loop(struct io_ring_ctx *ctx, io_tw_token_t tw,
 	while (head != tail) {
 		struct io_kiocb *req = tw_ring->reqs[head & tw_ring->mask];
 
+		req->nr_tw = 0;
 		INDIRECT_CALL_2(req->io_task_work.func,
 				io_poll_task_func, io_req_rw_complete,
 				req, tw);
 		head++;
-		if (++ret >= events)
-			break;
+		if (++ret >= events) {
+			WRITE_ONCE(tw_ring->head, head);
+			return ret;
+		}
 	}
-
 	WRITE_ONCE(tw_ring->head, head);
+
+	if (!wq_list_empty(&tw_ring->overflow_list))
+		ret += tw_overflow_flush(tw_ring, tw, events);
+
+	return ret;
+}
+
+static int io_run_retry_list(struct io_tw_ring *tw_ring, io_tw_token_t tw,
+			     int events)
+{
+	struct io_wq_work_node *node;
+	int ret;
+
+	node = tw_ring->retry_list.first;
+	if (node)
+		ret = io_run_local_work_list(&node, tw, events);
+	tw_ring->retry_list.first = node;
 	return ret;
 }
 
 static int __io_run_local_work(struct io_ring_ctx *ctx, io_tw_token_t tw,
 			       int min_events, int max_events)
 {
+	struct io_tw_ring *tw_ring = ctx->tw_ring;
 	unsigned int loops = 0;
 	int ret = 0;
 
@@ -1469,11 +1568,16 @@ static int __io_run_local_work(struct io_ring_ctx *ctx, io_tw_token_t tw,
 		atomic_andnot(IORING_SQ_TASKRUN, &ctx->rings->sq_flags);
 again:
 	tw.cancel = io_should_terminate_tw(ctx);
-	ret = __io_run_local_work_loop(ctx, tw, max_events);
+	ret = io_run_retry_list(tw_ring, tw, max_events);
+	if (ctx->tw_ring->retry_list.first)
+		goto retry_done;
+
+	ret = __io_run_local_work_loop(tw_ring, tw, max_events);
 	min_events -= ret;
 
 	if (io_run_local_work_continue(ctx, ret, min_events))
 		goto again;
+retry_done:
 	io_submit_flush_completions(ctx);
 	if (io_run_local_work_continue(ctx, ret, min_events))
 		goto again;
@@ -3044,10 +3148,33 @@ static __cold bool io_cancel_ctx_cb(struct io_wq_work *work, void *data)
 	return req->ctx == data;
 }
 
+static void debug_ctx(struct io_ring_ctx *ctx)
+{
+	struct io_wq_work_node *node, *prev;
+	struct io_tw_ring *r = ctx->tw_ring;
+
+	printk("entries=%d, head=%u, cons_tail=%u, prod_tail=%u\n", r->entries, r->head, atomic_read(&r->cons_tail), atomic_read(&r->prod_tail));
+	printk("overflow:\n");
+	wq_list_for_each(node, prev, &r->overflow_list) {
+		struct io_kiocb *req;
+
+		req = container_of(node, struct io_kiocb, work.list);
+		printk("overflow req %lx\n", (long) req);
+	}
+	printk("retry:\n");
+	wq_list_for_each(node, prev, &r->retry_list) {
+		struct io_kiocb *req;
+
+		req = container_of(node, struct io_kiocb, work.list);
+		printk("retry req %lx\n", (long) req);
+	}
+	printk("refs=%ld\n", atomic_long_read(&ctx->refs.data->count));
+}
+
 static __cold void io_ring_exit_work(struct work_struct *work)
 {
 	struct io_ring_ctx *ctx = container_of(work, struct io_ring_ctx, exit_work);
-	unsigned long timeout = jiffies + HZ * 60 * 5;
+	unsigned long timeout = jiffies + HZ * 5;
 	unsigned long interval = HZ / 20;
 	struct io_tctx_exit exit;
 	struct io_tctx_node *node;
@@ -3094,6 +3221,7 @@ static __cold void io_ring_exit_work(struct work_struct *work)
 
 		if (WARN_ON_ONCE(time_after(jiffies, timeout))) {
 			/* there is little hope left, don't run it too often */
+			debug_ctx(ctx);
 			interval = HZ * 60;
 		}
 		/*

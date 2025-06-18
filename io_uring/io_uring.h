@@ -479,8 +479,14 @@ static inline bool io_local_work_pending(struct io_ring_ctx *ctx)
 {
 	if (ctx->flags & IORING_SETUP_DEFER_TASKRUN) {
 		struct io_tw_ring *tw_ring = ctx->tw_ring;
+		unsigned head = READ_ONCE(tw_ring->head);
 
-		return READ_ONCE(tw_ring->head) != atomic_read(&tw_ring->cons_tail);
+		if (head != atomic_read(&tw_ring->cons_tail))
+			return true;
+		if (head != atomic_read(&tw_ring->prod_tail))
+			return true;
+		return !wq_list_empty(&tw_ring->overflow_list) ||
+			!wq_list_empty(&tw_ring->retry_list);
 	}
 
 	return false;

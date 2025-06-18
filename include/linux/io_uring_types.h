@@ -263,14 +263,19 @@ struct io_alloc_cache {
  */
 struct io_tw_ring {
 	struct {
-		u32		entries;
-		u32		mask;
-		u32		head;
-		atomic_t	cons_tail;
+		u32			entries;
+		u32			mask;
+		u32			head;
+		atomic_t		cons_tail;
+		struct io_wq_work_list	retry_list;
 	} ____cacheline_aligned_in_smp;
+
 	struct {
-		atomic_t	prod_tail;
+		atomic_t		prod_tail;
+		spinlock_t		overflow_lock;
+		struct io_wq_work_list	overflow_list;
 	} ____cacheline_aligned_in_smp;
+
 	struct io_kiocb	*reqs[];
 };
 
