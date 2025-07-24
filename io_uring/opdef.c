@@ -38,6 +38,7 @@
 #include "futex.h"
 #include "truncate.h"
 #include "zcrx.h"
+#include "chan.h"
 
 static int io_no_issue(struct io_kiocb *req, unsigned int issue_flags)
 {
@@ -575,6 +576,11 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_pipe_prep,
 		.issue			= io_pipe,
 	},
+	[IORING_OP_CHAN_POST] = {
+		.prep			= io_chan_post_prep,
+		.issue			= io_chan_post,
+		.audit_skip		= 1,
+	},
 };
 
 const struct io_cold_def io_cold_defs[] = {
@@ -824,6 +830,9 @@ const struct io_cold_def io_cold_defs[] = {
 	},
 	[IORING_OP_PIPE] = {
 		.name			= "PIPE",
+	},
+	[IORING_OP_CHAN_POST] = {
+		.name			= "CHAN_POST",
 	},
 };
 

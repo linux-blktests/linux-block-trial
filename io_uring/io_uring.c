@@ -99,6 +99,7 @@
 #include "msg_ring.h"
 #include "memmap.h"
 #include "zcrx.h"
+#include "chan.h"
 
 #include "timeout.h"
 #include "poll.h"
@@ -664,6 +665,7 @@ static void __io_cqring_overflow_flush(struct io_ring_ctx *ctx, bool dying)
 
 	if (list_empty(&ctx->cq_overflow_list)) {
 		clear_bit(IO_CHECK_CQ_OVERFLOW_BIT, &ctx->check_cq);
+		io_chan_clear_overflow(ctx);
 		atomic_andnot(IORING_SQ_CQ_OVERFLOW, &ctx->rings->sq_flags);
 	}
 	io_cq_unlock_post(ctx);

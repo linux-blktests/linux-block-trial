@@ -376,6 +376,7 @@ struct io_ring_ctx {
 		struct llist_head	retry_llist;
 		unsigned long		check_cq;
 		atomic_t		cq_wait_nr;
+		atomic_t		chan_flags;
 		atomic_t		cq_timeouts;
 		struct wait_queue_head	cq_wait;
 	} ____cacheline_aligned_in_smp;

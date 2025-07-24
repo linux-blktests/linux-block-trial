@@ -295,6 +295,7 @@ enum io_uring_op {
 	IORING_OP_READV_FIXED,
 	IORING_OP_WRITEV_FIXED,
 	IORING_OP_PIPE,
+	IORING_OP_CHAN_POST,
 
 	/* this goes last, obviously */
 	IORING_OP_LAST,
@@ -465,6 +466,15 @@ enum io_uring_msg_ring_flags {
 #define IORING_NOP_FIXED_BUFFER		(1U << 3)
 #define IORING_NOP_TW			(1U << 4)
 #define IORING_NOP_CQE32		(1U << 5)
+
+/*
+ * IORING_OP_CHAN_POST flags (sqe->rw_flags)
+ *
+ * IORING_CHAN_POST_IDLE	Rather than target a specific queue via
+ *				the sqe->fd field, find any idle queue
+ *				and post it there.
+ */
+#define IORING_CHAN_POST_IDLE	0x1
 
 /*
  * IO completion data structure (Completion Queue Entry)
