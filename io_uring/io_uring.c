@@ -915,6 +915,27 @@ bool io_post_aux_cqe(struct io_ring_ctx *ctx, u64 user_data, s32 res, u32 cflags
 }
 
 /*
+ * See io_add_aux_cqe() comment.
+ */
+bool io_add_aux_cqe32(struct io_ring_ctx *ctx, struct io_uring_cqe cqe[2])
+{
+	bool ret = true;
+
+	lockdep_assert_held(&ctx->uring_lock);
+	lockdep_assert(ctx->lockless_cq);
+
+	if (!io_fill_cqe_aux32(ctx, cqe)) {
+		struct io_cqe ocqe = io_init_cqe(cqe->user_data, cqe->res, cqe->flags);
+
+		io_cqe_overflow(ctx, &ocqe, (struct io_big_cqe *) &cqe[1]);
+		ret = false;
+	}
+
+	ctx->submit_state.cq_flush = true;
+	return ret;
+}
+
+/*
  * Must be called from inline task_work so we now a flush will happen later,
  * and obviously with ctx->uring_lock held (tw always has that).
  */
