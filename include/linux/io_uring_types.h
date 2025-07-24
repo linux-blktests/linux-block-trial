@@ -390,6 +390,14 @@ struct io_ring_ctx {
 
 	spinlock_t		completion_lock;
 
+	/*
+	 * Communication channels, if any. xa_dst_chan are channels registered
+	 * where this ring is the destination/target, and xa_src_chan are
+	 * channels where this ring is the source/sender.
+	 */
+	struct xarray		xa_dst_chan;
+	struct xarray		xa_src_chan;
+
 	struct list_head	cq_overflow_list;
 
 	struct hlist_head	waitid_list;

@@ -33,6 +33,7 @@
 #include "memmap.h"
 #include "zcrx.h"
 #include "query.h"
+#include "chan.h"
 
 #define IORING_MAX_RESTRICTIONS	(IORING_RESTRICTION_LAST + \
 				 IORING_REGISTER_LAST + IORING_OP_LAST)
@@ -835,6 +836,12 @@ static int __io_uring_register(struct io_ring_ctx *ctx, unsigned opcode,
 		break;
 	case IORING_REGISTER_ZCRX_REFILL:
 		ret = io_zcrx_return_bufs(ctx, arg, nr_args);
+		break;
+	case IORING_REGISTER_ADD_CHAN:
+		ret = -EINVAL;
+		if (!arg || nr_args != 1)
+			break;
+		ret = io_register_add_queue_chan(ctx, arg);
 		break;
 	default:
 		ret = -EINVAL;

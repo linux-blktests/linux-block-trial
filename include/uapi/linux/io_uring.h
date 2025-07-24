@@ -692,6 +692,9 @@ enum io_uring_register_op {
 	/* return zcrx buffers back into circulation */
 	IORING_REGISTER_ZCRX_REFILL		= 36,
 
+	/* add channel(s) between rings */
+	IORING_REGISTER_ADD_CHAN		= 37,
+
 	/* this goes last */
 	IORING_REGISTER_LAST,
 
@@ -735,6 +738,23 @@ struct io_uring_mem_region_reg {
 	__u64 region_uptr; /* struct io_uring_region_desc * */
 	__u64 flags;
 	__u64 __resv[2];
+};
+
+enum {
+	/*
+	 * Setup a communication channel that includes a response channel
+	 * as well. Messages sent over this link will include the response
+	 * queue ID in the posted CQE, so that the receiver can send a
+	 * response back to the originator.
+	 */
+	IORING_CHAN_REG_BIDI	= 0x1,
+};
+
+struct io_uring_chan_reg {
+	__u32 flags;
+	__u32 dst_fd;
+	__u32 nentries;
+	__u32 resv[7];
 };
 
 /*
