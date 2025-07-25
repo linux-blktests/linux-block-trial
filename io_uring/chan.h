@@ -12,6 +12,7 @@ struct io_queue_chan {
 	__u32				mask;
 	__u32				tail;
 	__u32				resp_id;
+	struct io_ring_ctx __rcu	*dst_ring;
 	struct rcu_head			rcu_head;
 	struct io_queue_chan_entry	data[];
 };

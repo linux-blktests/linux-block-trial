@@ -33,14 +33,20 @@ void io_unregister_queue_chans(struct io_ring_ctx *ctx)
 
 	lockdep_assert_held(&ctx->uring_lock);
 
+	rcu_read_lock();
 	xa_for_each(&ctx->xa_src_chan, index, c) {
 		if (atomic_dec_and_test(&c->refs))
 			kfree_rcu(c, rcu_head);
 	}
 	xa_for_each(&ctx->xa_dst_chan, index, c) {
+		if (rcu_dereference(c->dst_ring) == ctx) {
+			percpu_ref_put(&ctx->refs);
+			rcu_assign_pointer(c->dst_ring, NULL);
+		}
 		if (atomic_dec_and_test(&c->refs))
 			kfree_rcu(c, rcu_head);
 	}
+	rcu_read_unlock();
 	xa_destroy(&ctx->xa_src_chan);
 	xa_destroy(&ctx->xa_dst_chan);
 }
@@ -93,6 +99,8 @@ static struct io_queue_chan *__io_register_queue_chan(struct io_ring_ctx *ctx,
 		return ERR_PTR(ret);
 	}
 
+	percpu_ref_get(&dst->refs);
+	rcu_assign_pointer(c->dst_ring, dst);
 	return c;
 }
 
