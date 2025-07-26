@@ -94,6 +94,8 @@ static struct io_queue_chan *__io_register_queue_chan(struct io_ring_ctx *ctx,
 	atomic_set(&c->refs, 2);
 	c->nentries = chan->nentries;
 	c->mask = chan->nentries - 1;
+	c->cached_head = 0;
+	c->cached_nr = chan->nentries;
 	c->req.ctx = dst;
 
 	ret = xa_alloc(&ctx->xa_src_chan, &ids->src_id, c, lim, GFP_KERNEL_ACCOUNT);
@@ -358,8 +360,20 @@ is_dead:
 		goto err;
 	}
 
-	head = smp_load_acquire(&c->head);
+	/*
+	 * If we have cached head entries, there's no need to pull in the
+	 * cacheline that the consumer dirties all the time. If no more
+	 * cached entries exists, acquire the actual head and update the
+	 * cached count.
+	 */
 	tail = c->tail;
+	if (c->cached_nr) {
+		head = c->cached_head++;
+		c->cached_nr--;
+	} else {
+		head = c->cached_head = smp_load_acquire(&c->head);
+		c->cached_nr = (tail - head) & c->mask;
+	}
 	if (tail - head >= c->nentries) {
 		ret = -EXFULL;
 		goto err;

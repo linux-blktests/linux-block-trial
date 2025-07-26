@@ -19,6 +19,8 @@ struct io_queue_chan {
 	__u32				nentries;
 	__u32				mask;
 	__u32				tail;
+	__u32				cached_head;
+	__u32				cached_nr;
 	__u32				resp_id;
 	atomic_t			flags;
 	struct io_ring_ctx __rcu	*dst_ring;
