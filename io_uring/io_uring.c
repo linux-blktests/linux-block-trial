@@ -1342,7 +1342,7 @@ void io_req_task_work_add_remote(struct io_kiocb *req, unsigned flags)
 {
 	if (WARN_ON_ONCE(!(req->ctx->flags & IORING_SETUP_DEFER_TASKRUN)))
 		return;
-	__io_req_task_work_add(req, flags);
+	io_req_local_work_add(req, flags);
 }
 
 static void __cold io_move_task_work_from_local(struct io_ring_ctx *ctx)
