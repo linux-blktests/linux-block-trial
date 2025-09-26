@@ -1284,13 +1284,64 @@ static __cold void io_req_local_work_overflow(struct io_kiocb *req)
 	wake_up_state(ctx->submitter_task, TASK_INTERRUPTIBLE);
 }
 
+static int io_req_ring_add(struct io_tw_ring *tw_ring, struct io_kiocb *req)
+{
+	unsigned head, tail, ntail;
+	int nr_tw_prev;
+
+	/*
+	 * Get a slot for this request
+	 */
+	do {
+		head = READ_ONCE(tw_ring->head);
+		tail = atomic_read(&tw_ring->prod_tail);
+
+		if (unlikely(tail - head >= tw_ring->entries)) {
+			io_req_local_work_overflow(req);
+			return tw_ring->entries;
+		}
+		ntail = tail + 1;
+	} while (!atomic_try_cmpxchg_acquire(&tw_ring->prod_tail, &tail, ntail));
+
+	nr_tw_prev = 0;
+	if (tail != head) {
+		struct io_kiocb *tail_req;
+
+		/*
+		 * Might be executed at any moment, rely on
+		 * SLAB_TYPESAFE_BY_RCU to keep it alive.
+		 */
+		tail_req = tw_ring->reqs[(tail - 1) & tw_ring->mask];
+		if (tail_req)
+			nr_tw_prev = READ_ONCE(tail_req->nr_tw);
+	}
+
+	/*
+	 * Store our entry. Once the consumer tail is updated, this will be
+	 * fully visible to the consumer side.
+	 */
+	tw_ring->reqs[tail & tw_ring->mask] = req;
+	return nr_tw_prev;
+}
+
+static void io_req_ring_publish(struct io_tw_ring *tw_ring)
+{
+	/*
+	 * Update consumer tail, with full ordering so that ->req store is
+	 * visible. This pairs with the barrier in set_current_state() on the
+	 * io_cqring_wait() side. It's used to ensure that either we see
+	 * updated ->cq_wait_nr, or waiters going to sleep will observe the
+	 * work added to the list, which is similar to the wait/wake task
+	 * state sync.
+	 */
+	atomic_inc_return(&tw_ring->cons_tail);
+}
+
 static void io_req_local_work_add(struct io_kiocb *req, unsigned flags)
 {
 	struct io_ring_ctx *ctx = req->ctx;
 	struct io_tw_ring *tw_ring = ctx->tw_ring;
 	unsigned nr_wait, nr_tw, nr_tw_prev;
-	struct io_kiocb *tail_req = NULL;
-	unsigned head, tail, ntail;
 
 	/* See comment above IO_CQ_WAKE_INIT */
 	BUILD_BUG_ON(IO_CQ_WAKE_FORCE <= IORING_MAX_CQ_ENTRIES);
@@ -1304,30 +1355,7 @@ static void io_req_local_work_add(struct io_kiocb *req, unsigned flags)
 
 	guard(rcu)();
 
-	/*
-	 * Get a slot for this request
-	 */
-	do {
-		head = READ_ONCE(tw_ring->head);
-		tail = atomic_read(&tw_ring->prod_tail);
-
-		if (unlikely(tail - head >= tw_ring->entries)) {
-			io_req_local_work_overflow(req);
-			return;
-		}
-		ntail = tail + 1;
-	} while (!atomic_try_cmpxchg_acquire(&tw_ring->prod_tail, &tail, ntail));
-
-	nr_tw_prev = 0;
-	if (tail != head) {
-		/*
-		 * Might be executed at any moment, rely on
-		 * SLAB_TYPESAFE_BY_RCU to keep it alive.
-		 */
-		tail_req = tw_ring->reqs[(tail - 1) & tw_ring->mask];
-		if (tail_req)
-			nr_tw_prev = READ_ONCE(tail_req->nr_tw);
-	}
+	nr_tw_prev = io_req_ring_add(tw_ring, req);
 
 	/*
 	 * Theoretically, it can overflow, but that's fine as one of the
@@ -1338,23 +1366,9 @@ static void io_req_local_work_add(struct io_kiocb *req, unsigned flags)
 		nr_tw = IO_CQ_WAKE_FORCE;
 	req->nr_tw = nr_tw;
 
-	/*
-	 * Store our entry. Once the consumer tail is updated, this will be
-	 * fully visible to the consumer side.
-	 */
-	tw_ring->reqs[tail & tw_ring->mask] = req;
+	io_req_ring_publish(tw_ring);
 
-	/*
-	 * Update consumer tail, with full ordering so that ->req store is
-	 * visible. This pairs with the barrier in set_current_state() on the
-	 * io_cqring_wait() side. It's used to ensure that either we see
-	 * updated ->cq_wait_nr, or waiters going to sleep will observe the
-	 * work added to the list, which is similar to the wait/wake task
-	 * state sync.
-	 */
-	atomic_inc_return(&tw_ring->cons_tail);
-
-	if (!tail_req) {
+	if (!nr_tw_prev) {
 		if (ctx->flags & IORING_SETUP_TASKRUN_FLAG)
 			atomic_or(IORING_SQ_TASKRUN, &ctx->rings->sq_flags);
 		if (ctx->has_evfd)
