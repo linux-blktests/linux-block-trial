@@ -479,11 +479,9 @@ static inline bool io_local_work_pending(struct io_ring_ctx *ctx)
 {
 	if (ctx->flags & IORING_SETUP_DEFER_TASKRUN) {
 		struct io_tw_ring *tw_ring = ctx->tw_ring;
-		unsigned head = READ_ONCE(tw_ring->head);
+		unsigned tail = atomic_read(&tw_ring->tail);
 
-		if (head != atomic_read(&tw_ring->cons_tail))
-			return true;
-		if (head != atomic_read(&tw_ring->prod_tail))
+		if (READ_ONCE(tw_ring->reqs[tail]))
 			return true;
 		return !wq_list_empty(&tw_ring->overflow_list) ||
 			!wq_list_empty(&tw_ring->retry_list);
@@ -535,13 +533,16 @@ static inline void io_get_task_refs(int nr)
 		io_task_refs_refill(tctx);
 }
 
+#if 1
 static inline bool io_req_cache_empty(struct io_ring_ctx *ctx)
 {
 	return !ctx->submit_state.free_list.next;
 }
+#endif
 
 extern struct kmem_cache *req_cachep;
 
+#if 1
 static inline struct io_kiocb *io_extract_req(struct io_ring_ctx *ctx)
 {
 	struct io_kiocb *req;
@@ -550,15 +551,22 @@ static inline struct io_kiocb *io_extract_req(struct io_ring_ctx *ctx)
 	wq_stack_extract(&ctx->submit_state.free_list);
 	return req;
 }
+#endif
 
 static inline bool io_alloc_req(struct io_ring_ctx *ctx, struct io_kiocb **req)
 {
+#if 0
+	*req = kmem_cache_alloc(req_cachep, GFP_KERNEL | __GFP_NOWARN | __GFP_ZERO);
+	percpu_ref_get(&ctx->refs);
+	return true;
+#else
 	if (unlikely(io_req_cache_empty(ctx))) {
 		if (!__io_alloc_req_refill(ctx))
 			return false;
 	}
 	*req = io_extract_req(ctx);
 	return true;
+#endif
 }
 
 static inline bool io_allowed_defer_tw_run(struct io_ring_ctx *ctx)

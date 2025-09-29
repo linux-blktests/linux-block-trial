@@ -262,21 +262,17 @@ struct io_alloc_cache {
  * serialized by ->uring_lock.
  */
 struct io_tw_ring {
-	struct {
-		u32			entries;
-		u32			mask;
-		u32			head;
-		atomic_t		cons_tail;
-		struct io_wq_work_list	retry_list;
-	} ____cacheline_aligned_in_smp;
+	u32			entries;
+	u32			mask;
+	atomic_t		head;
+	atomic_t		tail;
 
-	struct {
-		atomic_t		prod_tail;
-		spinlock_t		overflow_lock;
-		struct io_wq_work_list	overflow_list;
-	} ____cacheline_aligned_in_smp;
+	spinlock_t		overflow_lock;
+	struct io_wq_work_list	overflow_list;
 
-	struct io_kiocb	*reqs[];
+	struct io_wq_work_list	retry_list;
+
+	struct io_kiocb *reqs[];
 };
 
 struct io_ring_ctx {
