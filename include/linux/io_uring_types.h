@@ -317,6 +317,11 @@ struct io_ring_ctx {
 		 */
 		bool			poll_multi_queue;
 		struct list_head	iopoll_list;
+		/*
+		 * Upon completion, requests are added to this list. They
+		 * remain on iopoll_list until they are reaped.
+		 */
+		struct llist_head	iopoll_complete;
 
 		struct io_file_table	file_table;
 		struct io_rsrc_data	buf_table;
@@ -672,8 +677,7 @@ struct io_kiocb {
 	};
 
 	u8				opcode;
-	/* polled IO has completed */
-	u8				iopoll_completed;
+
 	/*
 	 * Can be either a fixed buffer index, or used with provided buffers.
 	 * For the latter, it points to the selected buffer ID.
@@ -700,6 +704,8 @@ struct io_kiocb {
 	union {
 		/* used by request caches, completion batching and iopoll */
 		struct io_wq_work_node	comp_list;
+		/* used by iopoll IO completion, to indicate request is done */
+		struct llist_node	iopoll_done_list;
 		/* cache ->apoll->events */
 		__poll_t apoll_events;
 	};

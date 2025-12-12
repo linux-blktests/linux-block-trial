@@ -335,6 +335,7 @@ static __cold struct io_ring_ctx *io_ring_ctx_alloc(struct io_uring_params *p)
 	spin_lock_init(&ctx->completion_lock);
 	raw_spin_lock_init(&ctx->timeout_lock);
 	INIT_LIST_HEAD(&ctx->iopoll_list);
+	init_llist_head(&ctx->iopoll_complete);
 	INIT_LIST_HEAD(&ctx->defer_list);
 	INIT_LIST_HEAD(&ctx->timeout_list);
 	INIT_LIST_HEAD(&ctx->ltimeout_list);

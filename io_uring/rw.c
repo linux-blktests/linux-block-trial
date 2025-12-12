@@ -604,8 +604,7 @@ static void io_complete_rw_iopoll(struct kiocb *kiocb, long res)
 			req->cqe.res = res;
 	}
 
-	/* order with io_iopoll_complete() checking ->iopoll_completed */
-	smp_store_release(&req->iopoll_completed, 1);
+	llist_add(&req->iopoll_done_list, &req->ctx->iopoll_complete);
 }
 
 static inline void io_rw_done(struct io_kiocb *req, ssize_t ret)
@@ -870,7 +869,6 @@ static int io_rw_init_file(struct io_kiocb *req, fmode_t mode, int rw_type)
 			return -EOPNOTSUPP;
 		kiocb->private = NULL;
 		kiocb->ki_flags |= IOCB_HIPRI;
-		req->iopoll_completed = 0;
 		if (ctx->flags & IORING_SETUP_HYBRID_IOPOLL) {
 			/* make sure every req only blocks once*/
 			req->flags &= ~REQ_F_IOPOLL_STATE;
@@ -1317,7 +1315,8 @@ int io_do_iopoll(struct io_ring_ctx *ctx, bool force_nonspin)
 {
 	unsigned int poll_flags = 0;
 	DEFINE_IO_COMP_BATCH(iob);
-	struct io_kiocb *req, *tmp;
+	struct llist_node *node;
+	struct io_kiocb *req;
 	int nr_events = 0;
 
 	/*
@@ -1327,16 +1326,11 @@ int io_do_iopoll(struct io_ring_ctx *ctx, bool force_nonspin)
 	if (ctx->poll_multi_queue || force_nonspin)
 		poll_flags |= BLK_POLL_ONESHOT;
 
+	/*
+	 * Loop over uncompleted polled IO requests, and poll for them.
+	 */
 	list_for_each_entry(req, &ctx->iopoll_list, iopoll_node) {
 		int ret;
-
-		/*
-		 * Move completed and retryable entries to our local lists.
-		 * If we find a request that requires polling, break out
-		 * and complete those lists first, if we have entries there.
-		 */
-		if (READ_ONCE(req->iopoll_completed))
-			break;
 
 		if (ctx->flags & IORING_SETUP_HYBRID_IOPOLL)
 			ret = io_uring_hybrid_poll(req, &iob, poll_flags);
@@ -1349,24 +1343,25 @@ int io_do_iopoll(struct io_ring_ctx *ctx, bool force_nonspin)
 			poll_flags |= BLK_POLL_ONESHOT;
 
 		/* iopoll may have completed current req */
-		if (!rq_list_empty(&iob.req_list) ||
-		    READ_ONCE(req->iopoll_completed))
+		if (!rq_list_empty(&iob.req_list))
 			break;
 	}
 
 	if (!rq_list_empty(&iob.req_list))
 		iob.complete(&iob);
 
-	list_for_each_entry_safe(req, tmp, &ctx->iopoll_list, iopoll_node) {
-		/* order with io_complete_rw_iopoll(), e.g. ->result updates */
-		if (!smp_load_acquire(&req->iopoll_completed))
-			continue;
+	node = llist_del_all(&ctx->iopoll_complete);
+	while (node) {
+		struct llist_node *next = node->next;
+
+		req = container_of(node, struct io_kiocb, iopoll_done_list);
 		list_del(&req->iopoll_node);
 		wq_list_add_tail(&req->comp_list, &ctx->submit_state.compl_reqs);
 		nr_events++;
 		req->cqe.flags = io_put_kbuf(req, req->cqe.res, NULL);
 		if (req->opcode != IORING_OP_URING_CMD)
 			io_req_rw_cleanup(req, 0);
+		node = next;
 	}
 	if (nr_events)
 		__io_submit_flush_completions(ctx);

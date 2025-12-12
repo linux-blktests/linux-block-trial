@@ -159,8 +159,7 @@ void __io_uring_cmd_done(struct io_uring_cmd *ioucmd, s32 ret, u64 res2,
 	}
 	io_req_uring_cleanup(req, issue_flags);
 	if (req->ctx->flags & IORING_SETUP_IOPOLL) {
-		/* order with io_iopoll_req_issued() checking ->iopoll_complete */
-		smp_store_release(&req->iopoll_completed, 1);
+		llist_add(&req->iopoll_done_list, &req->ctx->iopoll_complete);
 	} else if (issue_flags & IO_URING_F_COMPLETE_DEFER) {
 		if (WARN_ON_ONCE(issue_flags & IO_URING_F_UNLOCKED))
 			return;
@@ -252,7 +251,6 @@ int io_uring_cmd(struct io_kiocb *req, unsigned int issue_flags)
 		if (!file->f_op->uring_cmd_iopoll)
 			return -EOPNOTSUPP;
 		issue_flags |= IO_URING_F_IOPOLL;
-		req->iopoll_completed = 0;
 		if (ctx->flags & IORING_SETUP_HYBRID_IOPOLL) {
 			/* make sure every req only blocks once */
 			req->flags &= ~REQ_F_IOPOLL_STATE;
