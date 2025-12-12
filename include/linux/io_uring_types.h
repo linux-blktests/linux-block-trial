@@ -678,6 +678,8 @@ struct io_kiocb {
 
 	u8				opcode;
 
+	bool				cancel_seq_set;
+
 	/*
 	 * Can be either a fixed buffer index, or used with provided buffers.
 	 * For the latter, it points to the selected buffer ID.
@@ -713,7 +715,7 @@ struct io_kiocb {
 	struct io_rsrc_node		*file_node;
 
 	atomic_t			refs;
-	bool				cancel_seq_set;
+	atomic_t			poll_refs;
 
 	/*
 	 * IOPOLL doesn't use task_work, so use the ->iopoll_node list
@@ -740,7 +742,6 @@ struct io_kiocb {
 	/* opcode allocated if it needs to store data for async defer */
 	void				*async_data;
 	/* linked requests, IFF REQ_F_HARDLINK or REQ_F_LINK are set */
-	atomic_t			poll_refs;
 	struct io_kiocb			*link;
 	/* custom credentials, valid IFF REQ_F_CREDS is set */
 	const struct cred		*creds;
