@@ -3615,6 +3615,18 @@ static __cold int io_uring_create(struct io_ctx_config *config)
 		ctx->notify_method = TWA_SIGNAL;
 
 	/*
+	 * If the current task has restrictions enabled, then copy them to
+	 * our newly created ring and mark it as registered.
+	 */
+	if (current->io_uring_restrict) {
+		struct io_restriction *res = current->io_uring_restrict;
+
+		memcpy(&ctx->restrictions, res, sizeof(ctx->restrictions));
+		ctx->op_restricted = res->op_registered;
+		ctx->reg_restricted = res->reg_registered;
+	}
+
+	/*
 	 * This is just grabbed for accounting purposes. When a process exits,
 	 * the mm is exited and dropped before the files, hence we need to hang
 	 * on to this mm purely for the purposes of being able to unaccount
