@@ -108,7 +108,8 @@ static int io_register_personality(struct io_ring_ctx *ctx)
  * an error.
  */
 static __cold int io_parse_restrictions(void __user *arg, unsigned int nr_args,
-					struct io_restriction *restrictions)
+					struct io_restriction *restrictions,
+					bool mask_it)
 {
 	struct io_uring_restriction *res;
 	size_t size;
@@ -126,28 +127,43 @@ static __cold int io_parse_restrictions(void __user *arg, unsigned int nr_args,
 		return PTR_ERR(res);
 
 	ret = -EINVAL;
-
 	for (i = 0; i < nr_args; i++) {
 		switch (res[i].opcode) {
 		case IORING_RESTRICTION_REGISTER_OP:
 			if (res[i].register_op >= IORING_REGISTER_LAST)
 				goto err;
-			__set_bit(res[i].register_op, restrictions->register_op);
-			restrictions->reg_registered = true;
+			if (mask_it) {
+				__clear_bit(res[i].register_op, restrictions->register_op);
+			} else {
+				__set_bit(res[i].register_op, restrictions->register_op);
+				restrictions->reg_registered = true;
+			}
 			break;
 		case IORING_RESTRICTION_SQE_OP:
 			if (res[i].sqe_op >= IORING_OP_LAST)
 				goto err;
-			__set_bit(res[i].sqe_op, restrictions->sqe_op);
-			restrictions->op_registered = true;
+			if (mask_it) {
+				__clear_bit(res[i].sqe_op, restrictions->sqe_op);
+			} else {
+				__set_bit(res[i].sqe_op, restrictions->sqe_op);
+				restrictions->op_registered = true;
+			}
 			break;
 		case IORING_RESTRICTION_SQE_FLAGS_ALLOWED:
-			restrictions->sqe_flags_allowed = res[i].sqe_flags;
-			restrictions->op_registered = true;
+			if (mask_it) {
+				restrictions->sqe_flags_allowed &= res[i].sqe_flags;
+			} else {
+				restrictions->sqe_flags_allowed = res[i].sqe_flags;
+				restrictions->op_registered = true;
+			}
 			break;
 		case IORING_RESTRICTION_SQE_FLAGS_REQUIRED:
-			restrictions->sqe_flags_required = res[i].sqe_flags;
-			restrictions->op_registered = true;
+			if (mask_it) {
+				restrictions->sqe_flags_required |= res[i].sqe_flags;
+			} else {
+				restrictions->sqe_flags_required = res[i].sqe_flags;
+				restrictions->op_registered = true;
+			}
 			break;
 		default:
 			goto err;
@@ -176,7 +192,7 @@ static __cold int io_register_restrictions(struct io_ring_ctx *ctx,
 	if (ctx->restrictions.op_registered || ctx->restrictions.reg_registered)
 		return -EBUSY;
 
-	ret = io_parse_restrictions(arg, nr_args, &ctx->restrictions);
+	ret = io_parse_restrictions(arg, nr_args, &ctx->restrictions, false);
 	/* Reset all restrictions if an error happened */
 	if (ret < 0) {
 		memset(&ctx->restrictions, 0, sizeof(ctx->restrictions));
@@ -196,29 +212,45 @@ static int io_register_restrictions_task(void __user *arg, unsigned int nr_args)
 	struct io_restriction *res;
 	int ret;
 
-	/* Disallow if task already has registered restrictions */
-	if (current->io_uring_restrict)
-		return -EPERM;
 	if (nr_args != 1)
 		return -EINVAL;
 
 	if (copy_from_user(&tres, arg, sizeof(tres)))
 		return -EFAULT;
 
-	if (tres.flags)
+	if (tres.flags & ~IORING_REG_RESTRICTIONS_MASK)
 		return -EINVAL;
 	if (!mem_is_zero(tres.resv, sizeof(tres.resv)))
 		return -EINVAL;
+
+	/*
+	 * Disallow if task already has registered restrictions, and we're
+	 * not passing in further restrictions to add to an existing set.
+	 */
+	if (current->io_uring_restrict &&
+	    !(tres.flags & IORING_REG_RESTRICTIONS_MASK))
+		return -EPERM;
 
 	res = kzalloc(sizeof(*res), GFP_KERNEL);
 	if (!res)
 		return -ENOMEM;
 
-	ret = io_parse_restrictions(ures->restrictions, tres.nr_res, res);
+	/*
+	 * Can only be set if we're MASK'ing in more restrictions. If so,
+	 * copy existing filters.
+	 */
+	if (current->io_uring_restrict)
+		memcpy(res, current->io_uring_restrict, sizeof(*res));
+
+	ret = io_parse_restrictions(ures->restrictions, tres.nr_res, res,
+				    tres.flags & IORING_REG_RESTRICTIONS_MASK);
 	if (ret < 0) {
 		kfree(res);
 		return ret;
 	}
+	if (current->io_uring_restrict &&
+	    refcount_dec_and_test(&current->io_uring_restrict->refs))
+		kfree(current->io_uring_restrict);
 	refcount_set(&res->refs, 1);
 	current->io_uring_restrict = res;
 	return 0;

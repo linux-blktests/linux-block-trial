@@ -807,6 +807,15 @@ struct io_uring_restriction {
 	__u32 resv2[3];
 };
 
+enum {
+	/*
+	 * MASK operation to further restrict a filter set. Can clear opcodes
+	 * allowed for SQEs or register operations, clear allowed SQE flags,
+	 * and set further required SQE flags.
+	 */
+	IORING_REG_RESTRICTIONS_MASK	= (1U << 0),
+};
+
 struct io_uring_task_restriction {
 	__u16 flags;
 	__u16 nr_res;
