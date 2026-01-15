@@ -2752,6 +2752,10 @@ bpf_prog_load_check_attach(enum bpf_prog_type prog_type,
 		if (expected_attach_type == BPF_NETFILTER)
 			return 0;
 		return -EINVAL;
+	case BPF_PROG_TYPE_IO_URING:
+		if (expected_attach_type)
+			return -EINVAL;
+		return 0;
 	case BPF_PROG_TYPE_SYSCALL:
 	case BPF_PROG_TYPE_EXT:
 		if (expected_attach_type)
@@ -2934,6 +2938,7 @@ static int bpf_prog_load(union bpf_attr *attr, bpfptr_t uattr, u32 uattr_size)
 	}
 	if (type != BPF_PROG_TYPE_SOCKET_FILTER &&
 	    type != BPF_PROG_TYPE_CGROUP_SKB &&
+	    type != BPF_PROG_TYPE_IO_URING &&
 	    !bpf_cap)
 		goto put_token;
 
@@ -4401,6 +4406,10 @@ static int bpf_prog_attach_check_attach_type(const struct bpf_prog *prog,
 		return 0;
 	case BPF_PROG_TYPE_NETFILTER:
 		if (attach_type != BPF_NETFILTER)
+			return -EINVAL;
+		return 0;
+	case BPF_PROG_TYPE_IO_URING:
+		if (attach_type != 0)
 			return -EINVAL;
 		return 0;
 	case BPF_PROG_TYPE_PERF_EVENT:
