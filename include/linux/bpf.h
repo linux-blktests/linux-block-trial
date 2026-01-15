@@ -6,6 +6,7 @@
 
 #include <uapi/linux/bpf.h>
 #include <uapi/linux/filter.h>
+#include <uapi/linux/io_uring/bpf_filter.h>
 
 #include <crypto/sha2.h>
 #include <linux/workqueue.h>
