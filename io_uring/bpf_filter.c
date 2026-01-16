@@ -14,6 +14,7 @@
 #include "net.h"
 
 struct io_bpf_filter {
+	refcount_t		refs;
 	struct bpf_prog		*prog;
 	struct io_bpf_filter	*next;
 	bool			is_cbpf;
@@ -174,6 +175,11 @@ static void io_free_bpf_filters(struct rcu_head *head)
 			 */
 			if (f == &dummy_filter)
 				break;
+
+			/* Someone still holds a ref, stop iterating. */
+			if (!refcount_dec_and_test(&f->refs))
+				break;
+
 			if (f->is_cbpf)
 				bpf_prog_destroy(f->prog);
 			else if (f->prog)
@@ -372,6 +378,7 @@ int io_register_bpf_filter(struct io_restriction *res,
 		ret = -ENOMEM;
 		goto err;
 	}
+	refcount_set(&filter->refs, 1);
 	filter->prog = prog;
 	filter->is_cbpf = is_cbpf;
 	res->bpf_filters = filters;
