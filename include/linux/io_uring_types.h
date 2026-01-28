@@ -397,6 +397,8 @@ struct io_ring_ctx {
 
 	struct hlist_head	waitid_list;
 
+	struct hlist_head	waitwake_list;
+
 #ifdef CONFIG_FUTEX
 	struct hlist_head	futex_list;
 	struct io_alloc_cache	futex_cache;

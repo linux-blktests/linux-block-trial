@@ -315,6 +315,8 @@ enum io_uring_op {
 	IORING_OP_PIPE,
 	IORING_OP_NOP128,
 	IORING_OP_URING_CMD128,
+	IORING_OP_WAIT,
+	IORING_OP_WAKE,
 
 	/* this goes last, obviously */
 	IORING_OP_LAST,
@@ -485,6 +487,22 @@ enum io_uring_msg_ring_flags {
 #define IORING_NOP_FIXED_BUFFER		(1U << 3)
 #define IORING_NOP_TW			(1U << 4)
 #define IORING_NOP_CQE32		(1U << 5)
+
+/*
+ * IORING_OP_WAIT flags (sqe->rw_flags)
+ *
+ * IORING_WAIT_SINGLE_SHOT	Complete after the first trigger
+ * IORING_WAIT_ID_SET		ID is being passed in, don't allocate one
+ */
+#define IORING_WAIT_SINGLE_SHOT		(1U << 0)
+#define IORING_WAIT_ID_SET		(1U << 1)
+
+/*
+ * IORING_OP_WAKE flags (sqe->rw_flags)
+ *
+ * IORING_WAKE_ALL		Send message all waiters, not just one
+ */
+#define IORING_WAKE_ALL			(1U << 0)
 
 /*
  * IO completion data structure (Completion Queue Entry)

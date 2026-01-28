@@ -38,6 +38,7 @@
 #include "futex.h"
 #include "truncate.h"
 #include "zcrx.h"
+#include "waitwake.h"
 
 static int io_no_issue(struct io_kiocb *req, unsigned int issue_flags)
 {
@@ -593,6 +594,14 @@ const struct io_issue_def io_issue_defs[] = {
 		.prep			= io_uring_cmd_prep,
 		.issue			= io_uring_cmd,
 	},
+	[IORING_OP_WAIT] = {
+		.prep			= io_wait_prep,
+		.issue			= io_wait,
+	},
+	[IORING_OP_WAKE] = {
+		.prep			= io_wake_prep,
+		.issue			= io_wake,
+	},
 };
 
 const struct io_cold_def io_cold_defs[] = {
@@ -850,6 +859,12 @@ const struct io_cold_def io_cold_defs[] = {
 		.name			= "URING_CMD128",
 		.sqe_copy		= io_uring_cmd_sqe_copy,
 		.cleanup		= io_uring_cmd_cleanup,
+	},
+	[IORING_OP_WAIT] = {
+		.name			= "WAIT",
+	},
+	[IORING_OP_WAKE] = {
+		.name			= "WAKE",
 	},
 };
 
