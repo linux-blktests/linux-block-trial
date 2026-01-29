@@ -4,6 +4,7 @@
 #include <linux/wait.h>
 #include <linux/xarray.h>
 #include <linux/slab.h>
+#include <linux/llist.h>
 #include <linux/io_uring.h>
 
 #include <uapi/linux/io_uring.h>
@@ -23,6 +24,12 @@ struct io_wait_head {
 	struct rcu_head		rcu_head;
 };
 
+struct io_wake_node {
+	struct llist_node	node;
+	u32			id;
+	u64			key;
+};
+
 struct io_wait {
 	struct file		*file;
 	struct list_head	entry;
@@ -30,6 +37,7 @@ struct io_wait {
 	atomic_t		refs;
 	u32			id;
 	unsigned int		flags;
+	struct llist_head	wake_llist;
 };
 
 struct io_wake {
@@ -142,25 +150,99 @@ static void io_wait_multi_cb(struct io_wait *w)
 		io_cqe_overflow(req->ctx, &req->cqe, &req->big_cqe);
 }
 
+static void io_wait_free_llist(struct io_wait *w)
+{
+	struct llist_node *node;
+
+	node = llist_del_all(&w->wake_llist);
+	while (node) {
+		struct llist_node *next = node->next;
+		struct io_wake_node *wake;
+
+		wake = llist_entry(node, struct io_wake_node, node);
+		kfree(wake);
+		node = next;
+	}
+}
+
+static void io_wait_flush_queued(struct io_wait *w)
+{
+	struct io_kiocb *req = cmd_to_io_kiocb(w);
+	struct llist_node *node;
+
+	if (llist_empty(&w->wake_llist))
+		return;
+
+	/*
+	 * Process any queued wake data from the llist (slow path wakes
+	 * that occurred while task_work was already pending).
+	 */
+	node = llist_del_all(&w->wake_llist);
+	if (unlikely(!node))
+		return;
+	node = llist_reverse_order(node);
+	do {
+		struct llist_node *next = node->next;
+		struct io_wake_node *wake;
+
+		wake = llist_entry(node, struct io_wake_node, node);
+		io_req_set_res32(req, wake->id, 0, wake->key, 0);
+		io_wait_multi_cb(w);
+		kfree(wake);
+		node = next;
+	} while (node);
+}
+
 static void io_wait_cb(struct io_tw_req tw_req, io_tw_token_t tw)
 {
 	struct io_wait *w = io_kiocb_to_cmd(tw_req.req, struct io_wait);
-	int val, loops = 0;
+	struct io_kiocb *req = tw_req.req;
+	bool first = true;
+	int val;
 
 	do {
 		val = atomic_read(&w->refs);
 		if (unlikely(val & IO_WAIT_CANCEL_FLAG)) {
-			__io_waitwake_complete(tw_req.req, -ECANCELED);
+			io_wait_free_llist(w);
+			__io_waitwake_complete(req, -ECANCELED);
 			break;
 		}
-		if (loops)
-			continue;
-		else if (w->flags & IORING_WAIT_SINGLE_SHOT)
-			io_wait_single_cb(w);
-		else
+
+		/*
+		 * First iteration processes the fast-path wake data stored
+		 * directly in req->cqe. For single-shot, we're done after that.
+		 */
+		if (first) {
+			if (w->flags & IORING_WAIT_SINGLE_SHOT) {
+				io_wait_free_llist(w);
+				io_wait_single_cb(w);
+				break;
+			}
 			io_wait_multi_cb(w);
-		loops++;
+			first = false;
+		}
+
+		io_wait_flush_queued(w);
 	} while (atomic_sub_return(val, &w->refs) & IO_WAIT_REF_MASK);
+}
+
+static int io_wait_func_queued(struct io_wait *w, struct io_wake *wa)
+{
+	struct io_wake_node *node;
+
+	/*
+	 * Slow path: task_work already queued, add wake data to llist
+	 * so it can be processed when the task_work runs.
+	 */
+	node = kmalloc(sizeof(*node), GFP_ATOMIC);
+	if (unlikely(!node)) {
+		atomic_dec(&w->refs);
+		return 0;
+	}
+	node->id = wa->id;
+	node->key = wa->key;
+	llist_add(&node->node, &w->wake_llist);
+	return 1;
 }
 
 static int io_wait_func(struct io_wait *w, struct io_wake *wa)
@@ -168,8 +250,9 @@ static int io_wait_func(struct io_wait *w, struct io_wake *wa)
 	struct io_kiocb *req = cmd_to_io_kiocb(w);
 
 	if (atomic_fetch_inc(&w->refs) & IO_WAIT_REF_MASK)
-		return 0;
+		return io_wait_func_queued(w, wa);
 
+	/* Fast path: first wake, set result directly and queue task_work */
 	io_req_set_res32(req, wa->id, 0, wa->key, 0);
 	req->io_task_work.func = io_wait_cb;
 	io_req_task_work_add(req);
@@ -194,6 +277,7 @@ int io_wait_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 
 	w->head = NULL;
 	atomic_set(&w->refs, 0);
+	init_llist_head(&w->wake_llist);
 	INIT_LIST_HEAD(&w->entry);
 	return 0;
 }
@@ -278,6 +362,7 @@ static bool __io_waitwake_cancel(struct io_kiocb *req)
 	if (atomic_fetch_inc(&w->refs) & IO_WAIT_REF_MASK)
 		return false;
 
+	io_wait_free_llist(w);
 	io_req_set_res(req, -ECANCELED, 0);
 	__io_waitwake_complete(req, -ECANCELED);
 	return true;
