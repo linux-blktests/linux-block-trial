@@ -785,8 +785,8 @@ static inline struct io_cqe io_init_cqe(u64 user_data, s32 res, u32 cflags)
 	return (struct io_cqe) { .user_data = user_data, .res = res, .flags = cflags };
 }
 
-static __cold void io_cqe_overflow(struct io_ring_ctx *ctx, struct io_cqe *cqe,
-				   struct io_big_cqe *big_cqe)
+__cold void io_cqe_overflow(struct io_ring_ctx *ctx, struct io_cqe *cqe,
+			    struct io_big_cqe *big_cqe)
 {
 	struct io_overflow_cqe *ocqe;
 
