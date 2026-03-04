@@ -79,6 +79,7 @@
 #include <linux/sched.h>
 #include <linux/syscalls.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <linux/types.h>
 #include <linux/rseq.h>
 #include <asm/ptrace.h>
@@ -175,7 +176,7 @@ static int rseq_stats_open(struct inode *inode, struct file *file)
 
 static const struct file_operations stat_ops = {
 	.open		= rseq_stats_open,
-	.read		= seq_read,
+	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
@@ -197,12 +198,12 @@ static int rseq_debug_show(struct seq_file *m, void *p)
 	return 0;
 }
 
-static ssize_t rseq_debug_write(struct file *file, const char __user *ubuf,
-			    size_t count, loff_t *ppos)
+static ssize_t rseq_debug_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	bool on;
 
-	if (kstrtobool_from_user(ubuf, count, &on))
+	if (kstrtobool_from_iter(from, count, &on))
 		return -EINVAL;
 
 	rseq_control_debug(on);
@@ -216,8 +217,8 @@ static int rseq_debug_open(struct inode *inode, struct file *file)
 
 static const struct file_operations debug_ops = {
 	.open		= rseq_debug_open,
-	.read		= seq_read,
-	.write		= rseq_debug_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= rseq_debug_write,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
@@ -773,12 +774,12 @@ static int rseq_slice_ext_show(struct seq_file *m, void *p)
 	return 0;
 }
 
-static ssize_t rseq_slice_ext_write(struct file *file, const char __user *ubuf,
-				    size_t count, loff_t *ppos)
+static ssize_t rseq_slice_ext_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	unsigned int nsecs;
 
-	if (kstrtouint_from_user(ubuf, count, 10, &nsecs))
+	if (kstrtouint_from_iter(from, count, 10, &nsecs))
 		return -EINVAL;
 
 	if (nsecs < rseq_slice_ext_nsecs_min)
@@ -799,8 +800,8 @@ static int rseq_slice_ext_open(struct inode *inode, struct file *file)
 
 static const struct file_operations slice_ext_ops = {
 	.open		= rseq_slice_ext_open,
-	.read		= seq_read,
-	.write		= rseq_slice_ext_write,
+	.read_iter	= seq_read_iter,
+	.write_iter	= rseq_slice_ext_write,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
