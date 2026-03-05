@@ -912,6 +912,7 @@ static ssize_t mshv_vtl_sint_read(struct file *filp, char __user *arg, size_t si
 
 	return sizeof(msg);
 }
+FOPS_READ_ITER_HELPER(mshv_vtl_sint_read);
 
 static __poll_t mshv_vtl_sint_poll(struct file *filp, poll_table *wait)
 {
@@ -1026,7 +1027,7 @@ static long mshv_vtl_sint_ioctl(struct file *f, unsigned int cmd, unsigned long 
 
 static const struct file_operations mshv_vtl_sint_ops = {
 	.owner = THIS_MODULE,
-	.read = mshv_vtl_sint_read,
+	.read_iter = mshv_vtl_sint_read_iter,
 	.poll = mshv_vtl_sint_poll,
 	.unlocked_ioctl = mshv_vtl_sint_ioctl,
 };
