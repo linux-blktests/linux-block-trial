@@ -51,14 +51,13 @@ static void reset_settings(void)
 	memset(&skb_realloc.devname, 0, IFNAMSIZ);
 }
 
-static ssize_t devname_write(struct file *file, const char __user *buffer,
-			     size_t count, loff_t *ppos)
+static ssize_t devname_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	ssize_t ret;
 
 	reset_settings();
-	ret = simple_write_to_buffer(&skb_realloc.devname, IFNAMSIZ,
-				     ppos, buffer, count);
+	ret = simple_copy_from_iter(&skb_realloc.devname, &iocb->ki_pos, IFNAMSIZ, from);
 	if (ret < 0)
 		return ret;
 
@@ -72,20 +71,17 @@ static ssize_t devname_write(struct file *file, const char __user *buffer,
 	return count;
 }
 
-static ssize_t devname_read(struct file *file,
-			    char __user *buffer,
-			    size_t size, loff_t *ppos)
+static ssize_t devname_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	if (!skb_realloc.filtered)
 		return 0;
 
-	return simple_read_from_buffer(buffer, size, ppos, &skb_realloc.devname,
-				       strlen(skb_realloc.devname));
+	return simple_copy_to_iter(&skb_realloc.devname, &iocb->ki_pos, strlen(skb_realloc.devname), to);
 }
 
 static const struct file_operations devname_ops = {
-	.write = devname_write,
-	.read = devname_read,
+	.write_iter = devname_write,
+	.read_iter = devname_read,
 };
 
 static int __init fail_skb_realloc_debugfs(void)
