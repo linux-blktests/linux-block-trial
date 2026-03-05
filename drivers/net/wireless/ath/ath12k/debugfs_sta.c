@@ -136,11 +136,9 @@ skip_report:
 	return len - offset;
 }
 
-static ssize_t ath12k_dbg_sta_dump_rx_stats(struct file *file,
-					    char __user *user_buf,
-					    size_t count, loff_t *ppos)
+static ssize_t ath12k_dbg_sta_dump_rx_stats(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ieee80211_link_sta *link_sta = file->private_data;
+	struct ieee80211_link_sta *link_sta = iocb->ki_filp->private_data;
 	struct ath12k_sta *ahsta = ath12k_sta_to_ahsta(link_sta->sta);
 	const int size = ATH12K_STA_RX_STATS_BUF_SIZE;
 	struct ath12k_hw *ah = ahsta->ahvif->ah;
@@ -239,22 +237,21 @@ static ssize_t ath12k_dbg_sta_dump_rx_stats(struct file *file,
 					      &rx_stats->byte_stats);
 
 	if (len)
-		ret = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+		ret = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 	return ret;
 }
 
 static const struct file_operations fops_rx_stats = {
-	.read = ath12k_dbg_sta_dump_rx_stats,
+	.read_iter = ath12k_dbg_sta_dump_rx_stats,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t ath12k_dbg_sta_reset_rx_stats(struct file *file,
-					     const char __user *buf,
-					     size_t count, loff_t *ppos)
+static ssize_t ath12k_dbg_sta_reset_rx_stats(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ieee80211_link_sta *link_sta = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct ieee80211_link_sta *link_sta = iocb->ki_filp->private_data;
 	struct ath12k_sta *ahsta = ath12k_sta_to_ahsta(link_sta->sta);
 	struct ath12k_hw *ah = ahsta->ahvif->ah;
 	u8 link_id = link_sta->link_id;
@@ -263,7 +260,7 @@ static ssize_t ath12k_dbg_sta_reset_rx_stats(struct file *file,
 	bool reset;
 	int ret;
 
-	ret = kstrtobool_from_user(buf, count, &reset);
+	ret = kstrtobool_from_iter(from, count, &reset);
 	if (ret)
 		return ret;
 
@@ -294,7 +291,7 @@ out:
 }
 
 static const struct file_operations fops_reset_rx_stats = {
-	.write = ath12k_dbg_sta_reset_rx_stats,
+	.write_iter = ath12k_dbg_sta_reset_rx_stats,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,

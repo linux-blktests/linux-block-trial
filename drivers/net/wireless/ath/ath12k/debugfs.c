@@ -33,23 +33,19 @@ static const struct file_operations fops_simulate_radar = {
 	.open = simple_open
 };
 
-static ssize_t ath12k_read_simulate_fw_crash(struct file *file,
-					     char __user *user_buf,
-					     size_t count, loff_t *ppos)
+static ssize_t ath12k_read_simulate_fw_crash(struct kiocb *iocb, struct iov_iter *to)
 {
 	const char buf[] =
 		"To simulate firmware crash write one of the keywords to this file:\n"
 		"`assert` - send WMI_FORCE_FW_HANG_CMDID to firmware to cause assert.\n";
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, strlen(buf));
+	return simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 }
 
-static ssize_t
-ath12k_write_simulate_fw_crash(struct file *file,
-			       const char __user *user_buf,
-			       size_t count, loff_t *ppos)
+static ssize_t ath12k_write_simulate_fw_crash(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath12k_base *ab = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct ath12k_base *ab = iocb->ki_filp->private_data;
 	struct ath12k_pdev *pdev;
 	struct ath12k *ar = NULL;
 	char buf[32] = {};
@@ -57,16 +53,16 @@ ath12k_write_simulate_fw_crash(struct file *file,
 	ssize_t rc;
 
 	/* filter partial writes and invalid commands */
-	if (*ppos != 0 || count >= sizeof(buf) || count == 0)
+	if (iocb->ki_pos != 0 || count >= sizeof(buf) || count == 0)
 		return -EINVAL;
 
-	rc = simple_write_to_buffer(buf, sizeof(buf) - 1, ppos, user_buf, count);
+	rc = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf) - 1, from);
 	if (rc < 0)
 		return rc;
 
 	/* drop the possible '\n' from the end */
-	if (buf[*ppos - 1] == '\n')
-		buf[*ppos - 1] = '\0';
+	if (buf[iocb->ki_pos - 1] == '\n')
+		buf[iocb->ki_pos - 1] = '\0';
 
 	for (i = 0; i < ab->num_radios; i++) {
 		pdev = &ab->pdevs[i];
@@ -96,22 +92,21 @@ ath12k_write_simulate_fw_crash(struct file *file,
 }
 
 static const struct file_operations fops_simulate_fw_crash = {
-	.read = ath12k_read_simulate_fw_crash,
-	.write = ath12k_write_simulate_fw_crash,
+	.read_iter = ath12k_read_simulate_fw_crash,
+	.write_iter = ath12k_write_simulate_fw_crash,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t ath12k_write_tpc_stats_type(struct file *file,
-					   const char __user *user_buf,
-					   size_t count, loff_t *ppos)
+static ssize_t ath12k_write_tpc_stats_type(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath12k *ar = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct ath12k *ar = iocb->ki_filp->private_data;
 	u8 type;
 	int ret;
 
-	ret = kstrtou8_from_user(user_buf, count, 0, &type);
+	ret = kstrtou8_from_iter(from, count, 0, &type);
 	if (ret)
 		return ret;
 
@@ -780,14 +775,12 @@ static int ath12k_open_tpc_stats(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t ath12k_read_tpc_stats(struct file *file,
-				     char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t ath12k_read_tpc_stats(struct kiocb *iocb, struct iov_iter *to)
 {
-	const char *buf = file->private_data;
+	const char *buf = iocb->ki_filp->private_data;
 	size_t len = strlen(buf);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static int ath12k_release_tpc_stats(struct inode *inode,
@@ -800,28 +793,27 @@ static int ath12k_release_tpc_stats(struct inode *inode,
 static const struct file_operations fops_tpc_stats = {
 	.open = ath12k_open_tpc_stats,
 	.release = ath12k_release_tpc_stats,
-	.read = ath12k_read_tpc_stats,
+	.read_iter = ath12k_read_tpc_stats,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
 static const struct file_operations fops_tpc_stats_type = {
-	.write = ath12k_write_tpc_stats_type,
+	.write_iter = ath12k_write_tpc_stats_type,
 	.open = simple_open,
 	.llseek = default_llseek,
 };
 
-static ssize_t ath12k_write_extd_rx_stats(struct file *file,
-					  const char __user *ubuf,
-					  size_t count, loff_t *ppos)
+static ssize_t ath12k_write_extd_rx_stats(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath12k *ar = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct ath12k *ar = iocb->ki_filp->private_data;
 	struct htt_rx_ring_tlv_filter tlv_filter = {};
 	u32 ring_id, rx_filter = 0;
 	bool enable;
 	int ret, i;
 
-	if (kstrtobool_from_user(ubuf, count, &enable))
+	if (kstrtobool_from_iter(from, count, &enable))
 		return -EINVAL;
 
 	wiphy_lock(ath12k_ar_to_hw(ar)->wiphy);
@@ -881,11 +873,9 @@ exit:
 	return ret;
 }
 
-static ssize_t ath12k_read_extd_rx_stats(struct file *file,
-					 char __user *ubuf,
-					 size_t count, loff_t *ppos)
+static ssize_t ath12k_read_extd_rx_stats(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath12k *ar = file->private_data;
+	struct ath12k *ar = iocb->ki_filp->private_data;
 	char buf[32];
 	int len = 0;
 
@@ -894,12 +884,12 @@ static ssize_t ath12k_read_extd_rx_stats(struct file *file,
 			ar->debug.extd_rx_stats);
 	wiphy_unlock(ath12k_ar_to_hw(ar)->wiphy);
 
-	return simple_read_from_buffer(ubuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations fops_extd_rx_stats = {
-	.read = ath12k_read_extd_rx_stats,
-	.write = ath12k_write_extd_rx_stats,
+	.read_iter = ath12k_read_extd_rx_stats,
+	.write_iter = ath12k_write_extd_rx_stats,
 	.open = simple_open,
 };
 
@@ -994,20 +984,18 @@ static int ath12k_release_link_stats(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t ath12k_read_link_stats(struct file *file,
-				      char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t ath12k_read_link_stats(struct kiocb *iocb, struct iov_iter *to)
 {
-	const char *buf = file->private_data;
+	const char *buf = iocb->ki_filp->private_data;
 	size_t len = strlen(buf);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations ath12k_fops_link_stats = {
 	.open = ath12k_open_link_stats,
 	.release = ath12k_release_link_stats,
-	.read = ath12k_read_link_stats,
+	.read_iter = ath12k_read_link_stats,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
@@ -1022,11 +1010,9 @@ void ath12k_debugfs_op_vif_add(struct ieee80211_hw *hw,
 }
 EXPORT_SYMBOL(ath12k_debugfs_op_vif_add);
 
-static ssize_t ath12k_debugfs_dump_device_dp_stats(struct file *file,
-						   char __user *user_buf,
-						   size_t count, loff_t *ppos)
+static ssize_t ath12k_debugfs_dump_device_dp_stats(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath12k_base *ab = file->private_data;
+	struct ath12k_base *ab = iocb->ki_filp->private_data;
 	struct ath12k_dp *dp = ath12k_ab_to_dp(ab);
 	struct ath12k_device_dp_stats *device_stats = &dp->device_stats;
 	int len = 0, i, j, ret;
@@ -1200,13 +1186,13 @@ static ssize_t ath12k_debugfs_dump_device_dp_stats(struct file *file,
 		len += scnprintf(buf + len, size - len, "\n");
 	}
 
-	ret = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	ret = simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 
 	return ret;
 }
 
 static const struct file_operations fops_device_dp_stats = {
-	.read = ath12k_debugfs_dump_device_dp_stats,
+	.read_iter = ath12k_debugfs_dump_device_dp_stats,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
@@ -1304,20 +1290,18 @@ static int ath12k_release_vdev_stats(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t ath12k_read_vdev_stats(struct file *file,
-				      char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t ath12k_read_vdev_stats(struct kiocb *iocb, struct iov_iter *to)
 {
-	const char *buf = file->private_data;
+	const char *buf = iocb->ki_filp->private_data;
 	size_t len = strlen(buf);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations fops_vdev_stats = {
 	.open = ath12k_open_vdev_stats,
 	.release = ath12k_release_vdev_stats,
-	.read = ath12k_read_vdev_stats,
+	.read_iter = ath12k_read_vdev_stats,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
@@ -1371,20 +1355,18 @@ static int ath12k_release_bcn_stats(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t ath12k_read_bcn_stats(struct file *file,
-				     char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t ath12k_read_bcn_stats(struct kiocb *iocb, struct iov_iter *to)
 {
-	const char *buf = file->private_data;
+	const char *buf = iocb->ki_filp->private_data;
 	size_t len = strlen(buf);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations fops_bcn_stats = {
 	.open = ath12k_open_bcn_stats,
 	.release = ath12k_release_bcn_stats,
-	.read = ath12k_read_bcn_stats,
+	.read_iter = ath12k_read_bcn_stats,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
@@ -1432,20 +1414,18 @@ static int ath12k_release_pdev_stats(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t ath12k_read_pdev_stats(struct file *file,
-				      char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t ath12k_read_pdev_stats(struct kiocb *iocb, struct iov_iter *to)
 {
-	const char *buf = file->private_data;
+	const char *buf = iocb->ki_filp->private_data;
 	size_t len = strlen(buf);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations fops_pdev_stats = {
 	.open = ath12k_open_pdev_stats,
 	.release = ath12k_release_pdev_stats,
-	.read = ath12k_read_pdev_stats,
+	.read_iter = ath12k_read_pdev_stats,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
