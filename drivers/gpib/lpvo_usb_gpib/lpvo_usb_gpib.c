@@ -1801,6 +1801,7 @@ static ssize_t skel_read(struct file *file, char __user *buffer, size_t count,
 	kfree(buf);
 	return rv;
 }
+FOPS_READ_ITER_HELPER(skel_read);
 
 /*
  * user space access to write function
@@ -1828,13 +1829,14 @@ static ssize_t skel_write(struct file *file, const char __user *user_buffer,
 	kfree(buf);
 	return rv;
 }
+FOPS_WRITE_ITER_HELPER(skel_write);
 #endif
 
 static const struct file_operations skel_fops = {
 	.owner =	THIS_MODULE,
 #if USER_DEVICE
-	.read =	   skel_read,
-	.write =   skel_write,
+	.read_iter =	   skel_read_iter,
+	.write_iter =   skel_write_iter,
 	.open =	   skel_open,
 	.release = skel_release,
 	.flush =   skel_flush,
