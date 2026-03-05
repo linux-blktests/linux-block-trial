@@ -941,10 +941,9 @@ static int stc_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static ssize_t stc_read(struct file *file, char *buf, size_t count,
-		 loff_t *offset)
+static ssize_t stc_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	return simple_read_from_buffer(buf, count, offset, stc_firmware, 8192);
+	return simple_copy_to_iter(stc_firmware, &iocb->ki_pos, 8192, to);
 }
 
 static int stc_release(struct inode *inode, struct file *file)
@@ -954,7 +953,7 @@ static int stc_release(struct inode *inode, struct file *file)
 
 static const struct file_operations stc_fops = {
 	.owner = THIS_MODULE,
-	.read = stc_read,
+	.read_iter = stc_read,
 	.open = stc_open,
 	.release = stc_release,
 };
