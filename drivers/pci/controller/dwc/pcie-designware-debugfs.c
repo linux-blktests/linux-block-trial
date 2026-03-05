@@ -183,10 +183,9 @@ static const struct dwc_pcie_event_counter event_list[] = {
 	{"ebuf_skp_del", 0x4, 0x1},
 };
 
-static ssize_t lane_detect_read(struct file *file, char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t lane_detect_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dw_pcie *pci = file->private_data;
+	struct dw_pcie *pci = iocb->ki_filp->private_data;
 	struct dwc_pcie_rasdes_info *rinfo = pci->debugfs->rasdes_info;
 	char debugfs_buf[DWC_DEBUGFS_BUF_MAX];
 	ssize_t pos;
@@ -199,17 +198,17 @@ static ssize_t lane_detect_read(struct file *file, char __user *buf,
 	else
 		pos = scnprintf(debugfs_buf, DWC_DEBUGFS_BUF_MAX, "Lane Undetected\n");
 
-	return simple_read_from_buffer(buf, count, ppos, debugfs_buf, pos);
+	return simple_copy_to_iter(debugfs_buf, &iocb->ki_pos, pos, to);
 }
 
-static ssize_t lane_detect_write(struct file *file, const char __user *buf,
-				 size_t count, loff_t *ppos)
+static ssize_t lane_detect_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct dw_pcie *pci = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct dw_pcie *pci = iocb->ki_filp->private_data;
 	struct dwc_pcie_rasdes_info *rinfo = pci->debugfs->rasdes_info;
 	u32 lane, val;
 
-	val = kstrtou32_from_user(buf, count, 0, &lane);
+	val = kstrtou32_from_iter(from, count, 0, &lane);
 	if (val)
 		return val;
 
@@ -221,10 +220,9 @@ static ssize_t lane_detect_write(struct file *file, const char __user *buf,
 	return count;
 }
 
-static ssize_t rx_valid_read(struct file *file, char __user *buf,
-			     size_t count, loff_t *ppos)
+static ssize_t rx_valid_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dw_pcie *pci = file->private_data;
+	struct dw_pcie *pci = iocb->ki_filp->private_data;
 	struct dwc_pcie_rasdes_info *rinfo = pci->debugfs->rasdes_info;
 	char debugfs_buf[DWC_DEBUGFS_BUF_MAX];
 	ssize_t pos;
@@ -237,13 +235,12 @@ static ssize_t rx_valid_read(struct file *file, char __user *buf,
 	else
 		pos = scnprintf(debugfs_buf, DWC_DEBUGFS_BUF_MAX, "RX Invalid\n");
 
-	return simple_read_from_buffer(buf, count, ppos, debugfs_buf, pos);
+	return simple_copy_to_iter(debugfs_buf, &iocb->ki_pos, pos, to);
 }
 
-static ssize_t rx_valid_write(struct file *file, const char __user *buf,
-			      size_t count, loff_t *ppos)
+static ssize_t rx_valid_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return lane_detect_write(file, buf, count, ppos);
+	return lane_detect_write(iocb, from);
 }
 
 static ssize_t err_inj_write(struct file *file, const char __user *buf,
@@ -303,6 +300,7 @@ static ssize_t err_inj_write(struct file *file, const char __user *buf,
 	kfree(kern_buf);
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(err_inj_write);
 
 static void set_event_number(struct dwc_pcie_rasdes_priv *pdata,
 			     struct dw_pcie *pci, struct dwc_pcie_rasdes_info *rinfo)
@@ -317,10 +315,9 @@ static void set_event_number(struct dwc_pcie_rasdes_priv *pdata,
 	dw_pcie_writel_dbi(pci, rinfo->ras_cap_offset + RAS_DES_EVENT_COUNTER_CTRL_REG, val);
 }
 
-static ssize_t counter_enable_read(struct file *file, char __user *buf,
-				   size_t count, loff_t *ppos)
+static ssize_t counter_enable_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dwc_pcie_rasdes_priv *pdata = file->private_data;
+	struct dwc_pcie_rasdes_priv *pdata = iocb->ki_filp->private_data;
 	struct dw_pcie *pci = pdata->pci;
 	struct dwc_pcie_rasdes_info *rinfo = pci->debugfs->rasdes_info;
 	char debugfs_buf[DWC_DEBUGFS_BUF_MAX];
@@ -337,18 +334,18 @@ static ssize_t counter_enable_read(struct file *file, char __user *buf,
 	else
 		pos = scnprintf(debugfs_buf, DWC_DEBUGFS_BUF_MAX, "Counter Disabled\n");
 
-	return simple_read_from_buffer(buf, count, ppos, debugfs_buf, pos);
+	return simple_copy_to_iter(debugfs_buf, &iocb->ki_pos, pos, to);
 }
 
-static ssize_t counter_enable_write(struct file *file, const char __user *buf,
-				    size_t count, loff_t *ppos)
+static ssize_t counter_enable_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct dwc_pcie_rasdes_priv *pdata = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct dwc_pcie_rasdes_priv *pdata = iocb->ki_filp->private_data;
 	struct dw_pcie *pci = pdata->pci;
 	struct dwc_pcie_rasdes_info *rinfo = pci->debugfs->rasdes_info;
 	u32 val, enable;
 
-	val = kstrtou32_from_user(buf, count, 0, &enable);
+	val = kstrtou32_from_iter(from, count, 0, &enable);
 	if (val)
 		return val;
 
@@ -381,10 +378,9 @@ static ssize_t counter_enable_write(struct file *file, const char __user *buf,
 	return count;
 }
 
-static ssize_t counter_lane_read(struct file *file, char __user *buf,
-				 size_t count, loff_t *ppos)
+static ssize_t counter_lane_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dwc_pcie_rasdes_priv *pdata = file->private_data;
+	struct dwc_pcie_rasdes_priv *pdata = iocb->ki_filp->private_data;
 	struct dw_pcie *pci = pdata->pci;
 	struct dwc_pcie_rasdes_info *rinfo = pci->debugfs->rasdes_info;
 	char debugfs_buf[DWC_DEBUGFS_BUF_MAX];
@@ -398,18 +394,18 @@ static ssize_t counter_lane_read(struct file *file, char __user *buf,
 	val = FIELD_GET(EVENT_COUNTER_LANE_SELECT, val);
 	pos = scnprintf(debugfs_buf, DWC_DEBUGFS_BUF_MAX, "Lane: %d\n", val);
 
-	return simple_read_from_buffer(buf, count, ppos, debugfs_buf, pos);
+	return simple_copy_to_iter(debugfs_buf, &iocb->ki_pos, pos, to);
 }
 
-static ssize_t counter_lane_write(struct file *file, const char __user *buf,
-				  size_t count, loff_t *ppos)
+static ssize_t counter_lane_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct dwc_pcie_rasdes_priv *pdata = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct dwc_pcie_rasdes_priv *pdata = iocb->ki_filp->private_data;
 	struct dw_pcie *pci = pdata->pci;
 	struct dwc_pcie_rasdes_info *rinfo = pci->debugfs->rasdes_info;
 	u32 val, lane;
 
-	val = kstrtou32_from_user(buf, count, 0, &lane);
+	val = kstrtou32_from_iter(from, count, 0, &lane);
 	if (val)
 		return val;
 
@@ -424,10 +420,9 @@ static ssize_t counter_lane_write(struct file *file, const char __user *buf,
 	return count;
 }
 
-static ssize_t counter_value_read(struct file *file, char __user *buf,
-				  size_t count, loff_t *ppos)
+static ssize_t counter_value_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dwc_pcie_rasdes_priv *pdata = file->private_data;
+	struct dwc_pcie_rasdes_priv *pdata = iocb->ki_filp->private_data;
 	struct dw_pcie *pci = pdata->pci;
 	struct dwc_pcie_rasdes_info *rinfo = pci->debugfs->rasdes_info;
 	char debugfs_buf[DWC_DEBUGFS_BUF_MAX];
@@ -440,7 +435,7 @@ static ssize_t counter_value_read(struct file *file, char __user *buf,
 	mutex_unlock(&rinfo->reg_event_lock);
 	pos = scnprintf(debugfs_buf, DWC_DEBUGFS_BUF_MAX, "Counter value: %d\n", val);
 
-	return simple_read_from_buffer(buf, count, ppos, debugfs_buf, pos);
+	return simple_copy_to_iter(debugfs_buf, &iocb->ki_pos, pos, to);
 }
 
 static int ltssm_status_show(struct seq_file *s, void *v)
@@ -465,9 +460,9 @@ debugfs_create_file(#name, 0644, rasdes_debug, pci,	\
 
 #define DWC_DEBUGFS_FOPS(name)					\
 static const struct file_operations dbg_ ## name ## _fops = {	\
-	.open = simple_open,				\
-	.read = name ## _read,				\
-	.write = name ## _write				\
+	.open = simple_open,					\
+	.read_iter = name ## _read,				\
+	.write_iter = name ## _write				\
 }
 
 DWC_DEBUGFS_FOPS(lane_detect);
@@ -475,29 +470,29 @@ DWC_DEBUGFS_FOPS(rx_valid);
 
 static const struct file_operations dwc_pcie_err_inj_ops = {
 	.open = simple_open,
-	.write = err_inj_write,
+	.write_iter = err_inj_write_iter,
 };
 
 static const struct file_operations dwc_pcie_counter_enable_ops = {
 	.open = simple_open,
-	.read = counter_enable_read,
-	.write = counter_enable_write,
+	.read_iter = counter_enable_read,
+	.write_iter = counter_enable_write,
 };
 
 static const struct file_operations dwc_pcie_counter_lane_ops = {
 	.open = simple_open,
-	.read = counter_lane_read,
-	.write = counter_lane_write,
+	.read_iter = counter_lane_read,
+	.write_iter = counter_lane_write,
 };
 
 static const struct file_operations dwc_pcie_counter_value_ops = {
 	.open = simple_open,
-	.read = counter_value_read,
+	.read_iter = counter_value_read,
 };
 
 static const struct file_operations dwc_pcie_ltssm_status_ops = {
 	.open = ltssm_status_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 };
 
 static void dwc_pcie_rasdes_debugfs_deinit(struct dw_pcie *pci)

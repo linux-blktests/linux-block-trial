@@ -313,11 +313,11 @@ static ssize_t context_update_write(struct file *file, const char __user *ubuf,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(context_update_write);
 
-static ssize_t context_update_read(struct file *file, char __user *ubuf,
-			     size_t count, loff_t *ppos)
+static ssize_t context_update_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct pci_ptm_debugfs *ptm_debugfs = file->private_data;
+	struct pci_ptm_debugfs *ptm_debugfs = iocb->ki_filp->private_data;
 	char buf[8]; /* Extra space for NULL termination at the end */
 	ssize_t pos;
 	u8 mode;
@@ -334,13 +334,13 @@ static ssize_t context_update_read(struct file *file, char __user *ubuf,
 	else
 		pos = scnprintf(buf, sizeof(buf), "manual\n");
 
-	return simple_read_from_buffer(ubuf, count, ppos, buf, pos);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, pos, to);
 }
 
 static const struct file_operations context_update_fops = {
 	.open = simple_open,
-	.read = context_update_read,
-	.write = context_update_write,
+	.read_iter = context_update_read,
+	.write_iter = context_update_write_iter,
 };
 
 static int context_valid_get(void *data, u64 *val)
