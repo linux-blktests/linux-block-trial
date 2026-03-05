@@ -34,11 +34,10 @@ static DECLARE_RWSEM(dummy_rwsem);
 static struct dentry *hung_task_dir;
 
 /* Mutex-based read function */
-static ssize_t read_dummy_mutex(struct file *file, char __user *user_buf,
-				size_t count, loff_t *ppos)
+static ssize_t read_dummy_mutex(struct kiocb *iocb, struct iov_iter *to)
 {
 	/* Check if data is already read */
-	if (*ppos >= sizeof(dummy_string))
+	if (iocb->ki_pos >= sizeof(dummy_string))
 		return 0;
 
 	/* Second task waits on mutex, entering uninterruptible sleep */
@@ -47,16 +46,15 @@ static ssize_t read_dummy_mutex(struct file *file, char __user *user_buf,
 	/* First task sleeps here, interruptible */
 	msleep_interruptible(SLEEP_SECOND * 1000);
 
-	return simple_read_from_buffer(user_buf, count, ppos, dummy_string,
-				       sizeof(dummy_string));
+	return simple_copy_to_iter(dummy_string, &iocb->ki_pos,
+				   sizeof(dummy_string), to);
 }
 
 /* Semaphore-based read function */
-static ssize_t read_dummy_semaphore(struct file *file, char __user *user_buf,
-				    size_t count, loff_t *ppos)
+static ssize_t read_dummy_semaphore(struct kiocb *iocb, struct iov_iter *to)
 {
 	/* Check if data is already read */
-	if (*ppos >= sizeof(dummy_string))
+	if (iocb->ki_pos >= sizeof(dummy_string))
 		return 0;
 
 	/* Second task waits on semaphore, entering uninterruptible sleep */
@@ -67,16 +65,15 @@ static ssize_t read_dummy_semaphore(struct file *file, char __user *user_buf,
 
 	up(&dummy_sem);
 
-	return simple_read_from_buffer(user_buf, count, ppos, dummy_string,
-				       sizeof(dummy_string));
+	return simple_copy_to_iter(dummy_string, &iocb->ki_pos,
+				   sizeof(dummy_string), to);
 }
 
 /* Read-write semaphore read function */
-static ssize_t read_dummy_rwsem_read(struct file *file, char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t read_dummy_rwsem_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	/* Check if data is already read */
-	if (*ppos >= sizeof(dummy_string))
+	if (iocb->ki_pos >= sizeof(dummy_string))
 		return 0;
 
 	/* Acquires read lock, allowing concurrent readers but blocks if write lock is held */
@@ -87,16 +84,15 @@ static ssize_t read_dummy_rwsem_read(struct file *file, char __user *user_buf,
 
 	up_read(&dummy_rwsem);
 
-	return simple_read_from_buffer(user_buf, count, ppos, dummy_string,
-				       sizeof(dummy_string));
+	return simple_copy_to_iter(dummy_string, &iocb->ki_pos,
+				   sizeof(dummy_string), to);
 }
 
 /* Read-write semaphore write function */
-static ssize_t read_dummy_rwsem_write(struct file *file, char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t read_dummy_rwsem_write(struct kiocb *iocb, struct iov_iter *to)
 {
 	/* Check if data is already read */
-	if (*ppos >= sizeof(dummy_string))
+	if (iocb->ki_pos >= sizeof(dummy_string))
 		return 0;
 
 	/* Acquires exclusive write lock, blocking all other readers and writers */
@@ -107,28 +103,28 @@ static ssize_t read_dummy_rwsem_write(struct file *file, char __user *user_buf,
 
 	up_write(&dummy_rwsem);
 
-	return simple_read_from_buffer(user_buf, count, ppos, dummy_string,
-				       sizeof(dummy_string));
+	return simple_copy_to_iter(dummy_string, &iocb->ki_pos,
+				   sizeof(dummy_string), to);
 }
 
 /* File operations for mutex */
 static const struct file_operations hung_task_mutex_fops = {
-	.read = read_dummy_mutex,
+	.read_iter = read_dummy_mutex,
 };
 
 /* File operations for semaphore */
 static const struct file_operations hung_task_sem_fops = {
-	.read = read_dummy_semaphore,
+	.read_iter = read_dummy_semaphore,
 };
 
 /* File operations for rw_semaphore read */
 static const struct file_operations hung_task_rwsem_read_fops = {
-	.read = read_dummy_rwsem_read,
+	.read_iter = read_dummy_rwsem_read,
 };
 
 /* File operations for rw_semaphore write */
 static const struct file_operations hung_task_rwsem_write_fops = {
-	.read = read_dummy_rwsem_write,
+	.read_iter = read_dummy_rwsem_write,
 };
 
 static int __init hung_task_tests_init(void)

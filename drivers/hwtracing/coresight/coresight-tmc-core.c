@@ -374,26 +374,27 @@ exit:
 	return err;
 }
 
-static ssize_t tmc_crashdata_read(struct file *file, char __user *data,
-				  size_t len, loff_t *ppos)
+static ssize_t tmc_crashdata_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	char *bufp;
+	size_t len = iov_iter_count(to);
 	ssize_t actual;
-	struct tmc_drvdata *drvdata = container_of(file->private_data,
+	struct tmc_drvdata *drvdata = container_of(iocb->ki_filp->private_data,
 						   struct tmc_drvdata,
 						   crashdev);
 
-	actual = tmc_get_resvbuf_trace(drvdata, *ppos, len, &bufp);
+	actual = tmc_get_resvbuf_trace(drvdata, iocb->ki_pos, len, &bufp);
 	if (actual <= 0)
 		return 0;
 
-	if (copy_to_user(data, bufp, actual)) {
+	actual = copy_to_iter(bufp, actual, to);
+	if (!actual) {
 		dev_dbg(&drvdata->csdev->dev,
-			"%s: copy_to_user failed\n", __func__);
+			"%s: copy_to_iter failed\n", __func__);
 		return -EFAULT;
 	}
 
-	*ppos += actual;
+	iocb->ki_pos += actual;
 	dev_dbg(&drvdata->csdev->dev, "%zu bytes copied\n", actual);
 
 	return actual;
@@ -420,7 +421,7 @@ static int tmc_crashdata_release(struct inode *inode, struct file *file)
 static const struct file_operations tmc_crashdata_fops = {
 	.owner		= THIS_MODULE,
 	.open		= tmc_crashdata_open,
-	.read		= tmc_crashdata_read,
+	.read_iter	= tmc_crashdata_read,
 	.release	= tmc_crashdata_release,
 };
 
