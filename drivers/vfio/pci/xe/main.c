@@ -170,7 +170,8 @@ static int xe_vfio_pci_release_file(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static ssize_t xe_vfio_pci_save_read(struct file *filp, char __user *buf, size_t len, loff_t *pos)
+static ssize_t xe_vfio_pci_save_read(struct file *filp, char __user *buf,
+				     size_t len, loff_t *pos)
 {
 	struct xe_vfio_pci_migration_file *migf = filp->private_data;
 	ssize_t ret;
@@ -189,10 +190,11 @@ static ssize_t xe_vfio_pci_save_read(struct file *filp, char __user *buf, size_t
 
 	return ret;
 }
+FOPS_READ_ITER_HELPER(xe_vfio_pci_save_read);
 
 static const struct file_operations xe_vfio_pci_save_fops = {
 	.owner = THIS_MODULE,
-	.read = xe_vfio_pci_save_read,
+	.read_iter = xe_vfio_pci_save_read_iter,
 	.release = xe_vfio_pci_release_file,
 	.llseek = noop_llseek,
 };
@@ -217,10 +219,11 @@ static ssize_t xe_vfio_pci_resume_write(struct file *filp, const char __user *bu
 
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(xe_vfio_pci_resume_write);
 
 static const struct file_operations xe_vfio_pci_resume_fops = {
 	.owner = THIS_MODULE,
-	.write = xe_vfio_pci_resume_write,
+	.write_iter = xe_vfio_pci_resume_write_iter,
 	.release = xe_vfio_pci_release_file,
 	.llseek = noop_llseek,
 };

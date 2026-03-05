@@ -378,8 +378,8 @@ static ssize_t virtiovf_buf_read(struct virtiovf_data_buffer *vhca_buf,
 	return done;
 }
 
-static ssize_t virtiovf_save_read(struct file *filp, char __user *buf, size_t len,
-				  loff_t *pos)
+static ssize_t virtiovf_save_read(struct file *filp, char __user *buf,
+				  size_t len, loff_t *pos)
 {
 	struct virtiovf_migration_file *migf = filp->private_data;
 	struct virtiovf_data_buffer *vhca_buf;
@@ -525,9 +525,11 @@ err_state_unlock:
 	return ret;
 }
 
+FOPS_READ_ITER_HELPER(virtiovf_save_read);
+
 static const struct file_operations virtiovf_save_fops = {
 	.owner = THIS_MODULE,
-	.read = virtiovf_save_read,
+	.read_iter = virtiovf_save_read_iter,
 	.unlocked_ioctl = virtiovf_precopy_ioctl,
 	.compat_ioctl = compat_ptr_ioctl,
 	.release = virtiovf_release_file,
@@ -1052,9 +1054,11 @@ out_unlock:
 	return ret ? ret : done;
 }
 
+FOPS_WRITE_ITER_HELPER(virtiovf_resume_write);
+
 static const struct file_operations virtiovf_resume_fops = {
 	.owner = THIS_MODULE,
-	.write = virtiovf_resume_write,
+	.write_iter = virtiovf_resume_write_iter,
 	.release = virtiovf_release_file,
 };
 
