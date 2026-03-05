@@ -560,13 +560,14 @@ out_free:
 	kfree(buf);
 	return rc;
 }
+FOPS_WRITE_ITER_HELPER(qla2x00_dfs_fce_write);
 
 static const struct file_operations dfs_fce_ops = {
 	.open		= qla2x00_dfs_fce_open,
 	.read_iter	= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= qla2x00_dfs_fce_release,
-	.write		= qla2x00_dfs_fce_write,
+	.write_iter		= qla2x00_dfs_fce_write_iter,
 };
 
 static int
