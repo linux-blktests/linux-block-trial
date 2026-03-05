@@ -1503,25 +1503,25 @@ static int tasdevice_create_cali_ctrls(struct tasdevice_priv *priv)
  *		data payload (1~128 bytes)
  *	}
  */
-static ssize_t acoustic_ctl_read(struct file *file, char __user *to,
-	size_t count, loff_t *ppos)
+static ssize_t acoustic_ctl_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct snd_soc_component *comp = file->private_data;
+	size_t count = iov_iter_count(to);
+	struct snd_soc_component *comp = iocb->ki_filp->private_data;
 	struct tasdevice_priv *tas_priv = snd_soc_component_get_drvdata(comp);
 	struct acoustic_data *p = &tas_priv->acou_data;
 	int ret = -1;
 
 	if (p->id == 'r' && p->len == count && count <= sizeof(*p))
-		ret = simple_read_from_buffer(to, count, ppos, p, p->len);
+		ret = simple_copy_to_iter(p, &iocb->ki_pos, p->len, to);
 	else
 		dev_err(tas_priv->dev, "Not ready for get.\n");
 	return ret;
 }
 
-static ssize_t acoustic_ctl_write(struct file *file,
-	const char __user *from, size_t count, loff_t *ppos)
+static ssize_t acoustic_ctl_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct snd_soc_component *comp = file->private_data;
+	struct snd_soc_component *comp = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	struct tasdevice_priv *priv = snd_soc_component_get_drvdata(comp);
 	struct acoustic_data *p = &priv->acou_data;
 	unsigned int max_pkg_len = sizeof(*p);
@@ -1536,7 +1536,7 @@ static ssize_t acoustic_ctl_write(struct file *file,
 		return ret;
 	}
 
-	src = memdup_user(from, count);
+	src = iterdup(from, count);
 	if (IS_ERR(src))
 		return PTR_ERR(src);
 
@@ -1611,11 +1611,10 @@ exit:
 	kfree(src);
 	return ret;
 }
-
 static const struct file_operations acoustic_ctl_fops = {
 	.open = simple_open,
-	.read = acoustic_ctl_read,
-	.write = acoustic_ctl_write,
+	.read_iter = acoustic_ctl_read,
+	.write_iter = acoustic_ctl_write,
 };
 #endif
 
