@@ -399,16 +399,16 @@ static int userptr_lookup_show(struct seq_file *s, void *data)
 	return 0;
 }
 
-static ssize_t userptr_lookup_write(struct file *file, const char __user *buf,
-		size_t count, loff_t *f_pos)
+static ssize_t userptr_lookup_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct hl_debugfs_entry *entry = s->private;
 	struct hl_dbg_device_entry *dev_entry = entry->dev_entry;
+	size_t count = iov_iter_count(from);
 	ssize_t rc;
 	u64 value;
 
-	rc = kstrtoull_from_user(buf, count, 16, &value);
+	rc = kstrtoull_from_iter(from, count, 16, &value);
 	if (rc)
 		return rc;
 
@@ -473,20 +473,20 @@ put_ctx:
 	return 0;
 }
 
-static ssize_t mmu_asid_va_write(struct file *file, const char __user *buf,
-		size_t count, loff_t *f_pos)
+static ssize_t mmu_asid_va_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct hl_debugfs_entry *entry = s->private;
 	struct hl_dbg_device_entry *dev_entry = entry->dev_entry;
 	struct hl_device *hdev = dev_entry->hdev;
+	size_t count = iov_iter_count(from);
 	char kbuf[MMU_KBUF_SIZE] = {0};
 	char *c;
 	ssize_t rc;
 
 	if (count > sizeof(kbuf) - 1)
 		goto err;
-	if (copy_from_user(kbuf, buf, count))
+	if (!copy_from_iter(kbuf, count, from))
 		goto err;
 	kbuf[count] = 0;
 
@@ -534,21 +534,20 @@ err:
 	return -EINVAL;
 }
 
-static ssize_t mmu_ack_error_value_write(struct file *file,
-		const char __user *buf,
-		size_t count, loff_t *f_pos)
+static ssize_t mmu_ack_error_value_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct hl_debugfs_entry *entry = s->private;
 	struct hl_dbg_device_entry *dev_entry = entry->dev_entry;
 	struct hl_device *hdev = dev_entry->hdev;
+	size_t count = iov_iter_count(from);
 	char kbuf[MMU_KBUF_SIZE] = {0};
 	ssize_t rc;
 
 	if (count > sizeof(kbuf) - 1)
 		goto err;
 
-	if (copy_from_user(kbuf, buf, count))
+	if (!copy_from_iter(kbuf, count, from))
 		goto err;
 
 	kbuf[count] = 0;
@@ -623,14 +622,14 @@ static int dio_ssd2hl_show(struct seq_file *s, void *data)
 	return 0;
 }
 
-static ssize_t dio_ssd2hl_write(struct file *file, const char __user *buf,
-				size_t count, loff_t *f_pos)
+static ssize_t dio_ssd2hl_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct hl_debugfs_entry *entry = s->private;
 	struct hl_dbg_device_entry *dev_entry = entry->dev_entry;
 	struct hl_device *hdev = dev_entry->hdev;
 	struct hl_ctx *ctx = hdev->kernel_ctx;
+	size_t count = iov_iter_count(from);
 	char kbuf[128];
 	u64 device_va = 0, off_bytes = 0, len_bytes = 0;
 	u32 fd = 0;
@@ -643,7 +642,7 @@ static ssize_t dio_ssd2hl_write(struct file *file, const char __user *buf,
 	if (count >= sizeof(kbuf))
 		return -EINVAL;
 
-	if (copy_from_user(kbuf, buf, count))
+	if (!copy_from_iter(kbuf, count, from))
 		return -EFAULT;
 
 	kbuf[count] = 0;
@@ -705,10 +704,9 @@ static int dio_hl2ssd_show(struct seq_file *s, void *data)
 	return 0;
 }
 
-static ssize_t dio_hl2ssd_write(struct file *file, const char __user *buf,
-			       size_t count, loff_t *f_pos)
+static ssize_t dio_hl2ssd_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct hl_debugfs_entry *entry = s->private;
 	struct hl_dbg_device_entry *dev_entry = entry->dev_entry;
 	struct hl_device *hdev = dev_entry->hdev;
@@ -757,13 +755,13 @@ static int dio_reset_show(struct seq_file *s, void *data)
 	return 0;
 }
 
-static ssize_t dio_reset_write(struct file *file, const char __user *buf,
-			       size_t count, loff_t *f_pos)
+static ssize_t dio_reset_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct hl_debugfs_entry *entry = s->private;
 	struct hl_dbg_device_entry *dev_entry = entry->dev_entry;
 	struct hl_device *hdev = dev_entry->hdev;
+	size_t count = iov_iter_count(from);
 	char kbuf[8];
 	unsigned long val;
 	int rc;
@@ -774,7 +772,7 @@ static ssize_t dio_reset_write(struct file *file, const char __user *buf,
 	if (count >= sizeof(kbuf))
 		return -EINVAL;
 
-	if (copy_from_user(kbuf, buf, count))
+	if (!copy_from_iter(kbuf, count, from))
 		return -EFAULT;
 
 	kbuf[count] = 0;
@@ -795,10 +793,10 @@ static ssize_t dio_reset_write(struct file *file, const char __user *buf,
 }
 #endif
 
-static ssize_t hl_memory_scrub(struct file *f, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_memory_scrub(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u64 val = hdev->memory_scrub_val;
 	int rc;
@@ -1135,10 +1133,9 @@ err:
 	return rc;
 }
 
-static ssize_t hl_data_read32(struct file *f, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_data_read32(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u64 value64, addr = entry->addr;
 	char tmp_buf[32];
@@ -1150,7 +1147,7 @@ static ssize_t hl_data_read32(struct file *f, char __user *buf,
 		return 0;
 	}
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return 0;
 
 	rc = hl_access_mem(hdev, addr, &value64, DEBUGFS_READ32);
@@ -1160,14 +1157,13 @@ static ssize_t hl_data_read32(struct file *f, char __user *buf,
 	val = value64; /* downcast back to 32 */
 
 	sprintf(tmp_buf, "0x%08x\n", val);
-	return simple_read_from_buffer(buf, count, ppos, tmp_buf,
-			strlen(tmp_buf));
+	return simple_copy_to_iter(tmp_buf, &iocb->ki_pos, strlen(tmp_buf), to);
 }
 
-static ssize_t hl_data_write32(struct file *f, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_data_write32(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u64 value64, addr = entry->addr;
 	u32 value;
@@ -1178,7 +1174,7 @@ static ssize_t hl_data_write32(struct file *f, const char __user *buf,
 		return 0;
 	}
 
-	rc = kstrtouint_from_user(buf, count, 16, &value);
+	rc = kstrtouint_from_iter(from, count, 16, &value);
 	if (rc)
 		return rc;
 
@@ -1190,10 +1186,9 @@ static ssize_t hl_data_write32(struct file *f, const char __user *buf,
 	return count;
 }
 
-static ssize_t hl_data_read64(struct file *f, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_data_read64(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u64 addr = entry->addr;
 	char tmp_buf[32];
@@ -1205,7 +1200,7 @@ static ssize_t hl_data_read64(struct file *f, char __user *buf,
 		return 0;
 	}
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return 0;
 
 	rc = hl_access_mem(hdev, addr, &val, DEBUGFS_READ64);
@@ -1213,14 +1208,13 @@ static ssize_t hl_data_read64(struct file *f, char __user *buf,
 		return rc;
 
 	sprintf(tmp_buf, "0x%016llx\n", val);
-	return simple_read_from_buffer(buf, count, ppos, tmp_buf,
-			strlen(tmp_buf));
+	return simple_copy_to_iter(tmp_buf, &iocb->ki_pos, strlen(tmp_buf), to);
 }
 
-static ssize_t hl_data_write64(struct file *f, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_data_write64(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u64 addr = entry->addr;
 	u64 value;
@@ -1231,7 +1225,7 @@ static ssize_t hl_data_write64(struct file *f, const char __user *buf,
 		return 0;
 	}
 
-	rc = kstrtoull_from_user(buf, count, 16, &value);
+	rc = kstrtoull_from_iter(from, count, 16, &value);
 	if (rc)
 		return rc;
 
@@ -1242,10 +1236,10 @@ static ssize_t hl_data_write64(struct file *f, const char __user *buf,
 	return count;
 }
 
-static ssize_t hl_dma_size_write(struct file *f, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_dma_size_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u64 addr = entry->addr;
 	ssize_t rc;
@@ -1255,7 +1249,7 @@ static ssize_t hl_dma_size_write(struct file *f, const char __user *buf,
 		dev_warn_ratelimited(hdev->dev, "Can't DMA during reset\n");
 		return 0;
 	}
-	rc = kstrtouint_from_user(buf, count, 16, &size);
+	rc = kstrtouint_from_iter(from, count, 16, &size);
 	if (rc)
 		return rc;
 
@@ -1299,10 +1293,10 @@ static ssize_t hl_dma_size_write(struct file *f, const char __user *buf,
 	return count;
 }
 
-static ssize_t hl_monitor_dump_trigger(struct file *f, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_monitor_dump_trigger(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u32 size, trig;
 	ssize_t rc;
@@ -1311,7 +1305,7 @@ static ssize_t hl_monitor_dump_trigger(struct file *f, const char __user *buf,
 		dev_warn_ratelimited(hdev->dev, "Can't dump monitors during reset\n");
 		return 0;
 	}
-	rc = kstrtouint_from_user(buf, count, 10, &trig);
+	rc = kstrtouint_from_iter(from, count, 10, &trig);
 	if (rc)
 		return rc;
 
@@ -1343,15 +1337,14 @@ static ssize_t hl_monitor_dump_trigger(struct file *f, const char __user *buf,
 	return count;
 }
 
-static ssize_t hl_get_power_state(struct file *f, char __user *buf,
-		size_t count, loff_t *ppos)
+static ssize_t hl_get_power_state(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	char tmp_buf[200];
 	int i;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return 0;
 
 	if (hdev->pdev->current_state == PCI_D0)
@@ -1363,19 +1356,18 @@ static ssize_t hl_get_power_state(struct file *f, char __user *buf,
 
 	sprintf(tmp_buf,
 		"current power state: %d\n1 - D0\n2 - D3hot\n3 - Unknown\n", i);
-	return simple_read_from_buffer(buf, count, ppos, tmp_buf,
-			strlen(tmp_buf));
+	return simple_copy_to_iter(tmp_buf, &iocb->ki_pos, strlen(tmp_buf), to);
 }
 
-static ssize_t hl_set_power_state(struct file *f, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_set_power_state(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u32 value;
 	ssize_t rc;
 
-	rc = kstrtouint_from_user(buf, count, 10, &value);
+	rc = kstrtouint_from_iter(from, count, 10, &value);
 	if (rc)
 		return rc;
 
@@ -1397,16 +1389,15 @@ static ssize_t hl_set_power_state(struct file *f, const char __user *buf,
 	return count;
 }
 
-static ssize_t hl_i2c_data_read(struct file *f, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_i2c_data_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	char tmp_buf[32];
 	u64 val;
 	ssize_t rc;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return 0;
 
 	rc = hl_debugfs_i2c_read(hdev, entry->i2c_bus, entry->i2c_addr,
@@ -1419,21 +1410,20 @@ static ssize_t hl_i2c_data_read(struct file *f, char __user *buf,
 	}
 
 	sprintf(tmp_buf, "%#02llx\n", val);
-	rc = simple_read_from_buffer(buf, count, ppos, tmp_buf,
-			strlen(tmp_buf));
+	rc = simple_copy_to_iter(tmp_buf, &iocb->ki_pos, strlen(tmp_buf), to);
 
 	return rc;
 }
 
-static ssize_t hl_i2c_data_write(struct file *f, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_i2c_data_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u64 value;
 	ssize_t rc;
 
-	rc = kstrtou64_from_user(buf, count, 16, &value);
+	rc = kstrtou64_from_iter(from, count, 16, &value);
 	if (rc)
 		return rc;
 
@@ -1449,15 +1439,15 @@ static ssize_t hl_i2c_data_write(struct file *f, const char __user *buf,
 	return count;
 }
 
-static ssize_t hl_led0_write(struct file *f, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_led0_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u32 value;
 	ssize_t rc;
 
-	rc = kstrtouint_from_user(buf, count, 10, &value);
+	rc = kstrtouint_from_iter(from, count, 10, &value);
 	if (rc)
 		return rc;
 
@@ -1468,15 +1458,15 @@ static ssize_t hl_led0_write(struct file *f, const char __user *buf,
 	return count;
 }
 
-static ssize_t hl_led1_write(struct file *f, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_led1_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u32 value;
 	ssize_t rc;
 
-	rc = kstrtouint_from_user(buf, count, 10, &value);
+	rc = kstrtouint_from_iter(from, count, 10, &value);
 	if (rc)
 		return rc;
 
@@ -1487,15 +1477,15 @@ static ssize_t hl_led1_write(struct file *f, const char __user *buf,
 	return count;
 }
 
-static ssize_t hl_led2_write(struct file *f, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_led2_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u32 value;
 	ssize_t rc;
 
-	rc = kstrtouint_from_user(buf, count, 10, &value);
+	rc = kstrtouint_from_iter(from, count, 10, &value);
 	if (rc)
 		return rc;
 
@@ -1506,26 +1496,25 @@ static ssize_t hl_led2_write(struct file *f, const char __user *buf,
 	return count;
 }
 
-static ssize_t hl_device_read(struct file *f, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_device_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	static const char *help =
 		"Valid values: disable, enable, suspend, resume, cpu_timeout\n";
-	return simple_read_from_buffer(buf, count, ppos, help, strlen(help));
+	return simple_copy_to_iter(help, &iocb->ki_pos, strlen(help), to);
 }
 
-static ssize_t hl_device_write(struct file *f, const char __user *buf,
-				     size_t count, loff_t *ppos)
+static ssize_t hl_device_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	char data[30] = {0};
 
 	/* don't allow partial writes */
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
-	simple_write_to_buffer(data, 29, ppos, buf, count);
+	simple_copy_from_iter(data, &iocb->ki_pos, 29, from);
 
 	if (strncmp("disable", data, strlen("disable")) == 0) {
 		hdev->disabled = true;
@@ -1546,22 +1535,20 @@ static ssize_t hl_device_write(struct file *f, const char __user *buf,
 	return count;
 }
 
-static ssize_t hl_clk_gate_read(struct file *f, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_clk_gate_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	return 0;
 }
 
-static ssize_t hl_clk_gate_write(struct file *f, const char __user *buf,
-				     size_t count, loff_t *ppos)
+static ssize_t hl_clk_gate_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	return count;
 }
 
-static ssize_t hl_stop_on_err_read(struct file *f, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_stop_on_err_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	char tmp_buf[200];
 	ssize_t rc;
@@ -1569,20 +1556,19 @@ static ssize_t hl_stop_on_err_read(struct file *f, char __user *buf,
 	if (!hdev->asic_prop.configurable_stop_on_err)
 		return -EOPNOTSUPP;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return 0;
 
 	sprintf(tmp_buf, "%d\n", hdev->stop_on_err);
-	rc = simple_read_from_buffer(buf, strlen(tmp_buf) + 1, ppos, tmp_buf,
-			strlen(tmp_buf) + 1);
+	rc = simple_copy_to_iter(tmp_buf, &iocb->ki_pos, strlen(tmp_buf) + 1, to);
 
 	return rc;
 }
 
-static ssize_t hl_stop_on_err_write(struct file *f, const char __user *buf,
-				     size_t count, loff_t *ppos)
+static ssize_t hl_stop_on_err_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u32 value;
 	ssize_t rc;
@@ -1596,7 +1582,7 @@ static ssize_t hl_stop_on_err_write(struct file *f, const char __user *buf,
 		return 0;
 	}
 
-	rc = kstrtouint_from_user(buf, count, 10, &value);
+	rc = kstrtouint_from_iter(from, count, 10, &value);
 	if (rc)
 		return rc;
 
@@ -1607,10 +1593,9 @@ static ssize_t hl_stop_on_err_write(struct file *f, const char __user *buf,
 	return count;
 }
 
-static ssize_t hl_security_violations_read(struct file *f, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_security_violations_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 
 	hdev->asic_funcs->ack_protection_bits_errors(hdev);
@@ -1618,35 +1603,31 @@ static ssize_t hl_security_violations_read(struct file *f, char __user *buf,
 	return 0;
 }
 
-static ssize_t hl_state_dump_read(struct file *f, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_state_dump_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	ssize_t rc;
 
 	down_read(&entry->state_dump_sem);
 	if (!entry->state_dump[entry->state_dump_head])
 		rc = 0;
 	else
-		rc = simple_read_from_buffer(
-			buf, count, ppos,
-			entry->state_dump[entry->state_dump_head],
-			strlen(entry->state_dump[entry->state_dump_head]));
+		rc = simple_copy_to_iter(entry->state_dump[entry->state_dump_head], &iocb->ki_pos, strlen(entry->state_dump[entry->state_dump_head]), to);
 	up_read(&entry->state_dump_sem);
 
 	return rc;
 }
 
-static ssize_t hl_state_dump_write(struct file *f, const char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_state_dump_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	ssize_t rc;
 	u32 size;
 	int i;
 
-	rc = kstrtouint_from_user(buf, count, 10, &size);
+	rc = kstrtouint_from_iter(from, count, 10, &size);
 	if (rc)
 		return rc;
 
@@ -1672,34 +1653,32 @@ static ssize_t hl_state_dump_write(struct file *f, const char __user *buf,
 	return count;
 }
 
-static ssize_t hl_timeout_locked_read(struct file *f, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_timeout_locked_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	char tmp_buf[200];
 	ssize_t rc;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return 0;
 
 	sprintf(tmp_buf, "%d\n",
 		jiffies_to_msecs(hdev->timeout_jiffies) / 1000);
-	rc = simple_read_from_buffer(buf, strlen(tmp_buf) + 1, ppos, tmp_buf,
-			strlen(tmp_buf) + 1);
+	rc = simple_copy_to_iter(tmp_buf, &iocb->ki_pos, strlen(tmp_buf) + 1, to);
 
 	return rc;
 }
 
-static ssize_t hl_timeout_locked_write(struct file *f, const char __user *buf,
-				     size_t count, loff_t *ppos)
+static ssize_t hl_timeout_locked_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 	u32 value;
 	ssize_t rc;
 
-	rc = kstrtouint_from_user(buf, count, 10, &value);
+	rc = kstrtouint_from_iter(from, count, 10, &value);
 	if (rc)
 		return rc;
 
@@ -1711,10 +1690,9 @@ static ssize_t hl_timeout_locked_write(struct file *f, const char __user *buf,
 	return count;
 }
 
-static ssize_t hl_check_razwi_happened(struct file *f, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t hl_check_razwi_happened(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct hl_dbg_device_entry *entry = file_inode(f)->i_private;
+	struct hl_dbg_device_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct hl_device *hdev = entry->hdev;
 
 	hdev->asic_funcs->check_if_razwi_happened(hdev);
@@ -1724,96 +1702,96 @@ static ssize_t hl_check_razwi_happened(struct file *f, char __user *buf,
 
 static const struct file_operations hl_mem_scrub_fops = {
 	.owner = THIS_MODULE,
-	.write = hl_memory_scrub,
+	.write_iter = hl_memory_scrub,
 };
 
 static const struct file_operations hl_data32b_fops = {
 	.owner = THIS_MODULE,
-	.read = hl_data_read32,
-	.write = hl_data_write32
+	.read_iter = hl_data_read32,
+	.write_iter = hl_data_write32
 };
 
 static const struct file_operations hl_data64b_fops = {
 	.owner = THIS_MODULE,
-	.read = hl_data_read64,
-	.write = hl_data_write64
+	.read_iter = hl_data_read64,
+	.write_iter = hl_data_write64
 };
 
 static const struct file_operations hl_dma_size_fops = {
 	.owner = THIS_MODULE,
-	.write = hl_dma_size_write
+	.write_iter = hl_dma_size_write
 };
 
 static const struct file_operations hl_monitor_dump_fops = {
 	.owner = THIS_MODULE,
-	.write = hl_monitor_dump_trigger
+	.write_iter = hl_monitor_dump_trigger
 };
 
 static const struct file_operations hl_i2c_data_fops = {
 	.owner = THIS_MODULE,
-	.read = hl_i2c_data_read,
-	.write = hl_i2c_data_write
+	.read_iter = hl_i2c_data_read,
+	.write_iter = hl_i2c_data_write
 };
 
 static const struct file_operations hl_power_fops = {
 	.owner = THIS_MODULE,
-	.read = hl_get_power_state,
-	.write = hl_set_power_state
+	.read_iter = hl_get_power_state,
+	.write_iter = hl_set_power_state
 };
 
 static const struct file_operations hl_led0_fops = {
 	.owner = THIS_MODULE,
-	.write = hl_led0_write
+	.write_iter = hl_led0_write
 };
 
 static const struct file_operations hl_led1_fops = {
 	.owner = THIS_MODULE,
-	.write = hl_led1_write
+	.write_iter = hl_led1_write
 };
 
 static const struct file_operations hl_led2_fops = {
 	.owner = THIS_MODULE,
-	.write = hl_led2_write
+	.write_iter = hl_led2_write
 };
 
 static const struct file_operations hl_device_fops = {
 	.owner = THIS_MODULE,
-	.read = hl_device_read,
-	.write = hl_device_write
+	.read_iter = hl_device_read,
+	.write_iter = hl_device_write
 };
 
 static const struct file_operations hl_clk_gate_fops = {
 	.owner = THIS_MODULE,
-	.read = hl_clk_gate_read,
-	.write = hl_clk_gate_write
+	.read_iter = hl_clk_gate_read,
+	.write_iter = hl_clk_gate_write
 };
 
 static const struct file_operations hl_stop_on_err_fops = {
 	.owner = THIS_MODULE,
-	.read = hl_stop_on_err_read,
-	.write = hl_stop_on_err_write
+	.read_iter = hl_stop_on_err_read,
+	.write_iter = hl_stop_on_err_write
 };
 
 static const struct file_operations hl_security_violations_fops = {
 	.owner = THIS_MODULE,
-	.read = hl_security_violations_read
+	.read_iter = hl_security_violations_read
 };
 
 static const struct file_operations hl_state_dump_fops = {
 	.owner = THIS_MODULE,
-	.read = hl_state_dump_read,
-	.write = hl_state_dump_write
+	.read_iter = hl_state_dump_read,
+	.write_iter = hl_state_dump_write
 };
 
 static const struct file_operations hl_timeout_locked_fops = {
 	.owner = THIS_MODULE,
-	.read = hl_timeout_locked_read,
-	.write = hl_timeout_locked_write
+	.read_iter = hl_timeout_locked_read,
+	.write_iter = hl_timeout_locked_write
 };
 
 static const struct file_operations hl_razwi_check_fops = {
 	.owner = THIS_MODULE,
-	.read = hl_check_razwi_happened
+	.read_iter = hl_check_razwi_happened
 };
 
 static const struct hl_info_list hl_debugfs_list[] = {
@@ -1842,13 +1820,12 @@ static int hl_debugfs_open(struct inode *inode, struct file *file)
 	return single_open(file, node->info_ent->show, node);
 }
 
-static ssize_t hl_debugfs_write(struct file *file, const char __user *buf,
-		size_t count, loff_t *f_pos)
+static ssize_t hl_debugfs_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct hl_debugfs_entry *node = file->f_inode->i_private;
+	struct hl_debugfs_entry *node = iocb->ki_filp->f_inode->i_private;
 
 	if (node->info_ent->write)
-		return node->info_ent->write(file, buf, count, f_pos);
+		return node->info_ent->write(iocb, from);
 	else
 		return -EINVAL;
 
@@ -1857,8 +1834,8 @@ static ssize_t hl_debugfs_write(struct file *file, const char __user *buf,
 static const struct file_operations hl_debugfs_fops = {
 	.owner = THIS_MODULE,
 	.open = hl_debugfs_open,
-	.read = seq_read,
-	.write = hl_debugfs_write,
+	.read_iter = seq_read_iter,
+	.write_iter = hl_debugfs_write,
 	.llseek = seq_lseek,
 	.release = single_release,
 };

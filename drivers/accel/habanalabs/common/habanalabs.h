@@ -2364,8 +2364,7 @@ struct hl_fpriv {
 struct hl_info_list {
 	const char	*name;
 	int		(*show)(struct seq_file *s, void *data);
-	ssize_t		(*write)(struct file *file, const char __user *buf,
-				size_t count, loff_t *f_pos);
+	ssize_t		(*write)(struct kiocb *, struct iov_iter *);
 };
 
 /**

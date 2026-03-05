@@ -174,11 +174,12 @@ fw_dyndbg_fops_write(struct file *file, const char __user *user_buf, size_t size
 	ivpu_jsm_dyndbg_control(vdev, buffer, size);
 	return size;
 }
+FOPS_WRITE_ITER_HELPER(fw_dyndbg_fops_write);
 
 static const struct file_operations fw_dyndbg_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.write = fw_dyndbg_fops_write,
+	.write_iter = fw_dyndbg_fops_write_iter,
 };
 
 static int fw_log_show(struct seq_file *s, void *v)
@@ -195,10 +196,10 @@ static int fw_log_fops_open(struct inode *inode, struct file *file)
 	return single_open(file, fw_log_show, inode->i_private);
 }
 
-static ssize_t
-fw_log_fops_write(struct file *file, const char __user *user_buf, size_t size, loff_t *pos)
+static ssize_t fw_log_fops_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	size_t size = iov_iter_count(from);
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct ivpu_device *vdev = s->private;
 
 	if (!size)
@@ -211,21 +212,20 @@ fw_log_fops_write(struct file *file, const char __user *user_buf, size_t size, l
 static const struct file_operations fw_log_fops = {
 	.owner = THIS_MODULE,
 	.open = fw_log_fops_open,
-	.write = fw_log_fops_write,
-	.read = seq_read,
+	.write_iter = fw_log_fops_write,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
 
-static ssize_t
-fw_profiling_freq_fops_write(struct file *file, const char __user *user_buf,
-			     size_t size, loff_t *pos)
+static ssize_t fw_profiling_freq_fops_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ivpu_device *vdev = file->private_data;
+	size_t size = iov_iter_count(from);
+	struct ivpu_device *vdev = iocb->ki_filp->private_data;
 	bool enable;
 	int ret;
 
-	ret = kstrtobool_from_user(user_buf, size, &enable);
+	ret = kstrtobool_from_iter(from, size, &enable);
 	if (ret < 0)
 		return ret;
 
@@ -241,19 +241,18 @@ fw_profiling_freq_fops_write(struct file *file, const char __user *user_buf,
 static const struct file_operations fw_profiling_freq_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.write = fw_profiling_freq_fops_write,
+	.write_iter = fw_profiling_freq_fops_write,
 };
 
-static ssize_t
-fw_trace_destination_mask_fops_write(struct file *file, const char __user *user_buf,
-				     size_t size, loff_t *pos)
+static ssize_t fw_trace_destination_mask_fops_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ivpu_device *vdev = file->private_data;
+	size_t size = iov_iter_count(from);
+	struct ivpu_device *vdev = iocb->ki_filp->private_data;
 	struct ivpu_fw_info *fw = vdev->fw;
 	u32 trace_destination_mask;
 	int ret;
 
-	ret = kstrtou32_from_user(user_buf, size, 0, &trace_destination_mask);
+	ret = kstrtou32_from_iter(from, size, 0, &trace_destination_mask);
 	if (ret < 0)
 		return ret;
 
@@ -268,19 +267,18 @@ fw_trace_destination_mask_fops_write(struct file *file, const char __user *user_
 static const struct file_operations fw_trace_destination_mask_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.write = fw_trace_destination_mask_fops_write,
+	.write_iter = fw_trace_destination_mask_fops_write,
 };
 
-static ssize_t
-fw_trace_hw_comp_mask_fops_write(struct file *file, const char __user *user_buf,
-				 size_t size, loff_t *pos)
+static ssize_t fw_trace_hw_comp_mask_fops_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ivpu_device *vdev = file->private_data;
+	size_t size = iov_iter_count(from);
+	struct ivpu_device *vdev = iocb->ki_filp->private_data;
 	struct ivpu_fw_info *fw = vdev->fw;
 	u64 trace_hw_component_mask;
 	int ret;
 
-	ret = kstrtou64_from_user(user_buf, size, 0, &trace_hw_component_mask);
+	ret = kstrtou64_from_iter(from, size, 0, &trace_hw_component_mask);
 	if (ret < 0)
 		return ret;
 
@@ -295,18 +293,18 @@ fw_trace_hw_comp_mask_fops_write(struct file *file, const char __user *user_buf,
 static const struct file_operations fw_trace_hw_comp_mask_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.write = fw_trace_hw_comp_mask_fops_write,
+	.write_iter = fw_trace_hw_comp_mask_fops_write,
 };
 
-static ssize_t
-fw_trace_level_fops_write(struct file *file, const char __user *user_buf, size_t size, loff_t *pos)
+static ssize_t fw_trace_level_fops_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ivpu_device *vdev = file->private_data;
+	size_t size = iov_iter_count(from);
+	struct ivpu_device *vdev = iocb->ki_filp->private_data;
 	struct ivpu_fw_info *fw = vdev->fw;
 	u32 trace_level;
 	int ret;
 
-	ret = kstrtou32_from_user(user_buf, size, 0, &trace_level);
+	ret = kstrtou32_from_iter(from, size, 0, &trace_level);
 	if (ret < 0)
 		return ret;
 
@@ -321,13 +319,13 @@ fw_trace_level_fops_write(struct file *file, const char __user *user_buf, size_t
 static const struct file_operations fw_trace_level_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.write = fw_trace_level_fops_write,
+	.write_iter = fw_trace_level_fops_write,
 };
 
-static ssize_t
-ivpu_force_recovery_fn(struct file *file, const char __user *user_buf, size_t size, loff_t *pos)
+static ssize_t ivpu_force_recovery_fn(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ivpu_device *vdev = file->private_data;
+	size_t size = iov_iter_count(from);
+	struct ivpu_device *vdev = iocb->ki_filp->private_data;
 	int ret;
 
 	if (!size)
@@ -346,7 +344,7 @@ ivpu_force_recovery_fn(struct file *file, const char __user *user_buf, size_t si
 static const struct file_operations ivpu_force_recovery_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.write = ivpu_force_recovery_fn,
+	.write_iter = ivpu_force_recovery_fn,
 };
 
 static int ivpu_reset_engine_fn(void *data, u64 val)
@@ -428,10 +426,10 @@ static int priority_bands_fops_open(struct inode *inode, struct file *file)
 	return single_open(file, priority_bands_show, inode->i_private);
 }
 
-static ssize_t
-priority_bands_fops_write(struct file *file, const char __user *user_buf, size_t size, loff_t *pos)
+static ssize_t priority_bands_fops_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	size_t size = iov_iter_count(from);
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct ivpu_device *vdev = s->private;
 	char buf[64];
 	u32 grace_period;
@@ -443,7 +441,7 @@ priority_bands_fops_write(struct file *file, const char __user *user_buf, size_t
 	if (size >= sizeof(buf))
 		return -EINVAL;
 
-	ret = simple_write_to_buffer(buf, sizeof(buf) - 1, pos, user_buf, size);
+	ret = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf) - 1, from);
 	if (ret < 0)
 		return ret;
 
@@ -466,8 +464,8 @@ priority_bands_fops_write(struct file *file, const char __user *user_buf, size_t
 static const struct file_operations ivpu_hws_priority_bands_fops = {
 	.owner = THIS_MODULE,
 	.open = priority_bands_fops_open,
-	.write = priority_bands_fops_write,
-	.read = seq_read,
+	.write_iter = priority_bands_fops_write,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
