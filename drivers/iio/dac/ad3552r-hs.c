@@ -510,10 +510,9 @@ static int ad3552r_hs_reg_access(struct iio_dev *indio_dev, unsigned int reg,
 	return st->data->bus_reg_write(st->back, reg, writeval, 1);
 }
 
-static ssize_t ad3552r_hs_show_data_source(struct file *f, char __user *userbuf,
-					   size_t count, loff_t *ppos)
+static ssize_t ad3552r_hs_show_data_source(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ad3552r_hs_state *st = file_inode(f)->i_private;
+	struct ad3552r_hs_state *st = file_inode(iocb->ki_filp)->i_private;
 	enum iio_backend_data_source type;
 	int idx, ret;
 
@@ -534,16 +533,13 @@ static ssize_t ad3552r_hs_show_data_source(struct file *f, char __user *userbuf,
 		return -EINVAL;
 	}
 
-	return simple_read_from_buffer(userbuf, count, ppos,
-				       dbgfs_attr_source[idx],
-				       strlen(dbgfs_attr_source[idx]));
+	return simple_copy_to_iter(dbgfs_attr_source[idx], &iocb->ki_pos, strlen(dbgfs_attr_source[idx]), to);
 }
 
-static ssize_t ad3552r_hs_write_data_source(struct file *f,
-					    const char __user *userbuf,
-					    size_t count, loff_t *ppos)
+static ssize_t ad3552r_hs_write_data_source(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ad3552r_hs_state *st = file_inode(f)->i_private;
+	size_t count = iov_iter_count(from);
+	struct ad3552r_hs_state *st = file_inode(iocb->ki_filp)->i_private;
 	char buf[64];
 	int ret, source;
 
@@ -552,8 +548,7 @@ static ssize_t ad3552r_hs_write_data_source(struct file *f,
 	if (count >= sizeof(buf))
 		return -ENOSPC;
 
-	ret = simple_write_to_buffer(buf, sizeof(buf) - 1, ppos, userbuf,
-				     count);
+	ret = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf) - 1, from);
 	if (ret < 0)
 		return ret;
 
@@ -582,9 +577,7 @@ static ssize_t ad3552r_hs_write_data_source(struct file *f,
 	return count;
 }
 
-static ssize_t ad3552r_hs_show_data_source_avail(struct file *f,
-						 char __user *userbuf,
-						 size_t count, loff_t *ppos)
+static ssize_t ad3552r_hs_show_data_source_avail(struct kiocb *iocb, struct iov_iter *to)
 {
 	ssize_t len = 0;
 	char buf[128];
@@ -596,18 +589,18 @@ static ssize_t ad3552r_hs_show_data_source_avail(struct file *f,
 	}
 	buf[len - 1] = '\n';
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations ad3552r_hs_data_source_fops = {
 	.owner = THIS_MODULE,
-	.write = ad3552r_hs_write_data_source,
-	.read = ad3552r_hs_show_data_source,
+	.write_iter = ad3552r_hs_write_data_source,
+	.read_iter = ad3552r_hs_show_data_source,
 };
 
 static const struct file_operations ad3552r_hs_data_source_avail_fops = {
 	.owner = THIS_MODULE,
-	.read = ad3552r_hs_show_data_source_avail,
+	.read_iter = ad3552r_hs_show_data_source_avail,
 };
 
 static int ad3552r_hs_setup(struct ad3552r_hs_state *st)

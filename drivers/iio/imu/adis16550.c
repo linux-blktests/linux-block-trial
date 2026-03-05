@@ -289,11 +289,9 @@ static int adis16550_spi_write(struct adis *adis, const u32 reg,
 	return adis16550_spi_xfer(adis, reg, len, NULL, value);
 }
 
-static ssize_t adis16550_show_firmware_revision(struct file *file,
-						char __user *userbuf,
-						size_t count, loff_t *ppos)
+static ssize_t adis16550_show_firmware_revision(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct adis16550 *st = file->private_data;
+	struct adis16550 *st = iocb->ki_filp->private_data;
 	char buf[7];
 	size_t len;
 	u16 rev;
@@ -305,21 +303,19 @@ static ssize_t adis16550_show_firmware_revision(struct file *file,
 
 	len = scnprintf(buf, sizeof(buf), "%x.%x\n", rev >> 8, rev & 0xff);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations adis16550_firmware_revision_fops = {
 	.open = simple_open,
-	.read = adis16550_show_firmware_revision,
+	.read_iter = adis16550_show_firmware_revision,
 	.llseek = default_llseek,
 	.owner = THIS_MODULE,
 };
 
-static ssize_t adis16550_show_firmware_date(struct file *file,
-					    char __user *userbuf,
-					    size_t count, loff_t *ppos)
+static ssize_t adis16550_show_firmware_date(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct adis16550 *st = file->private_data;
+	struct adis16550 *st = iocb->ki_filp->private_data;
 	char buf[12];
 	size_t len;
 	u32 date;
@@ -332,12 +328,12 @@ static ssize_t adis16550_show_firmware_date(struct file *file,
 	len = scnprintf(buf, sizeof(buf), "%.2x-%.2x-%.4x\n", date & 0xff,
 			(date >> 8) & 0xff, date >> 16);
 
-	return simple_read_from_buffer(userbuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations adis16550_firmware_date_fops = {
 	.open = simple_open,
-	.read = adis16550_show_firmware_date,
+	.read_iter = adis16550_show_firmware_date,
 	.llseek = default_llseek,
 	.owner = THIS_MODULE,
 };
