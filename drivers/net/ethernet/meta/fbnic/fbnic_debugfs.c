@@ -310,7 +310,7 @@ static int fbnic_dbg_desc_open(struct inode *inode, struct file *file)
 static const struct file_operations fbnic_dbg_desc_fops = {
 	.owner		= THIS_MODULE,
 	.open		= fbnic_dbg_desc_open,
-	.read		= seq_read,
+	.read_iter		= seq_read_iter,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };

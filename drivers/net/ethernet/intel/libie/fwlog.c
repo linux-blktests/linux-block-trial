@@ -460,13 +460,14 @@ libie_debugfs_module_write(struct file *filp, const char __user *buf,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(libie_debugfs_module_write);
 
 static const struct file_operations libie_debugfs_module_fops = {
 	.owner = THIS_MODULE,
 	.open  = libie_debugfs_module_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.release = single_release,
-	.write = libie_debugfs_module_write,
+	.write_iter = libie_debugfs_module_write_iter,
 };
 
 /**
@@ -476,17 +477,15 @@ static const struct file_operations libie_debugfs_module_fops = {
  * @count: the size of the user's buffer
  * @ppos: file position offset
  */
-static ssize_t libie_debugfs_nr_messages_read(struct file *filp,
-					      char __user *buffer, size_t count,
-					      loff_t *ppos)
+static ssize_t libie_debugfs_nr_messages_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct libie_fwlog *fwlog = filp->private_data;
+	struct libie_fwlog *fwlog = iocb->ki_filp->private_data;
 	char buff[32] = {};
 
 	snprintf(buff, sizeof(buff), "%d\n",
 		 fwlog->cfg.log_resolution);
 
-	return simple_read_from_buffer(buffer, count, ppos, buff, strlen(buff));
+	return simple_copy_to_iter(buff, &iocb->ki_pos, strlen(buff), to);
 }
 
 /**
@@ -534,12 +533,13 @@ libie_debugfs_nr_messages_write(struct file *filp, const char __user *buf,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(libie_debugfs_nr_messages_write);
 
 static const struct file_operations libie_debugfs_nr_messages_fops = {
 	.owner = THIS_MODULE,
 	.open  = simple_open,
-	.read = libie_debugfs_nr_messages_read,
-	.write = libie_debugfs_nr_messages_write,
+	.read_iter = libie_debugfs_nr_messages_read,
+	.write_iter = libie_debugfs_nr_messages_write_iter,
 };
 
 /**
@@ -549,18 +549,16 @@ static const struct file_operations libie_debugfs_nr_messages_fops = {
  * @count: the size of the user's buffer
  * @ppos: file position offset
  */
-static ssize_t libie_debugfs_enable_read(struct file *filp,
-					 char __user *buffer, size_t count,
-					 loff_t *ppos)
+static ssize_t libie_debugfs_enable_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct libie_fwlog *fwlog = filp->private_data;
+	struct libie_fwlog *fwlog = iocb->ki_filp->private_data;
 	char buff[32] = {};
 
 	snprintf(buff, sizeof(buff), "%u\n",
 		 (u16)(fwlog->cfg.options &
 		 LIBIE_FWLOG_OPTION_IS_REGISTERED) >> 3);
 
-	return simple_read_from_buffer(buffer, count, ppos, buff, strlen(buff));
+	return simple_copy_to_iter(buff, &iocb->ki_pos, strlen(buff), to);
 }
 
 /**
@@ -627,12 +625,13 @@ enable_write_error:
 
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(libie_debugfs_enable_write);
 
 static const struct file_operations libie_debugfs_enable_fops = {
 	.owner = THIS_MODULE,
 	.open  = simple_open,
-	.read = libie_debugfs_enable_read,
-	.write = libie_debugfs_enable_write,
+	.read_iter = libie_debugfs_enable_read,
+	.write_iter = libie_debugfs_enable_write_iter,
 };
 
 /**
@@ -642,18 +641,16 @@ static const struct file_operations libie_debugfs_enable_fops = {
  * @count: the size of the user's buffer
  * @ppos: file position offset
  */
-static ssize_t libie_debugfs_log_size_read(struct file *filp,
-					   char __user *buffer, size_t count,
-					   loff_t *ppos)
+static ssize_t libie_debugfs_log_size_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct libie_fwlog *fwlog = filp->private_data;
+	struct libie_fwlog *fwlog = iocb->ki_filp->private_data;
 	char buff[32] = {};
 	int index;
 
 	index = fwlog->ring.index;
 	snprintf(buff, sizeof(buff), "%s\n", libie_fwlog_log_size[index]);
 
-	return simple_read_from_buffer(buffer, count, ppos, buff, strlen(buff));
+	return simple_copy_to_iter(buff, &iocb->ki_pos, strlen(buff), to);
 }
 
 /**
@@ -715,12 +712,13 @@ log_size_write_error:
 
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(libie_debugfs_log_size_write);
 
 static const struct file_operations libie_debugfs_log_size_fops = {
 	.owner = THIS_MODULE,
 	.open  = simple_open,
-	.read = libie_debugfs_log_size_read,
-	.write = libie_debugfs_log_size_write,
+	.read_iter = libie_debugfs_log_size_read,
+	.write_iter = libie_debugfs_log_size_write_iter,
 };
 
 /**
@@ -768,6 +766,7 @@ static ssize_t libie_debugfs_data_read(struct file *filp, char __user *buffer,
 
 	return data_copied;
 }
+FOPS_READ_ITER_HELPER(libie_debugfs_data_read);
 
 /**
  * libie_debugfs_data_write - write into 'data' file
@@ -776,16 +775,15 @@ static ssize_t libie_debugfs_data_read(struct file *filp, char __user *buffer,
  * @count: the length of the user's data
  * @ppos: file position offset
  */
-static ssize_t
-libie_debugfs_data_write(struct file *filp, const char __user *buf, size_t count,
-			 loff_t *ppos)
+static ssize_t libie_debugfs_data_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct libie_fwlog *fwlog = filp->private_data;
+	size_t count = iov_iter_count(from);
+	struct libie_fwlog *fwlog = iocb->ki_filp->private_data;
 	struct device *dev = &fwlog->pdev->dev;
 	ssize_t ret;
 
 	/* don't allow partial writes */
-	if (*ppos != 0)
+	if (iocb->ki_pos != 0)
 		return 0;
 
 	/* any value is allowed to clear the buffer so no need to even look at
@@ -819,8 +817,8 @@ nr_buffs_write_error:
 static const struct file_operations libie_debugfs_data_fops = {
 	.owner = THIS_MODULE,
 	.open  = simple_open,
-	.read = libie_debugfs_data_read,
-	.write = libie_debugfs_data_write,
+	.read_iter = libie_debugfs_data_read_iter,
+	.write_iter = libie_debugfs_data_write,
 };
 
 /**

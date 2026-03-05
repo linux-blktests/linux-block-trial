@@ -35,19 +35,17 @@ static void mana_adev_idx_free(int idx)
 	ida_free(&mana_adev_ida, idx);
 }
 
-static ssize_t mana_dbg_q_read(struct file *filp, char __user *buf, size_t count,
-			       loff_t *pos)
+static ssize_t mana_dbg_q_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct gdma_queue *gdma_q = filp->private_data;
+	struct gdma_queue *gdma_q = iocb->ki_filp->private_data;
 
-	return simple_read_from_buffer(buf, count, pos, gdma_q->queue_mem_ptr,
-				       gdma_q->queue_size);
+	return simple_copy_to_iter(gdma_q->queue_mem_ptr, &iocb->ki_pos, gdma_q->queue_size, to);
 }
 
 static const struct file_operations mana_dbg_q_fops = {
 	.owner  = THIS_MODULE,
 	.open   = simple_open,
-	.read   = mana_dbg_q_read,
+	.read_iter   = mana_dbg_q_read,
 };
 
 static bool mana_en_need_log(struct mana_port_context *apc, int err)
