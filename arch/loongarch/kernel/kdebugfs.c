@@ -39,12 +39,14 @@ static ssize_t sfb_read(struct file *file, char __user *buf, size_t count, loff_
 
 	return s;
 }
+FOPS_READ_ITER_HELPER(sfb_read);
 
-static ssize_t sfb_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+static ssize_t sfb_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	int state;
 
-	if (kstrtoint_from_user(buf, count, 10, &state))
+	if (kstrtoint_from_iter(from, count, 10, &state))
 		return -EFAULT;
 
 	switch (state) {
@@ -59,8 +61,8 @@ static ssize_t sfb_write(struct file *file, const char __user *buf, size_t count
 }
 
 static const struct file_operations sfb_fops = {
-	.read = sfb_read,
-	.write = sfb_write,
+	.read_iter = sfb_read_iter,
+	.write_iter = sfb_write,
 	.open = simple_open,
 	.llseek = default_llseek
 };
@@ -118,12 +120,14 @@ static ssize_t tso_read(struct file *file, char __user *buf, size_t count, loff_
 
 	return s;
 }
+FOPS_READ_ITER_HELPER(tso_read);
 
-static ssize_t tso_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
+static ssize_t tso_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	int state;
 
-	if (kstrtoint_from_user(buf, count, 10, &state))
+	if (kstrtoint_from_iter(from, count, 10, &state))
 		return -EFAULT;
 
 	switch (state) {
@@ -139,8 +143,8 @@ static ssize_t tso_write(struct file *file, const char __user *buf, size_t count
 }
 
 static const struct file_operations tso_fops = {
-	.read = tso_read,
-	.write = tso_write,
+	.read_iter = tso_read_iter,
+	.write_iter = tso_write,
 	.open = simple_open,
 	.llseek = default_llseek
 };
