@@ -445,18 +445,18 @@ static int u2_phy_params_open(struct inode *inode, struct file *file)
 	return single_open(file, u2_phy_params_show, inode->i_private);
 }
 
-static ssize_t u2_phy_params_write(struct file *file, const char __user *ubuf,
-				   size_t count, loff_t *ppos)
+static ssize_t u2_phy_params_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *sf = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct seq_file *sf = iocb->ki_filp->private_data;
 	struct mtk_phy_instance *inst = sf->private;
 	struct u2phy_banks *u2_banks = &inst->u2_banks;
 	void __iomem *com = u2_banks->com;
 	ssize_t rc;
 	u32 val;
-	int ret = debugfs_get_aux_num(file);
+	int ret = debugfs_get_aux_num(iocb->ki_filp);
 
-	rc = kstrtouint_from_user(ubuf, USER_BUF_LEN(count), 0, &val);
+	rc = kstrtouint_from_iter(from, USER_BUF_LEN(count), 0, &val);
 	if (rc)
 		return rc;
 
@@ -496,8 +496,8 @@ static ssize_t u2_phy_params_write(struct file *file, const char __user *ubuf,
 
 static const struct file_operations u2_phy_fops = {
 	.open = u2_phy_params_open,
-	.write = u2_phy_params_write,
-	.read = seq_read,
+	.write_iter = u2_phy_params_write,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
@@ -561,10 +561,10 @@ static int u3_phy_params_open(struct inode *inode, struct file *file)
 	return single_open(file, u3_phy_params_show, inode->i_private);
 }
 
-static ssize_t u3_phy_params_write(struct file *file, const char __user *ubuf,
-				   size_t count, loff_t *ppos)
+static ssize_t u3_phy_params_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *sf = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct seq_file *sf = iocb->ki_filp->private_data;
 	struct mtk_phy_instance *inst = sf->private;
 	struct u3phy_banks *u3_banks = &inst->u3_banks;
 	void __iomem *phyd = u3_banks->phyd;
@@ -572,7 +572,7 @@ static ssize_t u3_phy_params_write(struct file *file, const char __user *ubuf,
 	u32 val;
 	int ret = debugfs_get_aux_num(sf->file);
 
-	rc = kstrtouint_from_user(ubuf, USER_BUF_LEN(count), 0, &val);
+	rc = kstrtouint_from_iter(from, USER_BUF_LEN(count), 0, &val);
 	if (rc)
 		return rc;
 
@@ -606,8 +606,8 @@ static ssize_t u3_phy_params_write(struct file *file, const char __user *ubuf,
 
 static const struct file_operations u3_phy_fops = {
 	.open = u3_phy_params_open,
-	.write = u3_phy_params_write,
-	.read = seq_read,
+	.write_iter = u3_phy_params_write,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
