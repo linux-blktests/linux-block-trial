@@ -82,17 +82,16 @@ static inline const char *bnxt_re_qp_type_str(u8 type)
 	}
 }
 
-static ssize_t qp_info_read(struct file *filep,
-			    char __user *buffer,
-			    size_t count, loff_t *ppos)
+static ssize_t qp_info_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct bnxt_re_qp *qp = filep->private_data;
+	size_t count = iov_iter_count(to);
+	struct bnxt_re_qp *qp = iocb->ki_filp->private_data;
 	struct bnxt_qplib_qp *qplib_qp;
 	u32 rate_limit = 0;
 	char *buf;
 	int len;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return 0;
 
 	qplib_qp = &qp->qplib_qp;
@@ -122,7 +121,7 @@ static ssize_t qp_info_read(struct file *filep,
 		kfree(buf);
 		return -ENOSPC;
 	}
-	len = simple_read_from_buffer(buffer, count, ppos, buf, strlen(buf));
+	len = simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 	kfree(buf);
 	return len;
 }
@@ -130,7 +129,7 @@ static ssize_t qp_info_read(struct file *filep,
 static const struct file_operations debugfs_qp_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = qp_info_read,
+	.read_iter = qp_info_read,
 };
 
 void bnxt_re_debug_add_qpinfo(struct bnxt_re_dev *rdev, struct bnxt_re_qp *qp)
@@ -199,10 +198,9 @@ static int map_cc_config_offset_gen0_ext0(u32 offset, struct bnxt_qplib_cc_param
 	return 0;
 }
 
-static ssize_t bnxt_re_cc_config_get(struct file *filp, char __user *buffer,
-				     size_t usr_buf_len, loff_t *ppos)
+static ssize_t bnxt_re_cc_config_get(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct bnxt_re_cc_param *dbg_cc_param = filp->private_data;
+	struct bnxt_re_cc_param *dbg_cc_param = iocb->ki_filp->private_data;
 	struct bnxt_re_dev *rdev = dbg_cc_param->rdev;
 	struct bnxt_qplib_cc_param ccparam = {};
 	u32 offset = dbg_cc_param->offset;
@@ -222,7 +220,7 @@ static ssize_t bnxt_re_cc_config_get(struct file *filp, char __user *buffer,
 	if (rc < 0)
 		return rc;
 
-	return simple_read_from_buffer(buffer, usr_buf_len, ppos, (u8 *)(buf), rc);
+	return simple_copy_to_iter((u8 *)(buf), &iocb->ki_pos, rc, to);
 }
 
 static int bnxt_re_fill_gen0_ext0(struct bnxt_qplib_cc_param *ccparam, u32 offset, u32 val)
@@ -325,12 +323,13 @@ static ssize_t bnxt_re_cc_config_set(struct file *filp, const char __user *buffe
 	rc = bnxt_re_configure_cc(rdev, cc_gen, offset, val);
 	return rc ? rc : count;
 }
+FOPS_WRITE_ITER_HELPER(bnxt_re_cc_config_set);
 
 static const struct file_operations bnxt_re_cc_config_ops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = bnxt_re_cc_config_get,
-	.write = bnxt_re_cc_config_set,
+	.read_iter = bnxt_re_cc_config_get,
+	.write_iter = bnxt_re_cc_config_set_iter,
 };
 
 static int info_show(struct seq_file *m, void *unused)
