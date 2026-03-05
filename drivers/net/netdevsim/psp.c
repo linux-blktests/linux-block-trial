@@ -216,11 +216,10 @@ void nsim_psp_uninit(struct netdevsim *ns)
 	WARN_ON(ns->psp.assoc_cnt);
 }
 
-static ssize_t
-nsim_psp_rereg_write(struct file *file, const char __user *data, size_t count,
-		     loff_t *ppos)
+static ssize_t nsim_psp_rereg_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct netdevsim *ns = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct netdevsim *ns = iocb->ki_filp->private_data;
 	int err;
 
 	nsim_psp_uninit(ns);
@@ -233,7 +232,7 @@ nsim_psp_rereg_write(struct file *file, const char __user *data, size_t count,
 
 static const struct file_operations nsim_psp_rereg_fops = {
 	.open = simple_open,
-	.write = nsim_psp_rereg_write,
+	.write_iter = nsim_psp_rereg_write,
 	.llseek = generic_file_llseek,
 	.owner = THIS_MODULE,
 };
