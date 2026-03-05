@@ -1447,6 +1447,7 @@ out:
 	kfree(buf);
 	return ret ? ret : count;
 }
+FOPS_WRITE_ITER_HELPER(zloop_ctl_write);
 
 static int zloop_ctl_show(struct seq_file *seq_file, void *private)
 {
@@ -1487,8 +1488,8 @@ static const struct file_operations zloop_ctl_fops = {
 	.owner		= THIS_MODULE,
 	.open		= zloop_ctl_open,
 	.release	= zloop_ctl_release,
-	.write		= zloop_ctl_write,
-	.read		= seq_read,
+	.write_iter		= zloop_ctl_write_iter,
+	.read_iter		= seq_read_iter,
 };
 
 static struct miscdevice zloop_misc = {
