@@ -629,11 +629,9 @@ void ath11k_cfr_update_unassoc_pool(struct ath11k *ar,
 	}
 }
 
-static ssize_t ath11k_read_file_enable_cfr(struct file *file,
-					   char __user *user_buf,
-					   size_t count, loff_t *ppos)
+static ssize_t ath11k_read_file_enable_cfr(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath11k *ar = file->private_data;
+	struct ath11k *ar = iocb->ki_filp->private_data;
 	char buf[32] = {};
 	size_t len;
 
@@ -641,18 +639,17 @@ static ssize_t ath11k_read_file_enable_cfr(struct file *file,
 	len = scnprintf(buf, sizeof(buf), "%d\n", ar->cfr_enabled);
 	mutex_unlock(&ar->conf_mutex);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
-static ssize_t ath11k_write_file_enable_cfr(struct file *file,
-					    const char __user *ubuf,
-					    size_t count, loff_t *ppos)
+static ssize_t ath11k_write_file_enable_cfr(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath11k *ar = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct ath11k *ar = iocb->ki_filp->private_data;
 	u32 enable_cfr;
 	int ret;
 
-	if (kstrtouint_from_user(ubuf, count, 0, &enable_cfr))
+	if (kstrtouint_from_iter(from, count, 0, &enable_cfr))
 		return -EINVAL;
 
 	guard(mutex)(&ar->conf_mutex);
@@ -680,18 +677,17 @@ static ssize_t ath11k_write_file_enable_cfr(struct file *file,
 }
 
 static const struct file_operations fops_enable_cfr = {
-	.read = ath11k_read_file_enable_cfr,
-	.write = ath11k_write_file_enable_cfr,
+	.read_iter = ath11k_read_file_enable_cfr,
+	.write_iter = ath11k_write_file_enable_cfr,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
 };
 
-static ssize_t ath11k_write_file_cfr_unassoc(struct file *file,
-					     const char __user *ubuf,
-					     size_t count, loff_t *ppos)
+static ssize_t ath11k_write_file_cfr_unassoc(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ath11k *ar = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct ath11k *ar = iocb->ki_filp->private_data;
 	struct ath11k_cfr *cfr = &ar->cfr;
 	struct cfr_unassoc_pool_entry *entry;
 	char buf[64] = {};
@@ -701,7 +697,7 @@ static ssize_t ath11k_write_file_cfr_unassoc(struct file *file,
 	int available_idx = -1;
 	int ret, i;
 
-	simple_write_to_buffer(buf, sizeof(buf) - 1, ppos, ubuf, count);
+	simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf) - 1, from);
 
 	guard(mutex)(&ar->conf_mutex);
 	guard(spinlock_bh)(&cfr->lock);
@@ -769,11 +765,9 @@ static ssize_t ath11k_write_file_cfr_unassoc(struct file *file,
 	return count;
 }
 
-static ssize_t ath11k_read_file_cfr_unassoc(struct file *file,
-					    char __user *ubuf,
-					    size_t count, loff_t *ppos)
+static ssize_t ath11k_read_file_cfr_unassoc(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct ath11k *ar = file->private_data;
+	struct ath11k *ar = iocb->ki_filp->private_data;
 	struct ath11k_cfr *cfr = &ar->cfr;
 	struct cfr_unassoc_pool_entry *entry;
 	char buf[512] = {};
@@ -791,12 +785,12 @@ static ssize_t ath11k_read_file_cfr_unassoc(struct file *file,
 
 	spin_unlock_bh(&cfr->lock);
 
-	return simple_read_from_buffer(ubuf, count, ppos, buf, len);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations fops_configure_cfr_unassoc = {
-	.write = ath11k_write_file_cfr_unassoc,
-	.read = ath11k_read_file_cfr_unassoc,
+	.write_iter = ath11k_write_file_cfr_unassoc,
+	.read_iter = ath11k_read_file_cfr_unassoc,
 	.open = simple_open,
 	.owner = THIS_MODULE,
 	.llseek = default_llseek,
