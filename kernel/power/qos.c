@@ -464,28 +464,27 @@ static int cpu_wakeup_latency_qos_release(struct inode *inode,
 	return 0;
 }
 
-static ssize_t cpu_wakeup_latency_qos_read(struct file *filp, char __user *buf,
-					   size_t count, loff_t *f_pos)
+static ssize_t cpu_wakeup_latency_qos_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	s32 value = pm_qos_read_value(&cpu_wakeup_latency_constraints);
 
-	return simple_read_from_buffer(buf, count, f_pos, &value, sizeof(s32));
+	return simple_copy_to_iter(&value, &iocb->ki_pos, sizeof(s32), to);
 }
 
-static ssize_t cpu_wakeup_latency_qos_write(struct file *filp,
-					    const char __user *buf,
-					    size_t count, loff_t *f_pos)
+static ssize_t cpu_wakeup_latency_qos_write(struct kiocb *iocb,
+					    struct iov_iter *from)
 {
-	struct pm_qos_request *req = filp->private_data;
+	struct pm_qos_request *req = iocb->ki_filp->private_data;
+	size_t count = iov_iter_count(from);
 	s32 value;
 
 	if (count == sizeof(s32)) {
-		if (copy_from_user(&value, buf, sizeof(s32)))
+		if (!copy_from_iter_full(&value, sizeof(s32), from))
 			return -EFAULT;
 	} else {
 		int ret;
 
-		ret = kstrtos32_from_user(buf, count, 16, &value);
+		ret = kstrtos32_from_iter(from, count, 16, &value);
 		if (ret)
 			return ret;
 	}
@@ -501,8 +500,8 @@ static ssize_t cpu_wakeup_latency_qos_write(struct file *filp,
 static const struct file_operations cpu_wakeup_latency_qos_fops = {
 	.open = cpu_wakeup_latency_qos_open,
 	.release = cpu_wakeup_latency_qos_release,
-	.read = cpu_wakeup_latency_qos_read,
-	.write = cpu_wakeup_latency_qos_write,
+	.read_iter = cpu_wakeup_latency_qos_read,
+	.write_iter = cpu_wakeup_latency_qos_write,
 	.llseek = noop_llseek,
 };
 
