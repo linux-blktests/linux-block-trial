@@ -254,10 +254,11 @@ static ssize_t ptc_temperature_write(struct file *file, const char __user *data,
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(ptc_temperature_write);
 
 static const struct file_operations ptc_fops = {
 	.open = simple_open,
-	.write = ptc_temperature_write,
+	.write_iter = ptc_temperature_write_iter,
 	.llseek = generic_file_llseek,
 };
 
