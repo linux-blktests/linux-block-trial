@@ -613,6 +613,7 @@ static ssize_t xe_eu_stall_stream_read(struct file *file, char __user *buf,
 
 	return ret;
 }
+FOPS_READ_ITER_HELPER(xe_eu_stall_stream_read);
 
 static void xe_eu_stall_stream_free(struct xe_eu_stall_data_stream *stream)
 {
@@ -885,7 +886,7 @@ static const struct file_operations fops_eu_stall = {
 	.llseek		= noop_llseek,
 	.release	= xe_eu_stall_stream_close,
 	.poll		= xe_eu_stall_stream_poll,
-	.read		= xe_eu_stall_stream_read,
+	.read_iter		= xe_eu_stall_stream_read_iter,
 	.unlocked_ioctl = xe_eu_stall_stream_ioctl,
 	.compat_ioctl   = xe_eu_stall_stream_ioctl,
 };

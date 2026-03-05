@@ -115,7 +115,6 @@ FOPS_READ_ITER_HELPER(amdgpu_fw_attestation_debugfs_read);
 static const struct file_operations amdgpu_fw_attestation_debugfs_ops = {
 	.owner = THIS_MODULE,
 	.read_iter = amdgpu_fw_attestation_debugfs_read_iter,
-	.write = NULL,
 	.llseek = default_llseek
 };
 

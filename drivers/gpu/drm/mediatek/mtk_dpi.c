@@ -956,6 +956,7 @@ static ssize_t mtk_dpi_debug_tp_write(struct file *file, const char __user *ubuf
 	mtk_dpi_test_pattern_en((struct mtk_dpi *)m->private, type, en);
 	return len;
 }
+FOPS_WRITE_ITER_HELPER(mtk_dpi_debug_tp_write);
 
 static int mtk_dpi_debug_tp_open(struct inode *inode, struct file *file)
 {
@@ -965,8 +966,8 @@ static int mtk_dpi_debug_tp_open(struct inode *inode, struct file *file)
 static const struct file_operations mtk_dpi_debug_tp_fops = {
 	.owner = THIS_MODULE,
 	.open = mtk_dpi_debug_tp_open,
-	.read = seq_read,
-	.write = mtk_dpi_debug_tp_write,
+	.read_iter = seq_read_iter,
+	.write_iter = mtk_dpi_debug_tp_write_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
 };

@@ -2801,11 +2801,10 @@ out:
 }
 DEFINE_SHOW_ATTRIBUTE(intel_hdcp_sink_capability);
 
-static ssize_t intel_hdcp_force_14_write(struct file *file,
-					 const char __user *ubuf,
-					 size_t len, loff_t *offp)
+static ssize_t intel_hdcp_force_14_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	size_t len = iov_iter_count(from);
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct intel_connector *connector = m->private;
 	struct intel_hdcp *hdcp = &connector->hdcp;
 	bool force_hdcp14 = false;
@@ -2814,12 +2813,12 @@ static ssize_t intel_hdcp_force_14_write(struct file *file,
 	if (len == 0)
 		return 0;
 
-	ret = kstrtobool_from_user(ubuf, len, &force_hdcp14);
+	ret = kstrtobool_from_iter(from, len, &force_hdcp14);
 	if (ret < 0)
 		return ret;
 
 	hdcp->force_hdcp14 = force_hdcp14;
-	*offp += len;
+	iocb->ki_pos += len;
 
 	return len;
 }
@@ -2864,10 +2863,10 @@ static int intel_hdcp_force_14_open(struct inode *inode,
 static const struct file_operations intel_hdcp_force_14_fops = {
 	.owner = THIS_MODULE,
 	.open = intel_hdcp_force_14_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = intel_hdcp_force_14_write
+	.write_iter = intel_hdcp_force_14_write
 };
 
 void intel_hdcp_connector_debugfs_add(struct intel_connector *connector)

@@ -312,7 +312,6 @@ FOPS_READ_ITER_HELPER(amdgpu_ras_debugfs_read);
 static const struct file_operations amdgpu_ras_debugfs_ops = {
 	.owner = THIS_MODULE,
 	.read_iter = amdgpu_ras_debugfs_read_iter,
-	.write = NULL,
 	.llseek = default_llseek
 };
 
@@ -668,14 +667,12 @@ FOPS_WRITE_ITER_HELPER(amdgpu_ras_debugfs_eeprom_write);
 
 static const struct file_operations amdgpu_ras_debugfs_ctrl_ops = {
 	.owner = THIS_MODULE,
-	.read = NULL,
 	.write_iter = amdgpu_ras_debugfs_ctrl_write_iter,
 	.llseek = default_llseek
 };
 
 static const struct file_operations amdgpu_ras_debugfs_eeprom_ops = {
 	.owner = THIS_MODULE,
-	.read = NULL,
 	.write_iter = amdgpu_ras_debugfs_eeprom_write_iter,
 	.llseek = default_llseek
 };

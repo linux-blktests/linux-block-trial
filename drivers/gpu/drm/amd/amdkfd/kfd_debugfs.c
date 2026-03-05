@@ -124,21 +124,20 @@ void kfd_debugfs_fini(void)
 	debugfs_remove_recursive(debugfs_root);
 }
 
-static ssize_t kfd_debugfs_pasid_read(struct file *file, char __user *buf,
-				      size_t count, loff_t *ppos)
+static ssize_t kfd_debugfs_pasid_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct kfd_process_device *pdd = file_inode(file)->i_private;
+	struct kfd_process_device *pdd = file_inode(iocb->ki_filp)->i_private;
 	char tmp[32];
 	int len;
 
 	len = snprintf(tmp, sizeof(tmp), "%u\n", pdd->pasid);
 
-	return simple_read_from_buffer(buf, count, ppos, tmp, len);
+	return simple_copy_to_iter(tmp, &iocb->ki_pos, len, to);
 }
 
 static const struct file_operations kfd_debugfs_pasid_fops = {
 	.owner = THIS_MODULE,
-	.read = kfd_debugfs_pasid_read,
+	.read_iter = kfd_debugfs_pasid_read,
 };
 
 void kfd_debugfs_add_process(struct kfd_process *p)

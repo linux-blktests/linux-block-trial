@@ -1272,18 +1272,17 @@ static int mtk_hdmi_v2_debug_abist_show(struct seq_file *m, void *arg)
 	return 0;
 }
 
-static ssize_t mtk_hdmi_v2_debug_abist_write(struct file *file,
-					     const char __user *ubuf,
-					     size_t len, loff_t *offp)
+static ssize_t mtk_hdmi_v2_debug_abist_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	size_t len = iov_iter_count(from);
+	struct seq_file *m = iocb->ki_filp->private_data;
 	int ret;
 	u32 en;
 
-	if (!m || !m->private || *offp)
+	if (!m || !m->private || iocb->ki_pos)
 		return -EINVAL;
 
-	ret = kstrtouint_from_user(ubuf, len, 0, &en);
+	ret = kstrtouint_from_iter(from, len, 0, &en);
 	if (ret)
 		return ret;
 
@@ -1302,8 +1301,8 @@ static int mtk_hdmi_v2_debug_abist_open(struct inode *inode, struct file *file)
 static const struct file_operations mtk_hdmi_debug_abist_fops = {
 	.owner = THIS_MODULE,
 	.open = mtk_hdmi_v2_debug_abist_open,
-	.read = seq_read,
-	.write = mtk_hdmi_v2_debug_abist_write,
+	.read_iter = seq_read_iter,
+	.write_iter = mtk_hdmi_v2_debug_abist_write,
 	.llseek = seq_lseek,
 	.release = single_release,
 };

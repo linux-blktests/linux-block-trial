@@ -1867,10 +1867,9 @@ static int zynqmp_dp_test_setup(struct zynqmp_dp *dp)
 			       dp->test.enhanced, dp->test.downspread);
 }
 
-static ssize_t zynqmp_dp_pattern_read(struct file *file, char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t zynqmp_dp_pattern_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct zynqmp_dp *dp = file->private_data;
+	struct zynqmp_dp *dp = iocb->ki_filp->private_data;
 	char buf[16];
 	ssize_t ret;
 
@@ -1878,20 +1877,17 @@ static ssize_t zynqmp_dp_pattern_read(struct file *file, char __user *user_buf,
 		ret = snprintf(buf, sizeof(buf), "%s\n",
 			       test_pattern_str[dp->test.pattern]);
 
-	return simple_read_from_buffer(user_buf, count, ppos, buf, ret);
+	return simple_copy_to_iter(buf, &iocb->ki_pos, ret, to);
 }
 
-static ssize_t zynqmp_dp_pattern_write(struct file *file,
-				       const char __user *user_buf,
-				       size_t count, loff_t *ppos)
+static ssize_t zynqmp_dp_pattern_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct zynqmp_dp *dp = file->private_data;
+	struct zynqmp_dp *dp = iocb->ki_filp->private_data;
 	char buf[16];
 	ssize_t ret;
 	int pattern;
 
-	ret = simple_write_to_buffer(buf, sizeof(buf) - 1, ppos, user_buf,
-				     count);
+	ret = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf) - 1, from);
 	if (ret < 0)
 		return ret;
 	buf[ret] = '\0';
@@ -1911,8 +1907,8 @@ static ssize_t zynqmp_dp_pattern_write(struct file *file,
 }
 
 static const struct file_operations fops_zynqmp_dp_pattern = {
-	.read = zynqmp_dp_pattern_read,
-	.write = zynqmp_dp_pattern_write,
+	.read_iter = zynqmp_dp_pattern_read,
+	.write_iter = zynqmp_dp_pattern_write,
 	.open = simple_open,
 	.llseek = noop_llseek,
 };
@@ -2009,28 +2005,24 @@ static int zynqmp_dp_active_set(void *data, u64 val)
 DEFINE_DEBUGFS_ATTRIBUTE(fops_zynqmp_dp_active, zynqmp_dp_active_get,
 			 zynqmp_dp_active_set, "%llu\n");
 
-static ssize_t zynqmp_dp_custom_read(struct file *file, char __user *user_buf,
-				     size_t count, loff_t *ppos)
+static ssize_t zynqmp_dp_custom_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct zynqmp_dp *dp = file->private_data;
+	struct zynqmp_dp *dp = iocb->ki_filp->private_data;
 	ssize_t ret;
 
 	mutex_lock(&dp->lock);
-	ret = simple_read_from_buffer(user_buf, count, ppos, &dp->test.custom,
-				      sizeof(dp->test.custom));
+	ret = simple_copy_to_iter(&dp->test.custom, &iocb->ki_pos, sizeof(dp->test.custom), to);
 	mutex_unlock(&dp->lock);
 	return ret;
 }
 
-static ssize_t zynqmp_dp_custom_write(struct file *file,
-				      const char __user *user_buf,
-				      size_t count, loff_t *ppos)
+static ssize_t zynqmp_dp_custom_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct zynqmp_dp *dp = file->private_data;
+	struct zynqmp_dp *dp = iocb->ki_filp->private_data;
 	ssize_t ret;
 	char buf[sizeof(dp->test.custom)];
 
-	ret = simple_write_to_buffer(buf, sizeof(buf), ppos, user_buf, count);
+	ret = simple_copy_from_iter(buf, &iocb->ki_pos, sizeof(buf), from);
 	if (ret < 0)
 		return ret;
 
@@ -2044,8 +2036,8 @@ static ssize_t zynqmp_dp_custom_write(struct file *file,
 }
 
 static const struct file_operations fops_zynqmp_dp_custom = {
-	.read = zynqmp_dp_custom_read,
-	.write = zynqmp_dp_custom_write,
+	.read_iter = zynqmp_dp_custom_read,
+	.write_iter = zynqmp_dp_custom_write,
 	.open = simple_open,
 	.llseek = noop_llseek,
 };

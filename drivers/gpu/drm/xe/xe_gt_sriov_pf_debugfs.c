@@ -222,15 +222,15 @@ static int sched_groups_open(struct inode *inode, struct file *file)
 	return single_open(file, sched_groups_info, inode->i_private);
 }
 
-static ssize_t sched_groups_write(struct file *file, const char __user *ubuf,
-				  size_t size, loff_t *pos)
+static ssize_t sched_groups_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct xe_gt *gt = extract_gt(file_inode(file)->i_private);
+	size_t size = iov_iter_count(from);
+	struct xe_gt *gt = extract_gt(file_inode(iocb->ki_filp)->i_private);
 	enum xe_sriov_sched_group_modes mode;
 	char name[32];
 	int ret;
 
-	if (*pos)
+	if (iocb->ki_pos)
 		return -ESPIPE;
 
 	if (!size)
@@ -239,7 +239,7 @@ static ssize_t sched_groups_write(struct file *file, const char __user *ubuf,
 	if (size > sizeof(name) - 1)
 		return -EINVAL;
 
-	ret = simple_write_to_buffer(name, sizeof(name) - 1, pos, ubuf, size);
+	ret = simple_copy_from_iter(name, &iocb->ki_pos, sizeof(name) - 1, from);
 	if (ret < 0)
 		return ret;
 	name[ret] = '\0';
@@ -262,8 +262,8 @@ static ssize_t sched_groups_write(struct file *file, const char __user *ubuf,
 static const struct file_operations sched_groups_fops = {
 	.owner = THIS_MODULE,
 	.open = sched_groups_open,
-	.read = seq_read,
-	.write = sched_groups_write,
+	.read_iter = seq_read_iter,
+	.write_iter = sched_groups_write,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
@@ -363,10 +363,9 @@ static const struct file_operations sched_groups_##CONFIG##_fops = {		\
 DEFINE_SRIOV_GT_GRP_CFG_DEBUGFS_ATTRIBUTE(exec_quantums);
 DEFINE_SRIOV_GT_GRP_CFG_DEBUGFS_ATTRIBUTE(preempt_timeouts);
 
-static ssize_t sched_group_engines_read(struct file *file, char __user *buf,
-					size_t count, loff_t *ppos)
+static ssize_t sched_group_engines_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct dentry *dent = file_dentry(file);
+	struct dentry *dent = file_dentry(iocb->ki_filp);
 	struct xe_gt *gt = extract_gt(dent->d_parent->d_parent);
 	struct xe_gt_sriov_scheduler_groups *info = &gt->sriov.pf.policy.guc.sched_groups;
 	struct guc_sched_group *groups = info->modes[info->current_mode].groups;
@@ -391,13 +390,13 @@ static ssize_t sched_group_engines_read(struct file *file, char __user *buf,
 		strlcat(engines, "\n", sizeof(engines));
 	}
 
-	return simple_read_from_buffer(buf, count, ppos, engines, strlen(engines));
+	return simple_copy_to_iter(engines, &iocb->ki_pos, strlen(engines), to);
 }
 
 static const struct file_operations sched_group_engines_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
-	.read = sched_group_engines_read,
+	.read_iter = sched_group_engines_read,
 	.llseek = default_llseek,
 };
 
@@ -725,12 +724,11 @@ static int config_blob_open(struct inode *inode, struct file *file)
 	return nonseekable_open(inode, file);
 }
 
-static ssize_t config_blob_read(struct file *file, char __user *buf,
-				size_t count, loff_t *pos)
+static ssize_t config_blob_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct config_blob_data *cbd = file->private_data;
+	struct config_blob_data *cbd = iocb->ki_filp->private_data;
 
-	return simple_read_from_buffer(buf, count, pos, cbd->blob, cbd->size);
+	return simple_copy_to_iter(cbd->blob, &iocb->ki_pos, cbd->size, to);
 }
 
 static ssize_t config_blob_write(struct file *file, const char __user *buf,
@@ -766,6 +764,7 @@ static ssize_t config_blob_write(struct file *file, const char __user *buf,
 	kfree(tmp);
 	return ret;
 }
+FOPS_WRITE_ITER_HELPER(config_blob_write);
 
 static int config_blob_release(struct inode *inode, struct file *file)
 {
@@ -776,8 +775,8 @@ static int config_blob_release(struct inode *inode, struct file *file)
 static const struct file_operations config_blob_ops = {
 	.owner		= THIS_MODULE,
 	.open		= config_blob_open,
-	.read		= config_blob_read,
-	.write		= config_blob_write,
+	.read_iter		= config_blob_read,
+	.write_iter		= config_blob_write_iter,
 	.release	= config_blob_release,
 };
 

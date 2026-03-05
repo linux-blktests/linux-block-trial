@@ -61,6 +61,7 @@ static ssize_t hibmc_control_write(struct file *file, const char __user *user_bu
 
 	return count;
 }
+FOPS_WRITE_ITER_HELPER(hibmc_control_write);
 
 static int hibmc_dp_dbgfs_show(struct seq_file *m, void *arg)
 {
@@ -86,8 +87,8 @@ static int hibmc_open(struct inode *inode, struct file *filp)
 
 static const struct file_operations hibmc_dbg_fops = {
 	.owner   = THIS_MODULE,
-	.write   = hibmc_control_write,
-	.read    = seq_read,
+	.write_iter   = hibmc_control_write_iter,
+	.read_iter    = seq_read_iter,
 	.open    = hibmc_open,
 	.llseek  = seq_lseek,
 	.release = single_release,

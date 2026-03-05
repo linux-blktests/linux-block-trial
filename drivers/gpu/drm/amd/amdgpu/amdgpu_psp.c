@@ -4416,19 +4416,15 @@ rel_trip:
 	return ret;
 }
 
-static ssize_t psp_read_spirom_debugfs_read(struct file *filp, char __user *buf, size_t size,
-					    loff_t *pos)
+static ssize_t psp_read_spirom_debugfs_read(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct amdgpu_device *adev = filp->f_inode->i_private;
+	struct amdgpu_device *adev = iocb->ki_filp->f_inode->i_private;
 	struct spirom_bo *bo_triplet = adev->psp.spirom_dump_trip;
 
 	if (!bo_triplet)
 		return -EINVAL;
 
-	return simple_read_from_buffer(buf,
-				       size,
-				       pos, bo_triplet->cpu_addr,
-				       AMD_VBIOS_FILE_MAX_SIZE_B * 2);
+	return simple_copy_to_iter(bo_triplet->cpu_addr, &iocb->ki_pos, AMD_VBIOS_FILE_MAX_SIZE_B * 2, to);
 }
 
 static int psp_read_spirom_debugfs_release(struct inode *inode, struct file *filp)
@@ -4449,7 +4445,7 @@ static int psp_read_spirom_debugfs_release(struct inode *inode, struct file *fil
 static const struct file_operations psp_dump_spirom_debugfs_ops = {
 	.owner = THIS_MODULE,
 	.open = psp_read_spirom_debugfs_open,
-	.read = psp_read_spirom_debugfs_read,
+	.read_iter = psp_read_spirom_debugfs_read,
 	.release = psp_read_spirom_debugfs_release,
 	.llseek = default_llseek,
 };

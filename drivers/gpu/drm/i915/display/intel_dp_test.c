@@ -604,6 +604,7 @@ static ssize_t i915_displayport_test_active_write(struct file *file,
 	*offp += len;
 	return len;
 }
+FOPS_WRITE_ITER_HELPER(i915_displayport_test_active_write);
 
 static int i915_displayport_test_active_show(struct seq_file *m, void *data)
 {
@@ -649,10 +650,10 @@ static int i915_displayport_test_active_open(struct inode *inode,
 static const struct file_operations i915_displayport_test_active_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_displayport_test_active_open,
-	.read = seq_read,
+	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = single_release,
-	.write = i915_displayport_test_active_write
+	.write_iter = i915_displayport_test_active_write_iter
 };
 
 static int i915_displayport_test_data_show(struct seq_file *m, void *data)
