@@ -388,19 +388,19 @@ static int vmclock_miscdev_mmap(struct file *fp, struct vm_area_struct *vma)
 	return 0;
 }
 
-static ssize_t vmclock_miscdev_read(struct file *fp, char __user *buf,
-				    size_t count, loff_t *ppos)
+static ssize_t vmclock_miscdev_read(struct kiocb *iocb, struct iov_iter *to)
 {
 	ktime_t deadline = ktime_add(ktime_get(), VMCLOCK_MAX_WAIT);
-	struct vmclock_file_state *fst = fp->private_data;
+	struct vmclock_file_state *fst = iocb->ki_filp->private_data;
 	struct vmclock_state *st = fst->st;
+	size_t count = iov_iter_count(to);
 	uint32_t seq, old_seq;
 	size_t max_count;
 
-	if (*ppos >= PAGE_SIZE)
+	if (iocb->ki_pos >= PAGE_SIZE)
 		return 0;
 
-	max_count = PAGE_SIZE - *ppos;
+	max_count = PAGE_SIZE - iocb->ki_pos;
 	if (count > max_count)
 		count = max_count;
 
@@ -410,7 +410,8 @@ static ssize_t vmclock_miscdev_read(struct file *fp, char __user *buf,
 		/* Pairs with hypervisor wmb */
 		virt_rmb();
 
-		if (copy_to_user(buf, ((char *)st->clk) + *ppos, count))
+		if (!copy_to_iter_full(((char *)st->clk) + iocb->ki_pos,
+				       count, to))
 			return -EFAULT;
 
 		/* Pairs with hypervisor wmb */
@@ -428,9 +429,11 @@ static ssize_t vmclock_miscdev_read(struct file *fp, char __user *buf,
 
 		if (ktime_after(ktime_get(), deadline))
 			return -ETIMEDOUT;
+
+		iov_iter_revert(to, count);
 	}
 
-	*ppos += count;
+	iocb->ki_pos += count;
 	return count;
 }
 
@@ -484,7 +487,7 @@ static const struct file_operations vmclock_miscdev_fops = {
 	.open = vmclock_miscdev_open,
 	.release = vmclock_miscdev_release,
 	.mmap = vmclock_miscdev_mmap,
-	.read = vmclock_miscdev_read,
+	.read_iter = vmclock_miscdev_read,
 	.poll = vmclock_miscdev_poll,
 };
 

@@ -248,22 +248,21 @@ static void ptp_aux_kworker(struct kthread_work *work)
 		kthread_queue_delayed_work(ptp->kworker, &ptp->aux_work, delay);
 }
 
-static ssize_t ptp_n_perout_loopback_read(struct file *filep,
-					  char __user *buffer,
-					  size_t count, loff_t *pos)
+static ssize_t ptp_n_perout_loopback_read(struct kiocb *iocb,
+					  struct iov_iter *to)
 {
-	struct ptp_clock *ptp = filep->private_data;
+	struct ptp_clock *ptp = iocb->ki_filp->private_data;
 	char buf[12] = {};
 
 	snprintf(buf, sizeof(buf), "%d\n", ptp->info->n_per_lp);
 
-	return simple_read_from_buffer(buffer, count, pos, buf, strlen(buf));
+	return simple_copy_to_iter(buf, &iocb->ki_pos, strlen(buf), to);
 }
 
 static const struct file_operations ptp_n_perout_loopback_fops = {
 	.owner	= THIS_MODULE,
 	.open	= simple_open,
-	.read	= ptp_n_perout_loopback_read,
+	.read_iter = ptp_n_perout_loopback_read,
 };
 
 static ssize_t ptp_perout_loopback_write(struct file *filep,
@@ -305,10 +304,12 @@ static ssize_t ptp_perout_loopback_write(struct file *filep,
 	return count;
 }
 
+FOPS_WRITE_ITER_HELPER(ptp_perout_loopback_write);
+
 static const struct file_operations ptp_perout_loopback_ops = {
 	.owner   = THIS_MODULE,
 	.open    = simple_open,
-	.write	 = ptp_perout_loopback_write,
+	.write_iter = ptp_perout_loopback_write_iter,
 };
 
 /* public interface */
