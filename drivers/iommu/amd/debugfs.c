@@ -21,11 +21,11 @@ static struct dentry *amd_iommu_debugfs;
 
 static int sbdf = -1;
 
-static ssize_t iommu_mmio_write(struct file *filp, const char __user *ubuf,
-				size_t cnt, loff_t *ppos)
+static ssize_t iommu_mmio_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = filp->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct amd_iommu *iommu = m->private;
+	size_t cnt = iov_iter_count(from);
 	int ret;
 
 	iommu->dbg_mmio_offset = -1;
@@ -33,7 +33,7 @@ static ssize_t iommu_mmio_write(struct file *filp, const char __user *ubuf,
 	if (cnt > OFS_IN_SZ)
 		return -EINVAL;
 
-	ret = kstrtou32_from_user(ubuf, cnt, 0, &iommu->dbg_mmio_offset);
+	ret = kstrtou32_from_iter(from, cnt, 0, &iommu->dbg_mmio_offset);
 	if (ret)
 		return ret;
 
@@ -60,13 +60,25 @@ static int iommu_mmio_show(struct seq_file *m, void *unused)
 
 	return 0;
 }
-DEFINE_SHOW_STORE_ATTRIBUTE(iommu_mmio);
-
-static ssize_t iommu_capability_write(struct file *filp, const char __user *ubuf,
-				      size_t cnt, loff_t *ppos)
+static int iommu_mmio_open(struct inode *inode, struct file *file)
 {
-	struct seq_file *m = filp->private_data;
+	return single_open(file, iommu_mmio_show, inode->i_private);
+}
+
+static const struct file_operations iommu_mmio_fops = {
+	.owner		= THIS_MODULE,
+	.open		= iommu_mmio_open,
+	.read_iter	= seq_read_iter,
+	.write_iter	= iommu_mmio_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static ssize_t iommu_capability_write(struct kiocb *iocb, struct iov_iter *from)
+{
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct amd_iommu *iommu = m->private;
+	size_t cnt = iov_iter_count(from);
 	int ret;
 
 	iommu->dbg_cap_offset = -1;
@@ -74,7 +86,7 @@ static ssize_t iommu_capability_write(struct file *filp, const char __user *ubuf
 	if (cnt > OFS_IN_SZ)
 		return -EINVAL;
 
-	ret = kstrtou32_from_user(ubuf, cnt, 0, &iommu->dbg_cap_offset);
+	ret = kstrtou32_from_iter(from, cnt, 0, &iommu->dbg_cap_offset);
 	if (ret)
 		return ret;
 
@@ -109,7 +121,19 @@ static int iommu_capability_show(struct seq_file *m, void *unused)
 
 	return 0;
 }
-DEFINE_SHOW_STORE_ATTRIBUTE(iommu_capability);
+static int iommu_capability_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, iommu_capability_show, inode->i_private);
+}
+
+static const struct file_operations iommu_capability_fops = {
+	.owner		= THIS_MODULE,
+	.open		= iommu_capability_open,
+	.read_iter	= seq_read_iter,
+	.write_iter	= iommu_capability_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 
 static int iommu_cmdbuf_show(struct seq_file *m, void *unused)
 {
