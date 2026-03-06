@@ -174,6 +174,7 @@ enum cpt_eng_type {
 };
 
 #define rvu_dbg_NULL NULL
+#define rvu_dbg_NULL_iter NULL
 #define rvu_dbg_open_NULL NULL
 
 #define RVU_DEBUG_SEQ_FOPS(name, read_op, write_op)	\
@@ -184,8 +185,8 @@ static int rvu_dbg_open_##name(struct inode *inode, struct file *file) \
 static const struct file_operations rvu_dbg_##name##_fops = { \
 	.owner		= THIS_MODULE, \
 	.open		= rvu_dbg_open_##name, \
-	.read		= seq_read, \
-	.write		= rvu_dbg_##write_op, \
+	.read_iter	= seq_read_iter, \
+	.write_iter	= rvu_dbg_##write_op##_iter, \
 	.llseek		= seq_lseek, \
 	.release	= single_release, \
 }
@@ -194,8 +195,8 @@ static const struct file_operations rvu_dbg_##name##_fops = { \
 static const struct file_operations rvu_dbg_##name##_fops = { \
 	.owner = THIS_MODULE, \
 	.open = simple_open, \
-	.read = rvu_dbg_##read_op, \
-	.write = rvu_dbg_##write_op \
+	.read_iter = rvu_dbg_##read_op##_iter, \
+	.write_iter = rvu_dbg_##write_op##_iter \
 }
 
 static void print_nix_qsize(struct seq_file *filp, struct rvu_pfvf *pfvf);
@@ -641,6 +642,7 @@ static ssize_t rvu_dbg_lmtst_map_table_display(struct file *filp,
 	return ret;
 }
 
+FOPS_READ_ITER_HELPER(rvu_dbg_lmtst_map_table_display);
 RVU_DEBUG_FOPS(lmtst_map_table, lmtst_map_table_display, NULL);
 
 static void get_lf_str_list(const struct rvu_block *block, int pcifunc,
@@ -814,6 +816,7 @@ out:
 	return *ppos;
 }
 
+FOPS_READ_ITER_HELPER(rvu_dbg_rsrc_attach_status);
 RVU_DEBUG_FOPS(rsrc_status, rsrc_attach_status, NULL);
 
 static int rvu_dbg_rvu_pf_cgx_map_display(struct seq_file *filp, void *unused)
@@ -1095,6 +1098,7 @@ static int rvu_dbg_npa_qsize_display(struct seq_file *filp, void *unused)
 	return rvu_dbg_qsize_display(filp, unused, BLKTYPE_NPA);
 }
 
+FOPS_WRITE_ITER_HELPER(rvu_dbg_npa_qsize_write);
 RVU_DEBUG_SEQ_FOPS(npa_qsize, npa_qsize_display, npa_qsize_write);
 
 /* Dumps given NPA Aura's context */
@@ -1422,6 +1426,7 @@ static int rvu_dbg_npa_aura_ctx_display(struct seq_file *filp, void *unused)
 	return rvu_dbg_npa_ctx_display(filp, unused, NPA_AQ_CTYPE_AURA);
 }
 
+FOPS_WRITE_ITER_HELPER(rvu_dbg_npa_aura_ctx_write);
 RVU_DEBUG_SEQ_FOPS(npa_aura_ctx, npa_aura_ctx_display, npa_aura_ctx_write);
 
 static ssize_t rvu_dbg_npa_pool_ctx_write(struct file *filp,
@@ -1437,6 +1442,7 @@ static int rvu_dbg_npa_pool_ctx_display(struct seq_file *filp, void *unused)
 	return rvu_dbg_npa_ctx_display(filp, unused, NPA_AQ_CTYPE_POOL);
 }
 
+FOPS_WRITE_ITER_HELPER(rvu_dbg_npa_pool_ctx_write);
 RVU_DEBUG_SEQ_FOPS(npa_pool_ctx, npa_pool_ctx_display, npa_pool_ctx_write);
 
 static void ndc_cache_stats(struct seq_file *s, int blk_addr,
@@ -1729,19 +1735,19 @@ static int rvu_dbg_nix_tm_tree_display(struct seq_file *m, void *unused)
 	return 0;
 }
 
-static ssize_t rvu_dbg_nix_tm_tree_write(struct file *filp,
-					 const char __user *buffer,
-					 size_t count, loff_t *ppos)
+static ssize_t rvu_dbg_nix_tm_tree_write_iter(struct kiocb *iocb,
+					      struct iov_iter *from)
 {
-	struct seq_file *m = filp->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct nix_hw *nix_hw = m->private;
 	struct rvu *rvu = nix_hw->rvu;
+	size_t count = iov_iter_count(from);
 	struct rvu_pfvf *pfvf;
 	u16 pcifunc;
 	u64 nixlf;
 	int ret;
 
-	ret = kstrtoull_from_user(buffer, count, 10, &nixlf);
+	ret = kstrtoull_from_iter(from, count, 10, &nixlf);
 	if (ret)
 		return ret;
 
@@ -1757,7 +1763,6 @@ static ssize_t rvu_dbg_nix_tm_tree_write(struct file *filp,
 	rvu->rvu_dbg.nix_tm_ctx.lf = nixlf;
 	return count;
 }
-
 RVU_DEBUG_SEQ_FOPS(nix_tm_tree, nix_tm_tree_display, nix_tm_tree_write);
 
 static void print_tm_topo(struct seq_file *m, u64 schq, u32 lvl)
@@ -1986,19 +1991,19 @@ static int rvu_dbg_nix_tm_topo_display(struct seq_file *m, void *unused)
 	return 0;
 }
 
-static ssize_t rvu_dbg_nix_tm_topo_write(struct file *filp,
-					 const char __user *buffer,
-					 size_t count, loff_t *ppos)
+static ssize_t rvu_dbg_nix_tm_topo_write_iter(struct kiocb *iocb,
+					      struct iov_iter *from)
 {
-	struct seq_file *m = filp->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct nix_hw *nix_hw = m->private;
 	struct rvu *rvu = nix_hw->rvu;
+	size_t count = iov_iter_count(from);
 	struct rvu_pfvf *pfvf;
 	u16 pcifunc;
 	u64 nixlf;
 	int ret;
 
-	ret = kstrtoull_from_user(buffer, count, 10, &nixlf);
+	ret = kstrtoull_from_iter(from, count, 10, &nixlf);
 	if (ret)
 		return ret;
 
@@ -2014,7 +2019,6 @@ static ssize_t rvu_dbg_nix_tm_topo_write(struct file *filp,
 	rvu->rvu_dbg.nix_tm_ctx.lf = nixlf;
 	return count;
 }
-
 RVU_DEBUG_SEQ_FOPS(nix_tm_topo, nix_tm_topo_display, nix_tm_topo_write);
 
 /* Dumps given nix_sq's context */
@@ -2510,6 +2514,7 @@ static int rvu_dbg_nix_sq_ctx_display(struct seq_file *filp, void *unused)
 	return rvu_dbg_nix_queue_ctx_display(filp, unused, NIX_AQ_CTYPE_SQ);
 }
 
+FOPS_WRITE_ITER_HELPER(rvu_dbg_nix_sq_ctx_write);
 RVU_DEBUG_SEQ_FOPS(nix_sq_ctx, nix_sq_ctx_display, nix_sq_ctx_write);
 
 static ssize_t rvu_dbg_nix_rq_ctx_write(struct file *filp,
@@ -2525,6 +2530,7 @@ static int rvu_dbg_nix_rq_ctx_display(struct seq_file *filp, void  *unused)
 	return rvu_dbg_nix_queue_ctx_display(filp, unused,  NIX_AQ_CTYPE_RQ);
 }
 
+FOPS_WRITE_ITER_HELPER(rvu_dbg_nix_rq_ctx_write);
 RVU_DEBUG_SEQ_FOPS(nix_rq_ctx, nix_rq_ctx_display, nix_rq_ctx_write);
 
 static ssize_t rvu_dbg_nix_cq_ctx_write(struct file *filp,
@@ -2540,6 +2546,7 @@ static int rvu_dbg_nix_cq_ctx_display(struct seq_file *filp, void *unused)
 	return rvu_dbg_nix_queue_ctx_display(filp, unused, NIX_AQ_CTYPE_CQ);
 }
 
+FOPS_WRITE_ITER_HELPER(rvu_dbg_nix_cq_ctx_write);
 RVU_DEBUG_SEQ_FOPS(nix_cq_ctx, nix_cq_ctx_display, nix_cq_ctx_write);
 
 static void print_nix_qctx_qsize(struct seq_file *filp, int qsize,
@@ -2592,6 +2599,7 @@ static int rvu_dbg_nix_qsize_display(struct seq_file *filp, void *unused)
 	return rvu_dbg_qsize_display(filp, unused, BLKTYPE_NIX);
 }
 
+FOPS_WRITE_ITER_HELPER(rvu_dbg_nix_qsize_write);
 RVU_DEBUG_SEQ_FOPS(nix_qsize, nix_qsize_display, nix_qsize_write);
 
 static void print_band_prof_ctx(struct seq_file *m,
