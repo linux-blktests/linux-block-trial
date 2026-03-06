@@ -304,7 +304,7 @@ pub(super) const fn create_fops() -> bindings::file_operations {
         fops.compat_ioctl = Some(bindings::drm_compat_ioctl);
     }
     fops.poll = Some(bindings::drm_poll);
-    fops.read = Some(bindings::drm_read);
+    fops.read_iter = Some(bindings::drm_read);
     fops.llseek = Some(bindings::noop_llseek);
     fops.mmap = Some(bindings::drm_gem_mmap);
     fops.fop_flags = bindings::FOP_UNSIGNED_OFFSET;
