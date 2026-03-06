@@ -382,8 +382,8 @@ static int iommufd_eventq_fops_release(struct inode *inode, struct file *filep)
 	((const struct file_operations){                                       \
 		.owner = THIS_MODULE,                                          \
 		.open = nonseekable_open,                                      \
-		.read = read_op,                                               \
-		.write = write_op,                                             \
+		.read_iter = read_op,                                          \
+		.write_iter = write_op,                                             \
 		.poll = iommufd_eventq_fops_poll,                              \
 		.release = iommufd_eventq_fops_release,                        \
 	})
@@ -411,8 +411,10 @@ static int iommufd_eventq_init(struct iommufd_eventq *eventq, char *name,
 	return get_unused_fd_flags(O_CLOEXEC);
 }
 
+FOPS_READ_ITER_HELPER(iommufd_fault_fops_read);
+FOPS_WRITE_ITER_HELPER(iommufd_fault_fops_write);
 static const struct file_operations iommufd_fault_fops =
-	INIT_EVENTQ_FOPS(iommufd_fault_fops_read, iommufd_fault_fops_write);
+	INIT_EVENTQ_FOPS(iommufd_fault_fops_read_iter, iommufd_fault_fops_write_iter);
 
 int iommufd_fault_alloc(struct iommufd_ucmd *ucmd)
 {
@@ -469,8 +471,9 @@ int iommufd_fault_iopf_handler(struct iopf_group *group)
 	return 0;
 }
 
+FOPS_READ_ITER_HELPER(iommufd_veventq_fops_read);
 static const struct file_operations iommufd_veventq_fops =
-	INIT_EVENTQ_FOPS(iommufd_veventq_fops_read, NULL);
+	INIT_EVENTQ_FOPS(iommufd_veventq_fops_read_iter, NULL);
 
 int iommufd_veventq_alloc(struct iommufd_ucmd *ucmd)
 {
