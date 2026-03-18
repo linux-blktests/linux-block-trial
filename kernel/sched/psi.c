@@ -1534,13 +1534,14 @@ static int psi_cpu_open(struct inode *inode, struct file *file)
 	return single_open(file, psi_cpu_show, NULL);
 }
 
-static ssize_t psi_write(struct file *file, const char __user *user_buf,
-			 size_t nbytes, enum psi_res res)
+static ssize_t psi_write(struct kiocb *iocb, struct iov_iter *from,
+			 enum psi_res res)
 {
 	char buf[32];
 	size_t buf_size;
 	struct seq_file *seq;
 	struct psi_trigger *new;
+	size_t nbytes = iov_iter_count(from);
 
 	if (static_branch_likely(&psi_disabled))
 		return -EOPNOTSUPP;
@@ -1549,12 +1550,12 @@ static ssize_t psi_write(struct file *file, const char __user *user_buf,
 		return -EINVAL;
 
 	buf_size = min(nbytes, sizeof(buf));
-	if (copy_from_user(buf, user_buf, buf_size))
+	if (!copy_from_iter_full(buf, buf_size, from))
 		return -EFAULT;
 
 	buf[buf_size - 1] = '\0';
 
-	seq = file->private_data;
+	seq = iocb->ki_filp->private_data;
 
 	/* Take seq->lock to protect seq->private from concurrent writes */
 	mutex_lock(&seq->lock);
@@ -1565,7 +1566,7 @@ static ssize_t psi_write(struct file *file, const char __user *user_buf,
 		return -EBUSY;
 	}
 
-	new = psi_trigger_create(&psi_system, buf, res, file, NULL);
+	new = psi_trigger_create(&psi_system, buf, res, iocb->ki_filp, NULL);
 	if (IS_ERR(new)) {
 		mutex_unlock(&seq->lock);
 		return PTR_ERR(new);
@@ -1577,22 +1578,19 @@ static ssize_t psi_write(struct file *file, const char __user *user_buf,
 	return nbytes;
 }
 
-static ssize_t psi_io_write(struct file *file, const char __user *user_buf,
-			    size_t nbytes, loff_t *ppos)
+static ssize_t psi_io_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return psi_write(file, user_buf, nbytes, PSI_IO);
+	return psi_write(iocb, from, PSI_IO);
 }
 
-static ssize_t psi_memory_write(struct file *file, const char __user *user_buf,
-				size_t nbytes, loff_t *ppos)
+static ssize_t psi_memory_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return psi_write(file, user_buf, nbytes, PSI_MEM);
+	return psi_write(iocb, from, PSI_MEM);
 }
 
-static ssize_t psi_cpu_write(struct file *file, const char __user *user_buf,
-			     size_t nbytes, loff_t *ppos)
+static ssize_t psi_cpu_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return psi_write(file, user_buf, nbytes, PSI_CPU);
+	return psi_write(iocb, from, PSI_CPU);
 }
 
 static __poll_t psi_fop_poll(struct file *file, poll_table *wait)
@@ -1614,7 +1612,7 @@ static const struct proc_ops psi_io_proc_ops = {
 	.proc_open	= psi_io_open,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= psi_io_write,
+	.proc_write_iter = psi_io_write,
 	.proc_poll	= psi_fop_poll,
 	.proc_release	= psi_fop_release,
 };
@@ -1623,7 +1621,7 @@ static const struct proc_ops psi_memory_proc_ops = {
 	.proc_open	= psi_memory_open,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= psi_memory_write,
+	.proc_write_iter = psi_memory_write,
 	.proc_poll	= psi_fop_poll,
 	.proc_release	= psi_fop_release,
 };
@@ -1632,7 +1630,7 @@ static const struct proc_ops psi_cpu_proc_ops = {
 	.proc_open	= psi_cpu_open,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= psi_cpu_write,
+	.proc_write_iter = psi_cpu_write,
 	.proc_poll	= psi_fop_poll,
 	.proc_release	= psi_fop_release,
 };
@@ -1648,17 +1646,16 @@ static int psi_irq_open(struct inode *inode, struct file *file)
 	return single_open(file, psi_irq_show, NULL);
 }
 
-static ssize_t psi_irq_write(struct file *file, const char __user *user_buf,
-			     size_t nbytes, loff_t *ppos)
+static ssize_t psi_irq_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	return psi_write(file, user_buf, nbytes, PSI_IRQ);
+	return psi_write(iocb, from, PSI_IRQ);
 }
 
 static const struct proc_ops psi_irq_proc_ops = {
 	.proc_open	= psi_irq_open,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= psi_irq_write,
+	.proc_write_iter = psi_irq_write,
 	.proc_poll	= psi_fop_poll,
 	.proc_release	= psi_fop_release,
 };
