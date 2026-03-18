@@ -13,6 +13,7 @@
 #include <sound/core.h>
 #include <sound/minors.h>
 #include <sound/info.h>
+#include <linux/uio.h>
 #include <linux/utsname.h>
 #include <linux/proc_fs.h>
 #include <linux/mutex.h>
@@ -274,12 +275,13 @@ static int snd_info_entry_release(struct inode *inode, struct file *file)
 }
 
 FOPS_READ_ITER_HELPER(snd_info_entry_read);
+FOPS_WRITE_ITER_HELPER(snd_info_entry_write);
 
 static const struct proc_ops snd_info_entry_operations =
 {
 	.proc_lseek	= snd_info_entry_llseek,
 	.proc_read_iter	= snd_info_entry_read_iter,
-	.proc_write	= snd_info_entry_write,
+	.proc_write_iter = snd_info_entry_write_iter,
 	.proc_poll	= snd_info_entry_poll,
 	.proc_ioctl	= snd_info_entry_ioctl,
 	.proc_mmap	= snd_info_entry_mmap,
@@ -290,20 +292,20 @@ static const struct proc_ops snd_info_entry_operations =
 /*
  * file ops for text proc files
  */
-static ssize_t snd_info_text_entry_write(struct file *file,
-					 const char __user *buffer,
-					 size_t count, loff_t *offset)
+static ssize_t snd_info_text_entry_write(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct snd_info_private_data *data = m->private;
 	struct snd_info_entry *entry = data->entry;
 	struct snd_info_buffer *buf;
 	loff_t pos;
 	size_t next;
+	size_t count = iov_iter_count(from);
 
 	if (!entry->c.text.write)
 		return -EIO;
-	pos = *offset;
+	pos = iocb->ki_pos;
 	if (!valid_pos(pos, count))
 		return -EIO;
 	next = pos + count;
@@ -325,10 +327,10 @@ static ssize_t snd_info_text_entry_write(struct file *file,
 		buf->buffer = nbuf;
 		buf->len = PAGE_ALIGN(next);
 	}
-	if (copy_from_user(buf->buffer + pos, buffer, count))
+	if (!copy_from_iter_full(buf->buffer + pos, count, from))
 		return -EFAULT;
 	buf->size = next;
-	*offset = next;
+	iocb->ki_pos = next;
 	return count;
 }
 
@@ -403,7 +405,7 @@ static const struct proc_ops snd_info_text_entry_ops =
 {
 	.proc_open	= snd_info_text_entry_open,
 	.proc_release	= snd_info_text_entry_release,
-	.proc_write	= snd_info_text_entry_write,
+	.proc_write_iter = snd_info_text_entry_write,
 	.proc_lseek	= seq_lseek,
 	.proc_read_iter	= seq_read_iter,
 };
