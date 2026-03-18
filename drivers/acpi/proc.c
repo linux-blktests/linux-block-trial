@@ -85,18 +85,17 @@ static void physical_device_enable_wakeup(struct acpi_device *adev)
 }
 
 static ssize_t
-acpi_system_write_wakeup_device(struct file *file,
-				const char __user * buffer,
-				size_t count, loff_t * ppos)
+acpi_system_write_wakeup_device(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct acpi_device *dev, *tmp;
+	size_t count = iov_iter_count(from);
 	char strbuf[5];
 	char str[5] = "";
 
 	if (count > 4)
 		count = 4;
 
-	if (copy_from_user(strbuf, buffer, count))
+	if (!copy_from_iter_full(strbuf, count, from))
 		return -EFAULT;
 	strbuf[count] = '\0';
 	sscanf(strbuf, "%s", str);
@@ -131,7 +130,7 @@ acpi_system_wakeup_device_open_fs(struct inode *inode, struct file *file)
 static const struct proc_ops acpi_system_wakeup_device_proc_ops = {
 	.proc_open	= acpi_system_wakeup_device_open_fs,
 	.proc_read_iter	= seq_read_iter,
-	.proc_write	= acpi_system_write_wakeup_device,
+	.proc_write_iter = acpi_system_write_wakeup_device,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 };
