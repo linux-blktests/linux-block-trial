@@ -188,15 +188,14 @@ static int dfscache_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t dfscache_proc_write(struct file *file, const char __user *buffer,
-				   size_t count, loff_t *ppos)
+static ssize_t dfscache_proc_write_iter(struct kiocb *iocb,
+					struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char c;
-	int rc;
 
-	rc = get_user(c, buffer);
-	if (rc)
-		return rc;
+	if (!copy_from_iter(&c, 1, from))
+		return -EFAULT;
 
 	if (c != '0')
 		return -EINVAL;
@@ -220,7 +219,7 @@ const struct proc_ops dfscache_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= dfscache_proc_write,
+	.proc_write_iter = dfscache_proc_write_iter,
 };
 
 #ifdef CONFIG_CIFS_DEBUG2
