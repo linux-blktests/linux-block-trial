@@ -269,8 +269,8 @@ static size_t get_flash_status_msg(int status, char *buf)
 }
 
 /* Reading the proc file will show status (not the firmware contents) */
-static ssize_t rtas_flash_read_msg(struct file *file, char __user *buf,
-				   size_t count, loff_t *ppos)
+static ssize_t rtas_flash_read_msg_iter(struct kiocb *iocb,
+					struct iov_iter *to)
 {
 	struct rtas_update_flash_t *const uf = &rtas_update_flash_data;
 	char msg[RTAS_MSG_MAXLEN];
@@ -283,11 +283,11 @@ static ssize_t rtas_flash_read_msg(struct file *file, char __user *buf,
 
 	/* Read as text message */
 	len = get_flash_status_msg(status, msg);
-	return simple_read_from_buffer(buf, count, ppos, msg, len);
+	return simple_copy_to_iter(msg, &iocb->ki_pos, len, to);
 }
 
-static ssize_t rtas_flash_read_num(struct file *file, char __user *buf,
-				   size_t count, loff_t *ppos)
+static ssize_t rtas_flash_read_num_iter(struct kiocb *iocb,
+					struct iov_iter *to)
 {
 	struct rtas_update_flash_t *const uf = &rtas_update_flash_data;
 	char msg[RTAS_MSG_MAXLEN];
@@ -299,7 +299,7 @@ static ssize_t rtas_flash_read_num(struct file *file, char __user *buf,
 
 	/* Read as number */
 	sprintf(msg, "%d\n", status);
-	return simple_read_from_buffer(buf, count, ppos, msg, strlen(msg));
+	return simple_copy_to_iter(msg, &iocb->ki_pos, strlen(msg), to);
 }
 
 /* We could be much more efficient here.  But to keep this function
@@ -375,8 +375,7 @@ static void manage_flash(struct rtas_manage_flash_t *args_buf, unsigned int op)
 	args_buf->status = rc;
 }
 
-static ssize_t manage_flash_read(struct file *file, char __user *buf,
-			       size_t count, loff_t *ppos)
+static ssize_t manage_flash_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct rtas_manage_flash_t *const args_buf = &rtas_manage_flash_data;
 	char msg[RTAS_MSG_MAXLEN];
@@ -387,7 +386,7 @@ static ssize_t manage_flash_read(struct file *file, char __user *buf,
 	mutex_unlock(&rtas_manage_flash_mutex);
 
 	msglen = sprintf(msg, "%d\n", status);
-	return simple_read_from_buffer(buf, count, ppos, msg, msglen);
+	return simple_copy_to_iter(msg, &iocb->ki_pos, msglen, to);
 }
 
 static ssize_t manage_flash_write(struct file *file, const char __user *buf,
@@ -463,8 +462,8 @@ static int get_validate_flash_msg(struct rtas_validate_flash_t *args_buf,
 	return n;
 }
 
-static ssize_t validate_flash_read(struct file *file, char __user *buf,
-			       size_t count, loff_t *ppos)
+static ssize_t validate_flash_read_iter(struct kiocb *iocb,
+					struct iov_iter *to)
 {
 	struct rtas_validate_flash_t *const args_buf =
 		&rtas_validate_flash_data;
@@ -475,7 +474,7 @@ static ssize_t validate_flash_read(struct file *file, char __user *buf,
 	msglen = get_validate_flash_msg(args_buf, msg, VALIDATE_MSG_LEN);
 	mutex_unlock(&rtas_validate_flash_mutex);
 
-	return simple_read_from_buffer(buf, count, ppos, msg, msglen);
+	return simple_copy_to_iter(msg, &iocb->ki_pos, msglen, to);
 }
 
 static ssize_t validate_flash_write(struct file *file, const char __user *buf,
@@ -639,7 +638,7 @@ static const struct rtas_flash_file rtas_flash_files[] = {
 		.filename	= "powerpc/rtas/" FIRMWARE_FLASH_NAME,
 		.handle		= RTAS_FN_IBM_UPDATE_FLASH_64_AND_REBOOT,
 		.status		= &rtas_update_flash_data.status,
-		.ops.proc_read	= rtas_flash_read_msg,
+		.ops.proc_read_iter = rtas_flash_read_msg_iter,
 		.ops.proc_write	= rtas_flash_write,
 		.ops.proc_release = rtas_flash_release,
 		.ops.proc_lseek	= default_llseek,
@@ -648,7 +647,7 @@ static const struct rtas_flash_file rtas_flash_files[] = {
 		.filename	= "powerpc/rtas/" FIRMWARE_UPDATE_NAME,
 		.handle		= RTAS_FN_IBM_UPDATE_FLASH_64_AND_REBOOT,
 		.status		= &rtas_update_flash_data.status,
-		.ops.proc_read	= rtas_flash_read_num,
+		.ops.proc_read_iter = rtas_flash_read_num_iter,
 		.ops.proc_write	= rtas_flash_write,
 		.ops.proc_release = rtas_flash_release,
 		.ops.proc_lseek	= default_llseek,
@@ -657,7 +656,7 @@ static const struct rtas_flash_file rtas_flash_files[] = {
 		.filename	= "powerpc/rtas/" VALIDATE_FLASH_NAME,
 		.handle		= RTAS_FN_IBM_VALIDATE_FLASH_IMAGE,
 		.status		= &rtas_validate_flash_data.status,
-		.ops.proc_read	= validate_flash_read,
+		.ops.proc_read_iter = validate_flash_read_iter,
 		.ops.proc_write	= validate_flash_write,
 		.ops.proc_release = validate_flash_release,
 		.ops.proc_lseek	= default_llseek,
@@ -666,7 +665,7 @@ static const struct rtas_flash_file rtas_flash_files[] = {
 		.filename	= "powerpc/rtas/" MANAGE_FLASH_NAME,
 		.handle		= RTAS_FN_IBM_MANAGE_FLASH_IMAGE,
 		.status		= &rtas_manage_flash_data.status,
-		.ops.proc_read	= manage_flash_read,
+		.ops.proc_read_iter = manage_flash_read_iter,
 		.ops.proc_write	= manage_flash_write,
 		.ops.proc_lseek	= default_llseek,
 	}
