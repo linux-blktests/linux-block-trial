@@ -176,10 +176,10 @@ static int pnpbios_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, pnpbios_proc_show, pde_data(inode));
 }
 
-static ssize_t pnpbios_proc_write(struct file *file, const char __user *buf,
-				  size_t count, loff_t *pos)
+static ssize_t pnpbios_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	void *data = pde_data(file_inode(file));
+	size_t count = iov_iter_count(from);
+	void *data = pde_data(file_inode(iocb->ki_filp));
 	struct pnp_bios_node *node;
 	int boot = (long)data >> 8;
 	u8 nodenum = (long)data;
@@ -196,7 +196,7 @@ static ssize_t pnpbios_proc_write(struct file *file, const char __user *buf,
 		ret = -EINVAL;
 		goto out;
 	}
-	if (copy_from_user(node->data, buf, count)) {
+	if (!copy_from_iter_full(node->data, count, from)) {
 		ret = -EFAULT;
 		goto out;
 	}
@@ -215,7 +215,7 @@ static const struct proc_ops pnpbios_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= pnpbios_proc_write,
+	.proc_write_iter = pnpbios_proc_write,
 };
 
 int pnpbios_interface_attach_device(struct pnp_bios_node *node)
