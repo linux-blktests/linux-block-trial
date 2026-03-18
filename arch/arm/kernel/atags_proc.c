@@ -10,15 +10,15 @@ struct buffer {
 	char data[] __counted_by(size);
 };
 
-static ssize_t atags_read(struct file *file, char __user *buf,
-			  size_t count, loff_t *ppos)
+static ssize_t atags_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct buffer *b = pde_data(file_inode(file));
-	return simple_read_from_buffer(buf, count, ppos, b->data, b->size);
+	struct buffer *b = pde_data(file_inode(iocb->ki_filp));
+
+	return simple_copy_to_iter(b->data, &iocb->ki_pos, b->size, to);
 }
 
 static const struct proc_ops atags_proc_ops = {
-	.proc_read	= atags_read,
+	.proc_read_iter	= atags_read_iter,
 	.proc_lseek	= default_llseek,
 };
 
