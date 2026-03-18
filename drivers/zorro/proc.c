@@ -28,18 +28,10 @@ proc_bus_zorro_lseek(struct file *file, loff_t off, int whence)
 }
 
 static ssize_t
-proc_bus_zorro_read(struct file *file, char __user *buf, size_t nbytes, loff_t *ppos)
+proc_bus_zorro_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct zorro_dev *z = pde_data(file_inode(file));
+	struct zorro_dev *z = pde_data(file_inode(iocb->ki_filp));
 	struct ConfigDev cd;
-	loff_t pos = *ppos;
-
-	if (pos >= sizeof(struct ConfigDev))
-		return 0;
-	if (nbytes >= sizeof(struct ConfigDev))
-		nbytes = sizeof(struct ConfigDev);
-	if (pos + nbytes > sizeof(struct ConfigDev))
-		nbytes = sizeof(struct ConfigDev) - pos;
 
 	/* Construct a ConfigDev */
 	memset(&cd, 0, sizeof(cd));
@@ -49,16 +41,12 @@ proc_bus_zorro_read(struct file *file, char __user *buf, size_t nbytes, loff_t *
 	cd.cd_BoardAddr = cpu_to_be32(zorro_resource_start(z));
 	cd.cd_BoardSize = cpu_to_be32(zorro_resource_len(z));
 
-	if (copy_to_user(buf, (void *)&cd + pos, nbytes))
-		return -EFAULT;
-	*ppos += nbytes;
-
-	return nbytes;
+	return simple_copy_to_iter(&cd, &iocb->ki_pos, sizeof(cd), to);
 }
 
 static const struct proc_ops bus_zorro_proc_ops = {
 	.proc_lseek	= proc_bus_zorro_lseek,
-	.proc_read	= proc_bus_zorro_read,
+	.proc_read_iter	= proc_bus_zorro_read_iter,
 };
 
 static void * zorro_seq_start(struct seq_file *m, loff_t *pos)
