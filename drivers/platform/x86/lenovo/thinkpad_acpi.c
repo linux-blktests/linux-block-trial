@@ -919,11 +919,10 @@ static int dispatch_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, dispatch_proc_show, pde_data(inode));
 }
 
-static ssize_t dispatch_proc_write(struct file *file,
-			const char __user *userbuf,
-			size_t count, loff_t *pos)
+static ssize_t dispatch_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct ibm_struct *ibm = pde_data(file_inode(file));
+	struct ibm_struct *ibm = pde_data(file_inode(iocb->ki_filp));
+	size_t count = iov_iter_count(from);
 	char *kernbuf;
 	int ret;
 
@@ -932,9 +931,9 @@ static ssize_t dispatch_proc_write(struct file *file,
 	if (count > PAGE_SIZE - 1)
 		return -EINVAL;
 
-	kernbuf = memdup_user_nul(userbuf, count);
-	if (IS_ERR(kernbuf))
-		return PTR_ERR(kernbuf);
+	kernbuf = iterdup_nul(from, count);
+	if (!kernbuf)
+		return -ENOMEM;
 	ret = ibm->write(kernbuf);
 	if (ret == 0)
 		ret = count;
@@ -949,7 +948,7 @@ static const struct proc_ops dispatch_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= dispatch_proc_write,
+	.proc_write_iter = dispatch_proc_write,
 };
 
 /****************************************************************************
