@@ -104,11 +104,10 @@ static int statistics_show(struct seq_file *s, void *p)
 	return 0;
 }
 
-static ssize_t statistics_write(struct file *file, const char __user *userbuf,
-				size_t count, loff_t *data)
+static ssize_t statistics_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	memset(&gru_stats, 0, sizeof(gru_stats));
-	return count;
+	return iov_iter_count(from);
 }
 
 static int mcs_statistics_show(struct seq_file *s, void *p)
@@ -130,11 +129,11 @@ static int mcs_statistics_show(struct seq_file *s, void *p)
 	return 0;
 }
 
-static ssize_t mcs_statistics_write(struct file *file,
-			const char __user *userbuf, size_t count, loff_t *data)
+static ssize_t mcs_statistics_write_iter(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
 	memset(mcs_op_statistics, 0, sizeof(mcs_op_statistics));
-	return count;
+	return iov_iter_count(from);
 }
 
 static int options_show(struct seq_file *s, void *p)
@@ -144,12 +143,12 @@ static int options_show(struct seq_file *s, void *p)
 	return 0;
 }
 
-static ssize_t options_write(struct file *file, const char __user *userbuf,
-			     size_t count, loff_t *data)
+static ssize_t options_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	int ret;
 
-	ret = kstrtoul_from_user(userbuf, count, 0, &gru_options);
+	ret = kstrtoul_from_iter(from, count, 0, &gru_options);
 	if (ret)
 		return ret;
 
@@ -258,7 +257,7 @@ static int options_open(struct inode *inode, struct file *file)
 static const struct proc_ops statistics_proc_ops = {
 	.proc_open	= statistics_open,
 	.proc_read_iter	= seq_read_iter,
-	.proc_write	= statistics_write,
+	.proc_write_iter = statistics_write_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 };
@@ -266,7 +265,7 @@ static const struct proc_ops statistics_proc_ops = {
 static const struct proc_ops mcs_statistics_proc_ops = {
 	.proc_open	= mcs_statistics_open,
 	.proc_read_iter	= seq_read_iter,
-	.proc_write	= mcs_statistics_write,
+	.proc_write_iter = mcs_statistics_write_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 };
@@ -274,7 +273,7 @@ static const struct proc_ops mcs_statistics_proc_ops = {
 static const struct proc_ops options_proc_ops = {
 	.proc_open	= options_open,
 	.proc_read_iter	= seq_read_iter,
-	.proc_write	= options_write,
+	.proc_write_iter = options_write_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 };
