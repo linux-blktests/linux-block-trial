@@ -917,18 +917,18 @@ static int pmu_options_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, pmu_options_proc_show, NULL);
 }
 
-static ssize_t pmu_options_proc_write(struct file *file,
-		const char __user *buffer, size_t count, loff_t *pos)
+static ssize_t pmu_options_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char tmp[33];
 	char *label, *val;
+	size_t count = iov_iter_count(from);
 	size_t fcount = count;
-	
+
 	if (!count)
 		return -EINVAL;
 	if (count > 32)
 		count = 32;
-	if (copy_from_user(tmp, buffer, count))
+	if (!copy_from_iter_full(tmp, count, from))
 		return -EFAULT;
 	tmp[count] = 0;
 
@@ -966,7 +966,7 @@ static const struct proc_ops pmu_options_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= pmu_options_proc_write,
+	.proc_write_iter = pmu_options_proc_write,
 };
 #endif
 
