@@ -26,6 +26,7 @@
 #include <linux/spinlock.h>
 #include <linux/completion.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <linux/seq_file.h>
 
 #include "internal.h"
@@ -823,10 +824,10 @@ EXPORT_SYMBOL(proc_remove);
  * one is supplied.  The ->write() method is permitted to modify the
  * kernel-side buffer.
  */
-ssize_t proc_simple_write(struct file *f, const char __user *ubuf, size_t size,
-			  loff_t *_pos)
+ssize_t proc_simple_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct proc_dir_entry *pde = PDE(file_inode(f));
+	struct proc_dir_entry *pde = PDE(file_inode(iocb->ki_filp));
+	size_t size = iov_iter_count(from);
 	char *buf;
 	int ret;
 
@@ -834,10 +835,10 @@ ssize_t proc_simple_write(struct file *f, const char __user *ubuf, size_t size,
 		return -EACCES;
 	if (size == 0 || size > PAGE_SIZE - 1)
 		return -EINVAL;
-	buf = memdup_user_nul(ubuf, size);
-	if (IS_ERR(buf))
-		return PTR_ERR(buf);
-	ret = pde->write(f, buf, size);
+	buf = iterdup_nul(from, size);
+	if (!buf)
+		return -ENOMEM;
+	ret = pde->write(iocb->ki_filp, buf, size);
 	kfree(buf);
 	return ret == 0 ? size : ret;
 }
