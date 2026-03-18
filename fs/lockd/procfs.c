@@ -44,6 +44,7 @@ nlm_end_grace_write(struct file *file, const char __user *buf, size_t size,
 
 	return size;
 }
+FOPS_WRITE_ITER_HELPER(nlm_end_grace_write);
 
 static ssize_t
 nlm_end_grace_read_iter(struct kiocb *iocb, struct iov_iter *to)
@@ -60,10 +61,10 @@ nlm_end_grace_read_iter(struct kiocb *iocb, struct iov_iter *to)
 }
 
 static const struct proc_ops lockd_end_grace_proc_ops = {
-	.proc_write	= nlm_end_grace_write,
-	.proc_read_iter	= nlm_end_grace_read_iter,
-	.proc_lseek	= default_llseek,
-	.proc_release	= simple_transaction_release,
+	.proc_write_iter	= nlm_end_grace_write_iter,
+	.proc_read_iter		= nlm_end_grace_read_iter,
+	.proc_lseek		= default_llseek,
+	.proc_release		= simple_transaction_release,
 };
 
 int __init
