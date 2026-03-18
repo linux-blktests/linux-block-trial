@@ -199,14 +199,15 @@ int __weak setup_profiling_timer(unsigned mult)
  * Writing a 'profiling multiplier' value into it also re-sets the profiling
  * interrupt frequency, on architectures that support this.
  */
-static ssize_t write_profile(struct file *file, const char __user *buf,
-			     size_t count, loff_t *ppos)
+static ssize_t write_profile(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
+
 #ifdef CONFIG_SMP
 	if (count == sizeof(int)) {
 		unsigned int multiplier;
 
-		if (copy_from_user(&multiplier, buf, sizeof(int)))
+		if (!copy_from_iter_full(&multiplier, sizeof(int), from))
 			return -EFAULT;
 
 		if (setup_profiling_timer(multiplier))
@@ -219,7 +220,7 @@ static ssize_t write_profile(struct file *file, const char __user *buf,
 
 static const struct proc_ops profile_proc_ops = {
 	.proc_read_iter	= read_profile_iter,
-	.proc_write	= write_profile,
+	.proc_write_iter = write_profile,
 	.proc_lseek	= default_llseek,
 };
 
