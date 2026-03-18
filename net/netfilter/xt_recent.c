@@ -556,14 +556,14 @@ static int recent_seq_open(struct inode *inode, struct file *file)
 }
 
 static ssize_t
-recent_mt_proc_write(struct file *file, const char __user *input,
-		     size_t size, loff_t *loff)
+recent_mt_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct recent_table *t = pde_data(file_inode(file));
+	struct recent_table *t = pde_data(file_inode(iocb->ki_filp));
 	struct recent_entry *e;
 	char buf[sizeof("+b335:1d35:1e55:dead:c0de:1715:255.255.255.255")];
 	const char *c = buf;
 	union nf_inet_addr addr = {};
+	size_t size = iov_iter_count(from);
 	u_int16_t family;
 	bool add, succ;
 
@@ -571,11 +571,11 @@ recent_mt_proc_write(struct file *file, const char __user *input,
 		return 0;
 	if (size > sizeof(buf))
 		size = sizeof(buf);
-	if (copy_from_user(buf, input, size) != 0)
+	if (!copy_from_iter_full(buf, size, from))
 		return -EFAULT;
 
 	/* Strict protocol! */
-	if (*loff != 0)
+	if (iocb->ki_pos != 0)
 		return -ESPIPE;
 	switch (*c) {
 	case '/': /* flush table */
@@ -620,14 +620,14 @@ recent_mt_proc_write(struct file *file, const char __user *input,
 	}
 	spin_unlock_bh(&recent_lock);
 	/* Note we removed one above */
-	*loff += size + 1;
+	iocb->ki_pos += size + 1;
 	return size + 1;
 }
 
 static const struct proc_ops recent_mt_proc_ops = {
 	.proc_open	= recent_seq_open,
 	.proc_read_iter	= seq_read_iter,
-	.proc_write	= recent_mt_proc_write,
+	.proc_write_iter	= recent_mt_proc_write,
 	.proc_release	= seq_release_private,
 	.proc_lseek	= seq_lseek,
 };
