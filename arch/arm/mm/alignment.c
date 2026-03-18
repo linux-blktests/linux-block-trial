@@ -149,13 +149,14 @@ static int alignment_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, alignment_proc_show, NULL);
 }
 
-static ssize_t alignment_proc_write(struct file *file, const char __user *buffer,
-				    size_t count, loff_t *pos)
+static ssize_t alignment_proc_write_iter(struct kiocb *iocb,
+					 struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char mode;
 
 	if (count > 0) {
-		if (get_user(mode, buffer))
+		if (!copy_from_iter(&mode, 1, from))
 			return -EFAULT;
 		if (mode >= '0' && mode <= '5')
 			ai_usermode = safe_usermode(mode - '0', true);
@@ -168,7 +169,7 @@ static const struct proc_ops alignment_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= alignment_proc_write,
+	.proc_write_iter = alignment_proc_write_iter,
 };
 #endif /* CONFIG_PROC_FS */
 
