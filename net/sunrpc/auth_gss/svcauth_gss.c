@@ -1399,17 +1399,17 @@ svcauth_gss_proc_init(struct svc_rqst *rqstp, struct rpc_gss_wire_cred *gc)
 
 #ifdef CONFIG_PROC_FS
 
-static ssize_t write_gssp(struct file *file, const char __user *buf,
-			 size_t count, loff_t *ppos)
+static ssize_t write_gssp(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct net *net = pde_data(file_inode(file));
+	struct net *net = pde_data(file_inode(iocb->ki_filp));
+	size_t count = iov_iter_count(from);
 	char tbuf[20];
 	unsigned long i;
 	int res;
 
-	if (*ppos || count > sizeof(tbuf)-1)
+	if (iocb->ki_pos || count > sizeof(tbuf)-1)
 		return -EINVAL;
-	if (copy_from_user(tbuf, buf, count))
+	if (!copy_from_iter_full(tbuf, count, from))
 		return -EFAULT;
 
 	tbuf[count] = 0;
@@ -1441,7 +1441,7 @@ static ssize_t read_gssp_iter(struct kiocb *iocb, struct iov_iter *to)
 
 static const struct proc_ops use_gss_proxy_proc_ops = {
 	.proc_open	= nonseekable_open,
-	.proc_write	= write_gssp,
+	.proc_write_iter = write_gssp,
 	.proc_read_iter	= read_gssp_iter,
 };
 
