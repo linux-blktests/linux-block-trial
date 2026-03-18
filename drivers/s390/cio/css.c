@@ -1315,8 +1315,7 @@ static int __init channel_subsystem_init_sync(void)
 subsys_initcall_sync(channel_subsystem_init_sync);
 
 #ifdef CONFIG_PROC_FS
-static ssize_t cio_settle_write(struct file *file, const char __user *buf,
-				size_t count, loff_t *ppos)
+static ssize_t cio_settle_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	int ret;
 
@@ -1324,12 +1323,12 @@ static ssize_t cio_settle_write(struct file *file, const char __user *buf,
 	crw_wait_for_channel_report();
 	ret = css_complete_work();
 
-	return ret ? ret : count;
+	return ret ? ret : iov_iter_count(from);
 }
 
 static const struct proc_ops cio_settle_proc_ops = {
 	.proc_open	= nonseekable_open,
-	.proc_write	= cio_settle_write,
+	.proc_write_iter = cio_settle_write_iter,
 };
 
 static int __init cio_settle_init(void)
