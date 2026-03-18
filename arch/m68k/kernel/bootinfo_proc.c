@@ -19,15 +19,14 @@ static char bootinfo_tmp[1536] __initdata;
 static void *bootinfo_copy;
 static size_t bootinfo_size;
 
-static ssize_t bootinfo_read(struct file *file, char __user *buf,
-			  size_t count, loff_t *ppos)
+static ssize_t bootinfo_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	return simple_read_from_buffer(buf, count, ppos, bootinfo_copy,
-				       bootinfo_size);
+	return simple_copy_to_iter(bootinfo_copy, &iocb->ki_pos,
+				   bootinfo_size, to);
 }
 
 static const struct proc_ops bootinfo_proc_ops = {
-	.proc_read	= bootinfo_read,
+	.proc_read_iter	= bootinfo_read_iter,
 	.proc_lseek	= default_llseek,
 };
 
