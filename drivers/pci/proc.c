@@ -14,6 +14,7 @@
 #include <linux/capability.h>
 #include <linux/uaccess.h>
 #include <linux/security.h>
+#include <linux/unaligned.h>
 #include <asm/byteorder.h>
 #include "pci.h"
 
@@ -25,12 +26,13 @@ static loff_t proc_bus_pci_lseek(struct file *file, loff_t off, int whence)
 	return fixed_size_llseek(file, off, whence, dev->cfg_size);
 }
 
-static ssize_t proc_bus_pci_read(struct file *file, char __user *buf,
-				 size_t nbytes, loff_t *ppos)
+static ssize_t proc_bus_pci_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct pci_dev *dev = pde_data(file_inode(file));
-	unsigned int pos = *ppos;
+	struct pci_dev *dev = pde_data(file_inode(iocb->ki_filp));
+	unsigned int pos = iocb->ki_pos;
 	unsigned int cnt, size;
+	size_t nbytes = iov_iter_count(to);
+	u8 *buf;
 
 	/*
 	 * Normal users can read only the standardized portion of the
@@ -53,16 +55,16 @@ static ssize_t proc_bus_pci_read(struct file *file, char __user *buf,
 		nbytes = size - pos;
 	cnt = nbytes;
 
-	if (!access_ok(buf, cnt))
-		return -EINVAL;
+	buf = kmalloc(cnt, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
 
 	pci_config_pm_runtime_get(dev);
 
 	if ((pos & 1) && cnt) {
 		unsigned char val;
 		pci_user_read_config_byte(dev, pos, &val);
-		__put_user(val, buf);
-		buf++;
+		buf[pos - (unsigned int)iocb->ki_pos] = val;
 		pos++;
 		cnt--;
 	}
@@ -70,8 +72,7 @@ static ssize_t proc_bus_pci_read(struct file *file, char __user *buf,
 	if ((pos & 3) && cnt > 2) {
 		unsigned short val;
 		pci_user_read_config_word(dev, pos, &val);
-		__put_user(cpu_to_le16(val), (__le16 __user *) buf);
-		buf += 2;
+		put_unaligned_le16(val, buf + pos - (unsigned int)iocb->ki_pos);
 		pos += 2;
 		cnt -= 2;
 	}
@@ -79,8 +80,7 @@ static ssize_t proc_bus_pci_read(struct file *file, char __user *buf,
 	while (cnt >= 4) {
 		unsigned int val;
 		pci_user_read_config_dword(dev, pos, &val);
-		__put_user(cpu_to_le32(val), (__le32 __user *) buf);
-		buf += 4;
+		put_unaligned_le32(val, buf + pos - (unsigned int)iocb->ki_pos);
 		pos += 4;
 		cnt -= 4;
 		cond_resched();
@@ -89,8 +89,7 @@ static ssize_t proc_bus_pci_read(struct file *file, char __user *buf,
 	if (cnt >= 2) {
 		unsigned short val;
 		pci_user_read_config_word(dev, pos, &val);
-		__put_user(cpu_to_le16(val), (__le16 __user *) buf);
-		buf += 2;
+		put_unaligned_le16(val, buf + pos - (unsigned int)iocb->ki_pos);
 		pos += 2;
 		cnt -= 2;
 	}
@@ -98,13 +97,19 @@ static ssize_t proc_bus_pci_read(struct file *file, char __user *buf,
 	if (cnt) {
 		unsigned char val;
 		pci_user_read_config_byte(dev, pos, &val);
-		__put_user(val, buf);
+		buf[pos - (unsigned int)iocb->ki_pos] = val;
 		pos++;
 	}
 
 	pci_config_pm_runtime_put(dev);
 
-	*ppos = pos;
+	if (copy_to_iter(buf, nbytes, to) != nbytes) {
+		kfree(buf);
+		return -EFAULT;
+	}
+	kfree(buf);
+
+	iocb->ki_pos = pos;
 	return nbytes;
 }
 
@@ -322,7 +327,7 @@ static int proc_bus_pci_release(struct inode *inode, struct file *file)
 
 static const struct proc_ops proc_bus_pci_ops = {
 	.proc_lseek	= proc_bus_pci_lseek,
-	.proc_read	= proc_bus_pci_read,
+	.proc_read_iter	= proc_bus_pci_read_iter,
 	.proc_write	= proc_bus_pci_write,
 	.proc_ioctl	= proc_bus_pci_ioctl,
 #ifdef CONFIG_COMPAT
