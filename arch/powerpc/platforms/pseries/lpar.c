@@ -498,9 +498,10 @@ static void dtl_worker_disable(unsigned long *time_limit)
 	up_write(&dtl_access_lock);
 }
 
-static ssize_t vcpudispatch_stats_write(struct file *file, const char __user *p,
-		size_t count, loff_t *ppos)
+static ssize_t vcpudispatch_stats_write(struct kiocb *iocb,
+		struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	unsigned long time_limit = jiffies + HZ;
 	struct vcpu_dispatch_data *disp;
 	int rc, cmd, cpu;
@@ -509,7 +510,7 @@ static ssize_t vcpudispatch_stats_write(struct file *file, const char __user *p,
 	if (count > 15)
 		return -EINVAL;
 
-	if (copy_from_user(buf, p, count))
+	if (!copy_from_iter_full(buf, count, from))
 		return -EFAULT;
 
 	buf[count] = 0;
@@ -592,21 +593,22 @@ static int vcpudispatch_stats_open(struct inode *inode, struct file *file)
 static const struct proc_ops vcpudispatch_stats_proc_ops = {
 	.proc_open	= vcpudispatch_stats_open,
 	.proc_read_iter	= seq_read_iter,
-	.proc_write	= vcpudispatch_stats_write,
+	.proc_write_iter = vcpudispatch_stats_write,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 };
 
-static ssize_t vcpudispatch_stats_freq_write(struct file *file,
-		const char __user *p, size_t count, loff_t *ppos)
+static ssize_t vcpudispatch_stats_freq_write(struct kiocb *iocb,
+		struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	int rc, freq;
 	char buf[16];
 
 	if (count > 15)
 		return -EINVAL;
 
-	if (copy_from_user(buf, p, count))
+	if (!copy_from_iter_full(buf, count, from))
 		return -EFAULT;
 
 	buf[count] = 0;
@@ -636,7 +638,7 @@ static int vcpudispatch_stats_freq_open(struct inode *inode, struct file *file)
 static const struct proc_ops vcpudispatch_stats_freq_proc_ops = {
 	.proc_open	= vcpudispatch_stats_freq_open,
 	.proc_read_iter	= seq_read_iter,
-	.proc_write	= vcpudispatch_stats_freq_write,
+	.proc_write_iter = vcpudispatch_stats_freq_write,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 };
