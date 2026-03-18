@@ -46,9 +46,11 @@ static __poll_t kmsg_poll(struct file *file, poll_table *wait)
 }
 
 
+FOPS_READ_ITER_HELPER(kmsg_read);
+
 static const struct proc_ops kmsg_proc_ops = {
 	.proc_flags	= PROC_ENTRY_PERMANENT,
-	.proc_read	= kmsg_read,
+	.proc_read_iter	= kmsg_read_iter,
 	.proc_poll	= kmsg_poll,
 	.proc_open	= kmsg_open,
 	.proc_release	= kmsg_release,
