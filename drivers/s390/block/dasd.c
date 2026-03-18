@@ -891,26 +891,6 @@ void dasd_profile_off(struct dasd_profile *profile)
 	spin_unlock_bh(&profile->lock);
 }
 
-/* this can go away once proc is converted to ->write_iter() */
-char *dasd_get_user_string(const char __user *user_buf, size_t user_len)
-{
-	char *buffer;
-
-	buffer = vmalloc(user_len + 1);
-	if (buffer == NULL)
-		return ERR_PTR(-ENOMEM);
-	if (copy_from_user(buffer, user_buf, user_len) != 0) {
-		vfree(buffer);
-		return ERR_PTR(-EFAULT);
-	}
-	/* got the string, now strip linefeed. */
-	if (buffer[user_len - 1] == '\n')
-		buffer[user_len - 1] = 0;
-	else
-		buffer[user_len] = 0;
-	return buffer;
-}
-
 char *dasd_get_iter_string(struct iov_iter *from)
 {
 	size_t user_len = iov_iter_count(from);

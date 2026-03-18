@@ -251,16 +251,16 @@ static int dasd_stats_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, dasd_stats_proc_show, NULL);
 }
 
-static ssize_t dasd_stats_proc_write(struct file *file,
-		const char __user *user_buf, size_t user_len, loff_t *pos)
+static ssize_t dasd_stats_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t user_len = iov_iter_count(from);
 #ifdef CONFIG_DASD_PROFILE
 	char *buffer, *str;
 	int rc;
 
 	if (user_len > 65536)
 		user_len = 65536;
-	buffer = dasd_get_user_string(user_buf, user_len);
+	buffer = dasd_get_iter_string(from);
 	if (IS_ERR(buffer))
 		return PTR_ERR(buffer);
 
@@ -320,7 +320,7 @@ static const struct proc_ops dasd_stats_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= dasd_stats_proc_write,
+	.proc_write_iter = dasd_stats_proc_write,
 };
 
 /*
