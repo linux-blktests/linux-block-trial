@@ -19,12 +19,14 @@ static loff_t isapnp_proc_bus_lseek(struct file *file, loff_t off, int whence)
 	return fixed_size_llseek(file, off, whence, 256);
 }
 
-static ssize_t isapnp_proc_bus_read(struct file *file, char __user * buf,
-				    size_t nbytes, loff_t * ppos)
+static ssize_t isapnp_proc_bus_read_iter(struct kiocb *iocb,
+					 struct iov_iter *to)
 {
-	struct pnp_dev *dev = pde_data(file_inode(file));
-	int pos = *ppos;
+	struct pnp_dev *dev = pde_data(file_inode(iocb->ki_filp));
+	int pos = iocb->ki_pos;
+	size_t nbytes = iov_iter_count(to);
 	int cnt, size = 256;
+	u8 buf[256];
 
 	if (pos >= size)
 		return 0;
@@ -34,24 +36,21 @@ static ssize_t isapnp_proc_bus_read(struct file *file, char __user * buf,
 		nbytes = size - pos;
 	cnt = nbytes;
 
-	if (!access_ok(buf, cnt))
-		return -EINVAL;
-
 	isapnp_cfg_begin(dev->card->number, dev->number);
-	for (; pos < 256 && cnt > 0; pos++, buf++, cnt--) {
-		unsigned char val;
-		val = isapnp_read_byte(pos);
-		__put_user(val, buf);
-	}
+	for (; pos < 256 && cnt > 0; pos++, cnt--)
+		buf[pos] = isapnp_read_byte(pos);
 	isapnp_cfg_end();
 
-	*ppos = pos;
+	if (copy_to_iter(buf + (int)iocb->ki_pos, nbytes, to) != nbytes)
+		return -EFAULT;
+
+	iocb->ki_pos = pos;
 	return nbytes;
 }
 
 static const struct proc_ops isapnp_proc_bus_proc_ops = {
 	.proc_lseek	= isapnp_proc_bus_lseek,
-	.proc_read	= isapnp_proc_bus_read,
+	.proc_read_iter	= isapnp_proc_bus_read_iter,
 };
 
 static int isapnp_proc_attach_device(struct pnp_dev *dev)
