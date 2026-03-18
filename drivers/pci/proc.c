@@ -113,14 +113,16 @@ static ssize_t proc_bus_pci_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	return nbytes;
 }
 
-static ssize_t proc_bus_pci_write(struct file *file, const char __user *buf,
-				  size_t nbytes, loff_t *ppos)
+static ssize_t proc_bus_pci_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct inode *ino = file_inode(file);
+	struct inode *ino = file_inode(iocb->ki_filp);
 	struct pci_dev *dev = pde_data(ino);
-	int pos = *ppos;
+	unsigned int pos = iocb->ki_pos;
 	int size = dev->cfg_size;
-	int cnt, ret;
+	unsigned int cnt;
+	size_t nbytes = iov_iter_count(from);
+	u8 *buf;
+	int ret;
 
 	ret = security_locked_down(LOCKDOWN_PCI_ACCESS);
 	if (ret)
@@ -134,57 +136,55 @@ static ssize_t proc_bus_pci_write(struct file *file, const char __user *buf,
 		nbytes = size - pos;
 	cnt = nbytes;
 
-	if (!access_ok(buf, cnt))
-		return -EINVAL;
+	buf = kmalloc(cnt, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	if (copy_from_iter(buf, cnt, from) != cnt) {
+		kfree(buf);
+		return -EFAULT;
+	}
 
 	pci_config_pm_runtime_get(dev);
 
 	if ((pos & 1) && cnt) {
-		unsigned char val;
-		__get_user(val, buf);
-		pci_user_write_config_byte(dev, pos, val);
-		buf++;
+		pci_user_write_config_byte(dev, pos,
+			buf[pos - (unsigned int)iocb->ki_pos]);
 		pos++;
 		cnt--;
 	}
 
 	if ((pos & 3) && cnt > 2) {
-		__le16 val;
-		__get_user(val, (__le16 __user *) buf);
-		pci_user_write_config_word(dev, pos, le16_to_cpu(val));
-		buf += 2;
+		pci_user_write_config_word(dev, pos,
+			get_unaligned_le16(buf + pos - (unsigned int)iocb->ki_pos));
 		pos += 2;
 		cnt -= 2;
 	}
 
 	while (cnt >= 4) {
-		__le32 val;
-		__get_user(val, (__le32 __user *) buf);
-		pci_user_write_config_dword(dev, pos, le32_to_cpu(val));
-		buf += 4;
+		pci_user_write_config_dword(dev, pos,
+			get_unaligned_le32(buf + pos - (unsigned int)iocb->ki_pos));
 		pos += 4;
 		cnt -= 4;
 	}
 
 	if (cnt >= 2) {
-		__le16 val;
-		__get_user(val, (__le16 __user *) buf);
-		pci_user_write_config_word(dev, pos, le16_to_cpu(val));
-		buf += 2;
+		pci_user_write_config_word(dev, pos,
+			get_unaligned_le16(buf + pos - (unsigned int)iocb->ki_pos));
 		pos += 2;
 		cnt -= 2;
 	}
 
 	if (cnt) {
-		unsigned char val;
-		__get_user(val, buf);
-		pci_user_write_config_byte(dev, pos, val);
+		pci_user_write_config_byte(dev, pos,
+			buf[pos - (unsigned int)iocb->ki_pos]);
 		pos++;
 	}
 
 	pci_config_pm_runtime_put(dev);
 
-	*ppos = pos;
+	kfree(buf);
+	iocb->ki_pos = pos;
 	i_size_write(ino, dev->cfg_size);
 	return nbytes;
 }
@@ -328,7 +328,7 @@ static int proc_bus_pci_release(struct inode *inode, struct file *file)
 static const struct proc_ops proc_bus_pci_ops = {
 	.proc_lseek	= proc_bus_pci_lseek,
 	.proc_read_iter	= proc_bus_pci_read_iter,
-	.proc_write	= proc_bus_pci_write,
+	.proc_write_iter = proc_bus_pci_write,
 	.proc_ioctl	= proc_bus_pci_ioctl,
 #ifdef CONFIG_COMPAT
 	.proc_compat_ioctl = proc_bus_pci_ioctl,
