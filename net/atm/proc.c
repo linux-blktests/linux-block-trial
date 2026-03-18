@@ -33,11 +33,11 @@
 #include "common.h" /* atm_proc_init prototype */
 #include "signaling.h" /* to get sigd - ugly too */
 
-static ssize_t proc_dev_atm_read(struct file *file, char __user *buf,
-				 size_t count, loff_t *pos);
+static ssize_t proc_dev_atm_read_iter(struct kiocb *iocb,
+				      struct iov_iter *to);
 
 static const struct proc_ops atm_dev_proc_ops = {
-	.proc_read	= proc_dev_atm_read,
+	.proc_read_iter	= proc_dev_atm_read_iter,
 	.proc_lseek	= noop_llseek,
 };
 
@@ -312,11 +312,11 @@ static const struct seq_operations svc_seq_ops = {
 	.show	= svc_seq_show,
 };
 
-static ssize_t proc_dev_atm_read(struct file *file, char __user *buf,
-				 size_t count, loff_t *pos)
+static ssize_t proc_dev_atm_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct atm_dev *dev;
 	unsigned long page;
+	size_t count = iov_iter_count(to);
 	int length;
 
 	if (count == 0)
@@ -324,18 +324,18 @@ static ssize_t proc_dev_atm_read(struct file *file, char __user *buf,
 	page = get_zeroed_page(GFP_KERNEL);
 	if (!page)
 		return -ENOMEM;
-	dev = pde_data(file_inode(file));
+	dev = pde_data(file_inode(iocb->ki_filp));
 	if (!dev->ops->proc_read)
 		length = -EINVAL;
 	else {
-		length = dev->ops->proc_read(dev, pos, (char *)page);
+		length = dev->ops->proc_read(dev, &iocb->ki_pos, (char *)page);
 		if (length > count)
 			length = -EINVAL;
 	}
 	if (length >= 0) {
-		if (copy_to_user(buf, (char *)page, length))
+		if (copy_to_iter((char *)page, length, to) != length)
 			length = -EFAULT;
-		(*pos)++;
+		iocb->ki_pos++;
 	}
 	free_page(page);
 	return length;
