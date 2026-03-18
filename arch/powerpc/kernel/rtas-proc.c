@@ -26,6 +26,7 @@
 #include <linux/rtc.h>
 #include <linux/of.h>
 
+#include <linux/uio.h>
 #include <linux/uaccess.h>
 #include <asm/processor.h>
 #include <asm/io.h>
@@ -137,20 +138,20 @@ static unsigned long rtas_tone_volume = 0;
 /* Declarations */
 static int ppc_rtas_sensors_show(struct seq_file *m, void *v);
 static int ppc_rtas_clock_show(struct seq_file *m, void *v);
-static ssize_t ppc_rtas_clock_write(struct file *file,
-		const char __user *buf, size_t count, loff_t *ppos);
+static ssize_t ppc_rtas_clock_write(struct kiocb *iocb,
+		struct iov_iter *from);
 static int ppc_rtas_progress_show(struct seq_file *m, void *v);
-static ssize_t ppc_rtas_progress_write(struct file *file,
-		const char __user *buf, size_t count, loff_t *ppos);
+static ssize_t ppc_rtas_progress_write(struct kiocb *iocb,
+		struct iov_iter *from);
 static int ppc_rtas_poweron_show(struct seq_file *m, void *v);
-static ssize_t ppc_rtas_poweron_write(struct file *file,
-		const char __user *buf, size_t count, loff_t *ppos);
+static ssize_t ppc_rtas_poweron_write(struct kiocb *iocb,
+		struct iov_iter *from);
 
-static ssize_t ppc_rtas_tone_freq_write(struct file *file,
-		const char __user *buf, size_t count, loff_t *ppos);
+static ssize_t ppc_rtas_tone_freq_write(struct kiocb *iocb,
+		struct iov_iter *from);
 static int ppc_rtas_tone_freq_show(struct seq_file *m, void *v);
-static ssize_t ppc_rtas_tone_volume_write(struct file *file,
-		const char __user *buf, size_t count, loff_t *ppos);
+static ssize_t ppc_rtas_tone_volume_write(struct kiocb *iocb,
+		struct iov_iter *from);
 static int ppc_rtas_tone_volume_show(struct seq_file *m, void *v);
 static int ppc_rtas_rmo_buf_show(struct seq_file *m, void *v);
 
@@ -163,7 +164,7 @@ static const struct proc_ops ppc_rtas_poweron_proc_ops = {
 	.proc_open	= poweron_open,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= ppc_rtas_poweron_write,
+	.proc_write_iter = ppc_rtas_poweron_write,
 	.proc_release	= single_release,
 };
 
@@ -176,7 +177,7 @@ static const struct proc_ops ppc_rtas_progress_proc_ops = {
 	.proc_open	= progress_open,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= ppc_rtas_progress_write,
+	.proc_write_iter = ppc_rtas_progress_write,
 	.proc_release	= single_release,
 };
 
@@ -189,7 +190,7 @@ static const struct proc_ops ppc_rtas_clock_proc_ops = {
 	.proc_open	= clock_open,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= ppc_rtas_clock_write,
+	.proc_write_iter = ppc_rtas_clock_write,
 	.proc_release	= single_release,
 };
 
@@ -202,7 +203,7 @@ static const struct proc_ops ppc_rtas_tone_freq_proc_ops = {
 	.proc_open	= tone_freq_open,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= ppc_rtas_tone_freq_write,
+	.proc_write_iter = ppc_rtas_tone_freq_write,
 	.proc_release	= single_release,
 };
 
@@ -215,7 +216,7 @@ static const struct proc_ops ppc_rtas_tone_volume_proc_ops = {
 	.proc_open	= tone_volume_open,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= ppc_rtas_tone_volume_write,
+	.proc_write_iter = ppc_rtas_tone_volume_write,
 	.proc_release	= single_release,
 };
 
@@ -256,14 +257,14 @@ static int __init proc_rtas_init(void)
 
 __initcall(proc_rtas_init);
 
-static int parse_number(const char __user *p, size_t count, u64 *val)
+static int parse_number(struct iov_iter *from, size_t count, u64 *val)
 {
 	char buf[40];
 
 	if (count > 39)
 		return -EINVAL;
 
-	if (copy_from_user(buf, p, count))
+	if (!copy_from_iter_full(buf, count, from))
 		return -EFAULT;
 
 	buf[count] = 0;
@@ -274,12 +275,13 @@ static int parse_number(const char __user *p, size_t count, u64 *val)
 /* ****************************************************************** */
 /* POWER-ON-TIME                                                      */
 /* ****************************************************************** */
-static ssize_t ppc_rtas_poweron_write(struct file *file,
-		const char __user *buf, size_t count, loff_t *ppos)
+static ssize_t ppc_rtas_poweron_write(struct kiocb *iocb,
+		struct iov_iter *from)
 {
 	struct rtc_time tm;
 	time64_t nowtime;
-	int error = parse_number(buf, count, &nowtime);
+	size_t count = iov_iter_count(from);
+	int error = parse_number(from, count, &nowtime);
 	if (error)
 		return error;
 
@@ -308,14 +310,15 @@ static int ppc_rtas_poweron_show(struct seq_file *m, void *v)
 /* ****************************************************************** */
 /* PROGRESS                                                           */
 /* ****************************************************************** */
-static ssize_t ppc_rtas_progress_write(struct file *file,
-		const char __user *buf, size_t count, loff_t *ppos)
+static ssize_t ppc_rtas_progress_write(struct kiocb *iocb,
+		struct iov_iter *from)
 {
 	unsigned long hex;
+	size_t count = iov_iter_count(from);
 
 	if (count >= MAX_LINELENGTH)
 		count = MAX_LINELENGTH -1;
-	if (copy_from_user(progress_led, buf, count)) { /* save the string */
+	if (!copy_from_iter_full(progress_led, count, from)) { /* save the string */
 		return -EFAULT;
 	}
 	progress_led[count] = 0;
@@ -340,12 +343,13 @@ static int ppc_rtas_progress_show(struct seq_file *m, void *v)
 /* ****************************************************************** */
 /* CLOCK                                                              */
 /* ****************************************************************** */
-static ssize_t ppc_rtas_clock_write(struct file *file,
-		const char __user *buf, size_t count, loff_t *ppos)
+static ssize_t ppc_rtas_clock_write(struct kiocb *iocb,
+		struct iov_iter *from)
 {
 	struct rtc_time tm;
 	time64_t nowtime;
-	int error = parse_number(buf, count, &nowtime);
+	size_t count = iov_iter_count(from);
+	int error = parse_number(from, count, &nowtime);
 	if (error)
 		return error;
 
@@ -699,11 +703,12 @@ static void get_location_code(struct seq_file *m, struct individual_sensor *s,
 /* ****************************************************************** */
 /* INDICATORS - Tone Frequency                                        */
 /* ****************************************************************** */
-static ssize_t ppc_rtas_tone_freq_write(struct file *file,
-		const char __user *buf, size_t count, loff_t *ppos)
+static ssize_t ppc_rtas_tone_freq_write(struct kiocb *iocb,
+		struct iov_iter *from)
 {
 	u64 freq;
-	int error = parse_number(buf, count, &freq);
+	size_t count = iov_iter_count(from);
+	int error = parse_number(from, count, &freq);
 	if (error)
 		return error;
 
@@ -724,11 +729,12 @@ static int ppc_rtas_tone_freq_show(struct seq_file *m, void *v)
 /* ****************************************************************** */
 /* INDICATORS - Tone Volume                                           */
 /* ****************************************************************** */
-static ssize_t ppc_rtas_tone_volume_write(struct file *file,
-		const char __user *buf, size_t count, loff_t *ppos)
+static ssize_t ppc_rtas_tone_volume_write(struct kiocb *iocb,
+		struct iov_iter *from)
 {
 	u64 volume;
-	int error = parse_number(buf, count, &volume);
+	size_t count = iov_iter_count(from);
+	int error = parse_number(from, count, &volume);
 	if (error)
 		return error;
 
