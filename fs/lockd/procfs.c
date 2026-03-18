@@ -46,8 +46,7 @@ nlm_end_grace_write(struct file *file, const char __user *buf, size_t size,
 }
 
 static ssize_t
-nlm_end_grace_read(struct file *file, char __user *buf, size_t size,
-		   loff_t *pos)
+nlm_end_grace_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	struct lockd_net *ln = net_generic(current->nsproxy->net_ns,
 					   lockd_net_id);
@@ -57,12 +56,12 @@ nlm_end_grace_read(struct file *file, char __user *buf, size_t size,
 	resp[1] = '\n';
 	resp[2] = '\0';
 
-	return simple_read_from_buffer(buf, size, pos, resp, sizeof(resp));
+	return simple_copy_to_iter(resp, &iocb->ki_pos, sizeof(resp), to);
 }
 
 static const struct proc_ops lockd_end_grace_proc_ops = {
 	.proc_write	= nlm_end_grace_write,
-	.proc_read	= nlm_end_grace_read,
+	.proc_read_iter	= nlm_end_grace_read_iter,
 	.proc_lseek	= default_llseek,
 	.proc_release	= simple_transaction_release,
 };
