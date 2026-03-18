@@ -1481,17 +1481,17 @@ static int set_lcd_status(struct backlight_device *bd)
 	return set_lcd_brightness(dev, bd->props.brightness);
 }
 
-static ssize_t lcd_proc_write(struct file *file, const char __user *buf,
-			      size_t count, loff_t *pos)
+static ssize_t lcd_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct toshiba_acpi_dev *dev = pde_data(file_inode(file));
+	struct toshiba_acpi_dev *dev = pde_data(file_inode(iocb->ki_filp));
+	size_t count = iov_iter_count(from);
 	char cmd[42];
 	size_t len;
 	int levels;
 	int value;
 
 	len = min(count, sizeof(cmd) - 1);
-	if (copy_from_user(cmd, buf, len))
+	if (!copy_from_iter_full(cmd, len, from))
 		return -EFAULT;
 	cmd[len] = '\0';
 
@@ -1511,7 +1511,7 @@ static const struct proc_ops lcd_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= lcd_proc_write,
+	.proc_write_iter	= lcd_proc_write,
 };
 
 /* Video-Out */
@@ -1552,10 +1552,10 @@ static int video_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, video_proc_show, pde_data(inode));
 }
 
-static ssize_t video_proc_write(struct file *file, const char __user *buf,
-				size_t count, loff_t *pos)
+static ssize_t video_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct toshiba_acpi_dev *dev = pde_data(file_inode(file));
+	struct toshiba_acpi_dev *dev = pde_data(file_inode(iocb->ki_filp));
+	size_t count = iov_iter_count(from);
 	char *buffer;
 	char *cmd;
 	int lcd_out = -1, crt_out = -1, tv_out = -1;
@@ -1564,9 +1564,9 @@ static ssize_t video_proc_write(struct file *file, const char __user *buf,
 	int ret;
 	u32 video_out;
 
-	cmd = memdup_user_nul(buf, count);
-	if (IS_ERR(cmd))
-		return PTR_ERR(cmd);
+	cmd = iterdup_nul(from, count);
+	if (!cmd)
+		return -ENOMEM;
 
 	buffer = cmd;
 
@@ -1616,7 +1616,7 @@ static const struct proc_ops video_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= video_proc_write,
+	.proc_write_iter	= video_proc_write,
 };
 
 /* Fan status */
@@ -1663,16 +1663,16 @@ static int fan_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, fan_proc_show, pde_data(inode));
 }
 
-static ssize_t fan_proc_write(struct file *file, const char __user *buf,
-			      size_t count, loff_t *pos)
+static ssize_t fan_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct toshiba_acpi_dev *dev = pde_data(file_inode(file));
+	struct toshiba_acpi_dev *dev = pde_data(file_inode(iocb->ki_filp));
+	size_t count = iov_iter_count(from);
 	char cmd[42];
 	size_t len;
 	int value;
 
 	len = min(count, sizeof(cmd) - 1);
-	if (copy_from_user(cmd, buf, len))
+	if (!copy_from_iter_full(cmd, len, from))
 		return -EFAULT;
 	cmd[len] = '\0';
 
@@ -1693,7 +1693,7 @@ static const struct proc_ops fan_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= fan_proc_write,
+	.proc_write_iter	= fan_proc_write,
 };
 
 /* Fan RPM */
@@ -1734,16 +1734,16 @@ static int keys_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, keys_proc_show, pde_data(inode));
 }
 
-static ssize_t keys_proc_write(struct file *file, const char __user *buf,
-			       size_t count, loff_t *pos)
+static ssize_t keys_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct toshiba_acpi_dev *dev = pde_data(file_inode(file));
+	struct toshiba_acpi_dev *dev = pde_data(file_inode(iocb->ki_filp));
+	size_t count = iov_iter_count(from);
 	char cmd[42];
 	size_t len;
 	int value;
 
 	len = min(count, sizeof(cmd) - 1);
-	if (copy_from_user(cmd, buf, len))
+	if (!copy_from_iter_full(cmd, len, from))
 		return -EFAULT;
 	cmd[len] = '\0';
 
@@ -1760,7 +1760,7 @@ static const struct proc_ops keys_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= keys_proc_write,
+	.proc_write_iter	= keys_proc_write,
 };
 
 static int __maybe_unused version_proc_show(struct seq_file *m, void *v)
