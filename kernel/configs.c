@@ -38,17 +38,15 @@ extern char kernel_config_data;
 extern char kernel_config_data_end;
 
 static ssize_t
-ikconfig_read_current(struct file *file, char __user *buf,
-		      size_t len, loff_t * offset)
+ikconfig_read_current(struct kiocb *iocb, struct iov_iter *to)
 {
-	return simple_read_from_buffer(buf, len, offset,
-				       &kernel_config_data,
-				       &kernel_config_data_end -
-				       &kernel_config_data);
+	return simple_copy_to_iter(&kernel_config_data, &iocb->ki_pos,
+				   &kernel_config_data_end -
+				   &kernel_config_data, to);
 }
 
 static const struct proc_ops config_gz_proc_ops = {
-	.proc_read	= ikconfig_read_current,
+	.proc_read_iter	= ikconfig_read_current,
 	.proc_lseek	= default_llseek,
 };
 
