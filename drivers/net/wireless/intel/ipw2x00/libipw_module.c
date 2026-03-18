@@ -220,14 +220,15 @@ static int debug_level_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, debug_level_proc_show, NULL);
 }
 
-static ssize_t debug_level_proc_write(struct file *file,
-		const char __user *buffer, size_t count, loff_t *pos)
+static ssize_t debug_level_proc_write(struct kiocb *iocb,
+		struct iov_iter *from)
 {
 	char buf[] = "0x00000000\n";
+	size_t count = iov_iter_count(from);
 	size_t len = min(sizeof(buf) - 1, count);
 	unsigned long val;
 
-	if (copy_from_user(buf, buffer, len))
+	if (!copy_from_iter_full(buf, len, from))
 		return count;
 	buf[len] = 0;
 	if (sscanf(buf, "%li", &val) != 1)
@@ -244,7 +245,7 @@ static const struct proc_ops debug_level_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= debug_level_proc_write,
+	.proc_write_iter	= debug_level_proc_write,
 };
 #endif				/* CONFIG_LIBIPW_DEBUG */
 
