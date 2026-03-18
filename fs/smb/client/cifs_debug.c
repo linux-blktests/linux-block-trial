@@ -738,16 +738,17 @@ skip_rdma:
 	return 0;
 }
 
-static ssize_t cifs_stats_proc_write(struct file *file,
-		const char __user *buffer, size_t count, loff_t *ppos)
+static ssize_t cifs_stats_proc_write_iter(struct kiocb *iocb,
+		struct iov_iter *from)
 {
 	bool bv;
 	int rc;
+	size_t count = iov_iter_count(from);
 	struct TCP_Server_Info *server;
 	struct cifs_ses *ses;
 	struct cifs_tcon *tcon;
 
-	rc = kstrtobool_from_user(buffer, count, &bv);
+	rc = kstrtobool_from_iter(from, count, &bv);
 	if (rc == 0) {
 #ifdef CONFIG_CIFS_STATS2
 		int i;
@@ -887,16 +888,16 @@ static const struct proc_ops cifs_stats_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= cifs_stats_proc_write,
+	.proc_write_iter = cifs_stats_proc_write_iter,
 };
 
 #ifdef CONFIG_CIFS_SMB_DIRECT
 #define PROC_FILE_DEFINE(name) \
-static ssize_t name##_write(struct file *file, const char __user *buffer, \
-	size_t count, loff_t *ppos) \
+static ssize_t name##_write_iter(struct kiocb *iocb, struct iov_iter *from) \
 { \
 	int rc; \
-	rc = kstrtoint_from_user(buffer, count, 10, &name); \
+	size_t count = iov_iter_count(from); \
+	rc = kstrtoint_from_iter(from, count, 10, &name); \
 	if (rc) \
 		return rc; \
 	return count; \
@@ -916,7 +917,7 @@ static const struct proc_ops cifs_##name##_proc_fops = { \
 	.proc_read_iter	= seq_read_iter, \
 	.proc_lseek	= seq_lseek, \
 	.proc_release	= single_release, \
-	.proc_write	= name##_write, \
+	.proc_write_iter = name##_write_iter, \
 }
 
 PROC_FILE_DEFINE(rdma_readwrite_threshold);
@@ -1033,16 +1034,15 @@ static int cifsFYI_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, cifsFYI_proc_show, NULL);
 }
 
-static ssize_t cifsFYI_proc_write(struct file *file, const char __user *buffer,
-		size_t count, loff_t *ppos)
+static ssize_t cifsFYI_proc_write_iter(struct kiocb *iocb,
+		struct iov_iter *from)
 {
 	char c[2] = { '\0' };
+	size_t count = iov_iter_count(from);
 	bool bv;
-	int rc;
 
-	rc = get_user(c[0], buffer);
-	if (rc)
-		return rc;
+	if (!copy_from_iter(c, 1, from))
+		return -EFAULT;
 	if (kstrtobool(c, &bv) == 0)
 		cifsFYI = bv;
 	else if ((c[0] > '1') && (c[0] <= '9'))
@@ -1058,7 +1058,7 @@ static const struct proc_ops cifsFYI_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= cifsFYI_proc_write,
+	.proc_write_iter = cifsFYI_proc_write_iter,
 };
 
 static int cifs_linux_ext_proc_show(struct seq_file *m, void *v)
@@ -1072,12 +1072,13 @@ static int cifs_linux_ext_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, cifs_linux_ext_proc_show, NULL);
 }
 
-static ssize_t cifs_linux_ext_proc_write(struct file *file,
-		const char __user *buffer, size_t count, loff_t *ppos)
+static ssize_t cifs_linux_ext_proc_write_iter(struct kiocb *iocb,
+		struct iov_iter *from)
 {
 	int rc;
+	size_t count = iov_iter_count(from);
 
-	rc = kstrtobool_from_user(buffer, count, &linuxExtEnabled);
+	rc = kstrtobool_from_iter(from, count, &linuxExtEnabled);
 	if (rc)
 		return rc;
 
@@ -1089,7 +1090,7 @@ static const struct proc_ops cifs_linux_ext_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= cifs_linux_ext_proc_write,
+	.proc_write_iter = cifs_linux_ext_proc_write_iter,
 };
 
 static int cifs_lookup_cache_proc_show(struct seq_file *m, void *v)
@@ -1103,12 +1104,13 @@ static int cifs_lookup_cache_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, cifs_lookup_cache_proc_show, NULL);
 }
 
-static ssize_t cifs_lookup_cache_proc_write(struct file *file,
-		const char __user *buffer, size_t count, loff_t *ppos)
+static ssize_t cifs_lookup_cache_proc_write_iter(struct kiocb *iocb,
+		struct iov_iter *from)
 {
 	int rc;
+	size_t count = iov_iter_count(from);
 
-	rc = kstrtobool_from_user(buffer, count, &lookupCacheEnabled);
+	rc = kstrtobool_from_iter(from, count, &lookupCacheEnabled);
 	if (rc)
 		return rc;
 
@@ -1120,7 +1122,7 @@ static const struct proc_ops cifs_lookup_cache_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= cifs_lookup_cache_proc_write,
+	.proc_write_iter = cifs_lookup_cache_proc_write_iter,
 };
 
 static int traceSMB_proc_show(struct seq_file *m, void *v)
@@ -1134,12 +1136,13 @@ static int traceSMB_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, traceSMB_proc_show, NULL);
 }
 
-static ssize_t traceSMB_proc_write(struct file *file, const char __user *buffer,
-		size_t count, loff_t *ppos)
+static ssize_t traceSMB_proc_write_iter(struct kiocb *iocb,
+		struct iov_iter *from)
 {
 	int rc;
+	size_t count = iov_iter_count(from);
 
-	rc = kstrtobool_from_user(buffer, count, &traceSMB);
+	rc = kstrtobool_from_iter(from, count, &traceSMB);
 	if (rc)
 		return rc;
 
@@ -1151,7 +1154,7 @@ static const struct proc_ops traceSMB_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= traceSMB_proc_write,
+	.proc_write_iter = traceSMB_proc_write_iter,
 };
 
 static int cifs_security_flags_proc_show(struct seq_file *m, void *v)
@@ -1185,20 +1188,21 @@ cifs_security_flags_handle_must_flags(unsigned int *flags)
 	*flags |= signflags;
 }
 
-static ssize_t cifs_security_flags_proc_write(struct file *file,
-		const char __user *buffer, size_t count, loff_t *ppos)
+static ssize_t cifs_security_flags_proc_write_iter(struct kiocb *iocb,
+		struct iov_iter *from)
 {
 	int rc;
 	unsigned int flags;
 	char flags_string[12];
 	bool bv;
+	size_t count = iov_iter_count(from);
 
 	if ((count < 1) || (count > 11))
 		return -EINVAL;
 
 	memset(flags_string, 0, sizeof(flags_string));
 
-	if (copy_from_user(flags_string, buffer, count))
+	if (!copy_from_iter_full(flags_string, count, from))
 		return -EFAULT;
 
 	if (count < 3) {
@@ -1254,7 +1258,7 @@ static const struct proc_ops cifs_security_flags_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= cifs_security_flags_proc_write,
+	.proc_write_iter = cifs_security_flags_proc_write_iter,
 };
 
 /* To make it easier to debug, can help to show mount params */
