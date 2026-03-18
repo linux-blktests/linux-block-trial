@@ -28,12 +28,13 @@ static int jfs_loglevel_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, jfs_loglevel_proc_show, NULL);
 }
 
-static ssize_t jfs_loglevel_proc_write(struct file *file,
-		const char __user *buffer, size_t count, loff_t *ppos)
+static ssize_t jfs_loglevel_proc_write_iter(struct kiocb *iocb,
+					    struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char c;
 
-	if (get_user(c, buffer))
+	if (!copy_from_iter(&c, 1, from))
 		return -EFAULT;
 
 	/* yes, I know this is an ASCIIism.  --hch */
@@ -48,7 +49,7 @@ static const struct proc_ops jfs_loglevel_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= jfs_loglevel_proc_write,
+	.proc_write_iter = jfs_loglevel_proc_write_iter,
 };
 #endif
 
