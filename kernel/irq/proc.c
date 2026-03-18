@@ -13,6 +13,7 @@
 #include <linux/kernel_stat.h>
 #include <linux/mutex.h>
 #include <linux/string.h>
+#include <linux/fs.h>
 
 #include "internals.h"
 
@@ -180,12 +181,14 @@ static ssize_t irq_affinity_proc_write(struct file *file,
 {
 	return write_irq_affinity(0, file, buffer, count, pos);
 }
+FOPS_WRITE_ITER_HELPER(irq_affinity_proc_write);
 
 static ssize_t irq_affinity_list_proc_write(struct file *file,
 		const char __user *buffer, size_t count, loff_t *pos)
 {
 	return write_irq_affinity(1, file, buffer, count, pos);
 }
+FOPS_WRITE_ITER_HELPER(irq_affinity_list_proc_write);
 
 static int irq_affinity_proc_open(struct inode *inode, struct file *file)
 {
@@ -202,7 +205,7 @@ static const struct proc_ops irq_affinity_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= irq_affinity_proc_write,
+	.proc_write_iter = irq_affinity_proc_write_iter,
 };
 
 static const struct proc_ops irq_affinity_list_proc_ops = {
@@ -210,7 +213,7 @@ static const struct proc_ops irq_affinity_list_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= irq_affinity_list_proc_write,
+	.proc_write_iter = irq_affinity_list_proc_write_iter,
 };
 
 #ifdef CONFIG_GENERIC_IRQ_EFFECTIVE_AFF_MASK
@@ -261,6 +264,7 @@ out:
 	free_cpumask_var(new_value);
 	return err;
 }
+FOPS_WRITE_ITER_HELPER(default_affinity_write);
 
 static int default_affinity_open(struct inode *inode, struct file *file)
 {
@@ -272,7 +276,7 @@ static const struct proc_ops default_affinity_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= default_affinity_write,
+	.proc_write_iter = default_affinity_write_iter,
 };
 
 static int irq_node_proc_show(struct seq_file *m, void *v)
