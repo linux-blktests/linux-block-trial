@@ -27,6 +27,7 @@
 #include <linux/proc_fs.h>
 #include <linux/slab.h>
 #include <linux/seq_file.h>
+#include <linux/uio.h>
 #include <linux/netdevice.h>
 
 #include <asm/io.h>
@@ -1126,17 +1127,19 @@ static int rndis_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t rndis_proc_write(struct file *file, const char __user *buffer,
-				size_t count, loff_t *ppos)
+static ssize_t rndis_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	rndis_params *p = pde_data(file_inode(file));
+	rndis_params *p = pde_data(file_inode(iocb->ki_filp));
 	u32 speed = 0;
 	int i, fl_speed = 0;
+	size_t count = iov_iter_count(from);
 
 	for (i = 0; i < count; i++) {
 		char c;
-		if (get_user(c, buffer))
+
+		if (!copy_from_iter(&c, 1, from))
 			return -EFAULT;
+
 		switch (c) {
 		case '0':
 		case '1':
@@ -1164,8 +1167,6 @@ static ssize_t rndis_proc_write(struct file *file, const char __user *buffer,
 			else pr_debug("%c is not valid\n", c);
 			break;
 		}
-
-		buffer++;
 	}
 
 	return count;
@@ -1181,7 +1182,7 @@ static const struct proc_ops rndis_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= rndis_proc_write,
+	.proc_write_iter = rndis_proc_write,
 };
 
 #define	NAME_TEMPLATE "driver/rndis-%03d"
