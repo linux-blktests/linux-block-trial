@@ -681,18 +681,18 @@ static int proc_scsi_devinfo_open(struct inode *inode, struct file *file)
  * integer value of flag to the scsi device info list.
  * To use, echo "vendor:model:flag" > /proc/scsi/device_info
  */
-static ssize_t proc_scsi_devinfo_write(struct file *file,
-				       const char __user *buf,
-				       size_t length, loff_t *ppos)
+static ssize_t proc_scsi_devinfo_write(struct kiocb *iocb,
+				       struct iov_iter *from)
 {
 	char *buffer;
+	size_t length = iov_iter_count(from);
 	ssize_t err = length;
 
-	if (!buf || length>PAGE_SIZE)
+	if (length > PAGE_SIZE)
 		return -EINVAL;
 	if (!(buffer = (char *) __get_free_page(GFP_KERNEL)))
 		return -ENOMEM;
-	if (copy_from_user(buffer, buf, length)) {
+	if (!copy_from_iter_full(buffer, length, from)) {
 		err =-EFAULT;
 		goto out;
 	}
@@ -714,7 +714,7 @@ out:
 static const struct proc_ops scsi_devinfo_proc_ops = {
 	.proc_open	= proc_scsi_devinfo_open,
 	.proc_read_iter	= seq_read_iter,
-	.proc_write	= proc_scsi_devinfo_write,
+	.proc_write_iter	= proc_scsi_devinfo_write,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= seq_release,
 };
