@@ -61,13 +61,13 @@ struct scsi_proc_entry {
 	unsigned int		present;
 };
 
-static ssize_t proc_scsi_host_write(struct file *file, const char __user *buf,
-                           size_t count, loff_t *ppos)
+static ssize_t proc_scsi_host_write(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct Scsi_Host *shost = pde_data(file_inode(file));
+	struct Scsi_Host *shost = pde_data(file_inode(iocb->ki_filp));
+	size_t count = iov_iter_count(from);
 	ssize_t ret = -ENOMEM;
 	char *page;
-    
+
 	if (count > PROC_BLOCK_SIZE)
 		return -EOVERFLOW;
 
@@ -77,7 +77,7 @@ static ssize_t proc_scsi_host_write(struct file *file, const char __user *buf,
 	page = (char *)__get_free_page(GFP_KERNEL);
 	if (page) {
 		ret = -EFAULT;
-		if (copy_from_user(page, buf, count))
+		if (!copy_from_iter_full(page, count, from))
 			goto out;
 		ret = shost->hostt->write_info(shost, page, count);
 	}
@@ -142,7 +142,7 @@ static const struct proc_ops proc_scsi_ops = {
 	.proc_release	= single_release,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= proc_scsi_host_write
+	.proc_write_iter	= proc_scsi_host_write
 };
 
 /**
@@ -385,10 +385,8 @@ static int scsi_remove_single_device(uint host, uint channel, uint id, uint lun)
 
 /**
  * proc_scsi_write - handle writes to /proc/scsi/scsi
- * @file: not used
- * @buf: buffer to write
- * @length: length of buf, at most PAGE_SIZE
- * @ppos: not used
+ * @iocb: io state
+ * @from: data to write, at most PAGE_SIZE
  *
  * Description: this provides a legacy mechanism to add or remove devices by
  * Host, Channel, ID, and Lun.  To use,
@@ -402,14 +400,14 @@ static int scsi_remove_single_device(uint host, uint channel, uint id, uint lun)
  */
 
 
-static ssize_t proc_scsi_write(struct file *file, const char __user *buf,
-			       size_t length, loff_t *ppos)
+static ssize_t proc_scsi_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int host, channel, id, lun;
 	char *buffer, *end, *p;
+	size_t length = iov_iter_count(from);
 	int err;
 
-	if (!buf || length > PAGE_SIZE)
+	if (length > PAGE_SIZE)
 		return -EINVAL;
 
 	buffer = (char *)__get_free_page(GFP_KERNEL);
@@ -417,7 +415,7 @@ static ssize_t proc_scsi_write(struct file *file, const char __user *buf,
 		return -ENOMEM;
 
 	err = -EFAULT;
-	if (copy_from_user(buffer, buf, length))
+	if (!copy_from_iter_full(buffer, length, from))
 		goto out;
 
 	err = -EINVAL;
@@ -538,7 +536,7 @@ static int proc_scsi_open(struct inode *inode, struct file *file)
 static const struct proc_ops scsi_scsi_proc_ops = {
 	.proc_open	= proc_scsi_open,
 	.proc_read_iter	= seq_read_iter,
-	.proc_write	= proc_scsi_write,
+	.proc_write_iter	= proc_scsi_write,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= seq_release,
 };
