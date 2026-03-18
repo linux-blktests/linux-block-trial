@@ -273,10 +273,12 @@ static int snd_info_entry_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+FOPS_READ_ITER_HELPER(snd_info_entry_read);
+
 static const struct proc_ops snd_info_entry_operations =
 {
 	.proc_lseek	= snd_info_entry_llseek,
-	.proc_read	= snd_info_entry_read,
+	.proc_read_iter	= snd_info_entry_read_iter,
 	.proc_write	= snd_info_entry_write,
 	.proc_poll	= snd_info_entry_poll,
 	.proc_ioctl	= snd_info_entry_ioctl,
