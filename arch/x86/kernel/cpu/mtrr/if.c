@@ -2,6 +2,7 @@
 #include <linux/capability.h>
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 #include <linux/proc_fs.h>
 #include <linux/ctype.h>
 #include <linux/string.h>
@@ -91,21 +92,22 @@ mtrr_file_del(unsigned long base, unsigned long size,
  *    "base=%Lx size=%Lx type=%s" or "disable=%d"
  */
 static ssize_t
-mtrr_write(struct file *file, const char __user *buf, size_t len, loff_t * ppos)
+mtrr_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int i, err;
 	unsigned long reg;
 	unsigned long long base, size;
 	char *ptr;
 	char line[LINE_SIZE];
+	size_t len = iov_iter_count(from);
 	int length;
 
 	memset(line, 0, LINE_SIZE);
 
 	len = min_t(size_t, len, LINE_SIZE - 1);
-	length = strncpy_from_user(line, buf, len);
-	if (length < 0)
-		return length;
+	length = copy_from_iter(line, len, from);
+	if (!length)
+		return -EFAULT;
 
 	ptr = line + length - 1;
 	if (length && *ptr == '\n')
@@ -398,7 +400,7 @@ static const struct proc_ops mtrr_proc_ops = {
 	.proc_open		= mtrr_open,
 	.proc_read_iter		= seq_read_iter,
 	.proc_lseek		= seq_lseek,
-	.proc_write		= mtrr_write,
+	.proc_write_iter	= mtrr_write,
 	.proc_ioctl		= mtrr_ioctl,
 #ifdef CONFIG_COMPAT
 	.proc_compat_ioctl	= mtrr_ioctl,
