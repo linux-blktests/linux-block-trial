@@ -41,6 +41,8 @@
 #include <linux/stddef.h>
 #include <linux/types.h>
 
+struct iov_iter;
+
 #include <asm/barrier.h>
 #include <asm/errno.h>
 
@@ -738,6 +740,31 @@ __kfifo_int_must_check_helper( \
 )
 
 /**
+ * kfifo_to_iter - copies data from the fifo into an iov_iter
+ * @fifo: address of the fifo to be used
+ * @to: the iov_iter to copy to
+ * @len: the size of the destination buffer
+ * @copied: pointer to output variable to store the number of copied bytes
+ *
+ * This macro copies at most @len bytes from the fifo into @to
+ * and returns -EFAULT/0.
+ *
+ * Note that with only one concurrent reader and one concurrent
+ * writer, you don't need extra locking to use these macro.
+ */
+#define	kfifo_to_iter(fifo, to, len, copied) \
+__kfifo_int_must_check_helper( \
+({ \
+	typeof((fifo) + 1) __tmp = (fifo); \
+	struct iov_iter *__to = (to); \
+	unsigned int __len = (len); \
+	unsigned int *__copied = (copied); \
+	struct __kfifo *__kfifo = &__tmp->kfifo; \
+	__kfifo_to_iter(__kfifo, __to, __len, __copied); \
+}) \
+)
+
+/**
  * kfifo_dma_in_prepare_mapped - setup a scatterlist for DMA input
  * @fifo: address of the fifo to be used
  * @sgl: pointer to the scatterlist array
@@ -948,6 +975,9 @@ extern int __kfifo_from_user(struct __kfifo *fifo,
 
 extern int __kfifo_to_user(struct __kfifo *fifo,
 	void __user *to, unsigned long len, unsigned int *copied);
+
+extern int __kfifo_to_iter(struct __kfifo *fifo,
+	struct iov_iter *to, unsigned long len, unsigned int *copied);
 
 extern unsigned int __kfifo_dma_in_prepare(struct __kfifo *fifo,
 	struct scatterlist *sgl, int nents, unsigned int len, dma_addr_t dma);

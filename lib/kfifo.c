@@ -13,6 +13,7 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/uio.h>
 
 /*
  * internal helper to calculate the unused elements in a fifo
@@ -305,6 +306,64 @@ int __kfifo_to_user(struct __kfifo *fifo, void __user *to,
 	return err;
 }
 EXPORT_SYMBOL(__kfifo_to_user);
+
+static unsigned long kfifo_copy_to_iter(struct __kfifo *fifo,
+		struct iov_iter *to, unsigned int len, unsigned int off,
+		unsigned int *copied)
+{
+	unsigned int l;
+	unsigned int size = fifo->mask + 1;
+	unsigned int esize = fifo->esize;
+	size_t ret;
+
+	off &= fifo->mask;
+	if (esize != 1) {
+		off *= esize;
+		size *= esize;
+		len *= esize;
+	}
+	l = min(len, size - off);
+
+	ret = copy_to_iter(fifo->data + off, l, to);
+	if (unlikely(ret != l))
+		ret += copy_to_iter(fifo->data, 0, to);
+	else
+		ret += copy_to_iter(fifo->data, len - l, to);
+
+	/*
+	 * make sure that the data is copied before
+	 * incrementing the fifo->out index counter
+	 */
+	smp_wmb();
+	*copied = ret;
+	/* return the number of elements which are not copied */
+	return DIV_ROUND_UP((len - ret), esize);
+}
+
+int __kfifo_to_iter(struct __kfifo *fifo, struct iov_iter *to,
+		unsigned long len, unsigned int *copied)
+{
+	unsigned int l;
+	unsigned long ret;
+	unsigned int esize = fifo->esize;
+	int err;
+
+	if (esize != 1)
+		len /= esize;
+
+	l = fifo->in - fifo->out;
+	if (len > l)
+		len = l;
+	ret = kfifo_copy_to_iter(fifo, to, len, fifo->out, copied);
+	if (unlikely(ret)) {
+		len -= ret;
+		err = -EFAULT;
+	} else
+		err = 0;
+	fifo->out += len;
+	return err;
+}
+EXPORT_SYMBOL(__kfifo_to_iter);
 
 static unsigned int setup_sgl_buf(struct __kfifo *fifo, struct scatterlist *sgl,
 				  unsigned int data_offset, int nents,
