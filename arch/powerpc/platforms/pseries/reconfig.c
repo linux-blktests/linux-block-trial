@@ -346,18 +346,16 @@ static int do_update_property(char *buf, size_t bufsize)
 /**
  * ofdt_write - perform operations on the Open Firmware device tree
  *
- * @file: not used
- * @buf: command and arguments
- * @count: size of the command buffer
- * @off: not used
+ * @iocb: kiocb for the write
+ * @from: iov_iter containing command and arguments
  *
  * Operations supported at this time are addition and removal of
  * whole nodes along with their properties.  Operations on individual
  * properties are not implemented (yet).
  */
-static ssize_t ofdt_write(struct file *file, const char __user *buf, size_t count,
-			  loff_t *off)
+static ssize_t ofdt_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	int rv;
 	char *kbuf;
 	char *tmp;
@@ -366,9 +364,9 @@ static ssize_t ofdt_write(struct file *file, const char __user *buf, size_t coun
 	if (rv)
 		return rv;
 
-	kbuf = memdup_user_nul(buf, count);
-	if (IS_ERR(kbuf))
-		return PTR_ERR(kbuf);
+	kbuf = iterdup_nul(from, count);
+	if (!kbuf)
+		return -ENOMEM;
 
 	tmp = strchr(kbuf, ' ');
 	if (!tmp) {
@@ -396,8 +394,8 @@ out:
 }
 
 static const struct proc_ops ofdt_proc_ops = {
-	.proc_write	= ofdt_write,
-	.proc_lseek	= noop_llseek,
+	.proc_write_iter	= ofdt_write,
+	.proc_lseek		= noop_llseek,
 };
 
 /* create /proc/powerpc/ofdt write-only by root */
