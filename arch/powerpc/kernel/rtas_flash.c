@@ -307,10 +307,10 @@ static ssize_t rtas_flash_read_num_iter(struct kiocb *iocb,
  * count is.  If the system is low on memory it will be just as well
  * that we fail....
  */
-static ssize_t rtas_flash_write(struct file *file, const char __user *buffer,
-				size_t count, loff_t *off)
+static ssize_t rtas_flash_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct rtas_update_flash_t *const uf = &rtas_update_flash_data;
+	size_t count = iov_iter_count(from);
 	char *p;
 	int next_free;
 	struct flash_block_list *fl;
@@ -321,7 +321,7 @@ static ssize_t rtas_flash_write(struct file *file, const char __user *buffer,
 		return count;	/* discard data */
 
 	/* In the case that the image is not ready for flashing, the memory
-	 * allocated for the block list will be freed upon the release of the 
+	 * allocated for the block list will be freed upon the release of the
 	 * proc file
 	 */
 	if (uf->flist == NULL) {
@@ -348,8 +348,8 @@ static ssize_t rtas_flash_write(struct file *file, const char __user *buffer,
 	p = kmem_cache_zalloc(flash_block_cache, GFP_KERNEL);
 	if (!p)
 		return -ENOMEM;
-	
-	if(copy_from_user(p, buffer, count)) {
+
+	if (!copy_from_iter_full(p, count, from)) {
 		kmem_cache_free(flash_block_cache, p);
 		return -EFAULT;
 	}
@@ -389,12 +389,12 @@ static ssize_t manage_flash_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	return simple_copy_to_iter(msg, &iocb->ki_pos, msglen, to);
 }
 
-static ssize_t manage_flash_write(struct file *file, const char __user *buf,
-				size_t count, loff_t *off)
+static ssize_t manage_flash_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct rtas_manage_flash_t *const args_buf = &rtas_manage_flash_data;
 	static const char reject_str[] = "0";
 	static const char commit_str[] = "1";
+	size_t count = iov_iter_count(from);
 	char stkbuf[10];
 	int op;
 
@@ -402,18 +402,16 @@ static ssize_t manage_flash_write(struct file *file, const char __user *buf,
 
 	if ((args_buf->status == MANAGE_AUTH) || (count == 0))
 		return count;
-		
+
 	op = -1;
-	if (buf) {
-		if (count > 9) count = 9;
-		if (copy_from_user (stkbuf, buf, count))
-			return -EFAULT;
-		if (strncmp(stkbuf, reject_str, strlen(reject_str)) == 0) 
-			op = RTAS_REJECT_TMP_IMG;
-		else if (strncmp(stkbuf, commit_str, strlen(commit_str)) == 0) 
-			op = RTAS_COMMIT_TMP_IMG;
-	}
-	
+	if (count > 9) count = 9;
+	if (!copy_from_iter_full(stkbuf, count, from))
+		return -EFAULT;
+	if (strncmp(stkbuf, reject_str, strlen(reject_str)) == 0)
+		op = RTAS_REJECT_TMP_IMG;
+	else if (strncmp(stkbuf, commit_str, strlen(commit_str)) == 0)
+		op = RTAS_COMMIT_TMP_IMG;
+
 	if (op == -1) {   /* buf is empty, or contains invalid string */
 		return -EINVAL;
 	}
@@ -477,36 +475,33 @@ static ssize_t validate_flash_read_iter(struct kiocb *iocb,
 	return simple_copy_to_iter(msg, &iocb->ki_pos, msglen, to);
 }
 
-static ssize_t validate_flash_write(struct file *file, const char __user *buf,
-				    size_t count, loff_t *off)
+static ssize_t validate_flash_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct rtas_validate_flash_t *const args_buf =
 		&rtas_validate_flash_data;
+	size_t count = iov_iter_count(from);
 
 	guard(mutex)(&rtas_validate_flash_mutex);
 
 	/* We are only interested in the first 4K of the
 	 * candidate image */
-	if ((*off >= VALIDATE_BUF_SIZE) || 
+	if ((iocb->ki_pos >= VALIDATE_BUF_SIZE) ||
 		(args_buf->status == VALIDATE_AUTH)) {
-		*off += count;
+		iocb->ki_pos += count;
 		return count;
 	}
 
-	if (*off + count >= VALIDATE_BUF_SIZE)  {
-		count = VALIDATE_BUF_SIZE - *off;
-		args_buf->status = VALIDATE_READY;	
+	if (iocb->ki_pos + count >= VALIDATE_BUF_SIZE)  {
+		count = VALIDATE_BUF_SIZE - iocb->ki_pos;
+		args_buf->status = VALIDATE_READY;
 	} else {
 		args_buf->status = VALIDATE_INCOMPLETE;
 	}
 
-	if (!access_ok(buf, count))
+	if (!copy_from_iter_full(args_buf->buf + iocb->ki_pos, count, from))
 		return -EFAULT;
 
-	if (copy_from_user(args_buf->buf + *off, buf, count))
-		return -EFAULT;
-
-	*off += count;
+	iocb->ki_pos += count;
 	return count;
 }
 
@@ -639,7 +634,7 @@ static const struct rtas_flash_file rtas_flash_files[] = {
 		.handle		= RTAS_FN_IBM_UPDATE_FLASH_64_AND_REBOOT,
 		.status		= &rtas_update_flash_data.status,
 		.ops.proc_read_iter = rtas_flash_read_msg_iter,
-		.ops.proc_write	= rtas_flash_write,
+		.ops.proc_write_iter = rtas_flash_write,
 		.ops.proc_release = rtas_flash_release,
 		.ops.proc_lseek	= default_llseek,
 	},
@@ -648,7 +643,7 @@ static const struct rtas_flash_file rtas_flash_files[] = {
 		.handle		= RTAS_FN_IBM_UPDATE_FLASH_64_AND_REBOOT,
 		.status		= &rtas_update_flash_data.status,
 		.ops.proc_read_iter = rtas_flash_read_num_iter,
-		.ops.proc_write	= rtas_flash_write,
+		.ops.proc_write_iter = rtas_flash_write,
 		.ops.proc_release = rtas_flash_release,
 		.ops.proc_lseek	= default_llseek,
 	},
@@ -657,7 +652,7 @@ static const struct rtas_flash_file rtas_flash_files[] = {
 		.handle		= RTAS_FN_IBM_VALIDATE_FLASH_IMAGE,
 		.status		= &rtas_validate_flash_data.status,
 		.ops.proc_read_iter = validate_flash_read_iter,
-		.ops.proc_write	= validate_flash_write,
+		.ops.proc_write_iter = validate_flash_write,
 		.ops.proc_release = validate_flash_release,
 		.ops.proc_lseek	= default_llseek,
 	},
@@ -666,7 +661,7 @@ static const struct rtas_flash_file rtas_flash_files[] = {
 		.handle		= RTAS_FN_IBM_MANAGE_FLASH_IMAGE,
 		.status		= &rtas_manage_flash_data.status,
 		.ops.proc_read_iter = manage_flash_read_iter,
-		.ops.proc_write	= manage_flash_write,
+		.ops.proc_write_iter = manage_flash_write,
 		.ops.proc_lseek	= default_llseek,
 	}
 };
