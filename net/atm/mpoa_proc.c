@@ -10,6 +10,7 @@
 #include <linux/proc_fs.h>
 #include <linux/ktime.h>
 #include <linux/seq_file.h>
+#include <linux/uio.h>
 #include <linux/uaccess.h>
 #include <linux/atmmpc.h>
 #include <linux/atm.h>
@@ -48,8 +49,7 @@ extern struct mpoa_client *mpcs;
 extern struct proc_dir_entry *atm_proc_root;  /* from proc.c. */
 
 static int proc_mpc_open(struct inode *inode, struct file *file);
-static ssize_t proc_mpc_write(struct file *file, const char __user *buff,
-			      size_t nbytes, loff_t *ppos);
+static ssize_t proc_mpc_write(struct kiocb *iocb, struct iov_iter *from);
 
 static int parse_qos(const char *buff);
 
@@ -57,7 +57,7 @@ static const struct proc_ops mpc_proc_ops = {
 	.proc_open	= proc_mpc_open,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= proc_mpc_write,
+	.proc_write_iter = proc_mpc_write,
 	.proc_release	= seq_release,
 };
 
@@ -203,10 +203,10 @@ static int proc_mpc_open(struct inode *inode, struct file *file)
 	return seq_open(file, &mpc_op);
 }
 
-static ssize_t proc_mpc_write(struct file *file, const char __user *buff,
-			      size_t nbytes, loff_t *ppos)
+static ssize_t proc_mpc_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char *page, *p;
+	size_t nbytes = iov_iter_count(from);
 	unsigned int len;
 
 	if (nbytes == 0)
@@ -219,14 +219,18 @@ static ssize_t proc_mpc_write(struct file *file, const char __user *buff,
 	if (!page)
 		return -ENOMEM;
 
-	for (p = page, len = 0; len < nbytes; p++) {
-		if (get_user(*p, buff++)) {
-			free_page((unsigned long)page);
-			return -EFAULT;
-		}
-		len += 1;
-		if (*p == '\0' || *p == '\n')
+	len = copy_from_iter(page, nbytes, from);
+	if (!len) {
+		free_page((unsigned long)page);
+		return -EFAULT;
+	}
+
+	/* Truncate at first NUL or newline */
+	for (p = page; p < page + len; p++) {
+		if (*p == '\0' || *p == '\n') {
+			len = p - page + 1;
 			break;
+		}
 	}
 
 	*p = '\0';
