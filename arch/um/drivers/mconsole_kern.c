@@ -766,14 +766,14 @@ static int __init mconsole_init(void)
 
 __initcall(mconsole_init);
 
-static ssize_t mconsole_proc_write(struct file *file,
-		const char __user *buffer, size_t count, loff_t *pos)
+static ssize_t mconsole_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char *buf;
 
-	buf = memdup_user_nul(buffer, count);
-	if (IS_ERR(buf))
-		return PTR_ERR(buf);
+	buf = iterdup_nul(from, count);
+	if (!buf)
+		return -ENOMEM;
 
 	mconsole_notify(notify_socket, MCONSOLE_USER_NOTIFY, buf, count);
 	kfree(buf);
@@ -781,7 +781,7 @@ static ssize_t mconsole_proc_write(struct file *file,
 }
 
 static const struct proc_ops mconsole_proc_ops = {
-	.proc_write	= mconsole_proc_write,
+	.proc_write_iter = mconsole_proc_write,
 	.proc_lseek	= noop_llseek,
 };
 
