@@ -833,12 +833,13 @@ static int cache_request(struct cache_detail *detail,
 	return PAGE_SIZE - len;
 }
 
-static ssize_t cache_read(struct file *filp, char __user *buf, size_t count,
-			  loff_t *ppos, struct cache_detail *cd)
+static ssize_t cache_read(struct file *filp, struct iov_iter *to,
+			  struct cache_detail *cd)
 {
 	struct cache_reader *rp = filp->private_data;
 	struct cache_request *rq;
 	struct inode *inode = file_inode(filp);
+	size_t count = iov_iter_count(to);
 	int err;
 
 	if (count == 0)
@@ -883,7 +884,7 @@ static ssize_t cache_read(struct file *filp, char __user *buf, size_t count,
 		if (rp->offset + count > rq->len)
 			count = rq->len - rp->offset;
 		err = -EFAULT;
-		if (copy_to_user(buf, rq->buf + rp->offset, count))
+		if (copy_to_iter(rq->buf + rp->offset, count, to) != count)
 			goto out;
 		rp->offset += count;
 		if (rp->offset >= rq->len) {
@@ -1499,8 +1500,7 @@ static int release_flush(struct inode *inode, struct file *file,
 	return 0;
 }
 
-static ssize_t read_flush(struct file *file, char __user *buf,
-			  size_t count, loff_t *ppos,
+static ssize_t read_flush(struct kiocb *iocb, struct iov_iter *to,
 			  struct cache_detail *cd)
 {
 	char tbuf[22];
@@ -1508,7 +1508,7 @@ static ssize_t read_flush(struct file *file, char __user *buf,
 
 	len = snprintf(tbuf, sizeof(tbuf), "%llu\n",
 			convert_to_wallclock(cd->flush_time));
-	return simple_read_from_buffer(buf, count, ppos, tbuf, len);
+	return simple_copy_to_iter(tbuf, &iocb->ki_pos, len, to);
 }
 
 static ssize_t write_flush(struct file *file, const char __user *buf,
@@ -1554,12 +1554,11 @@ static ssize_t write_flush(struct file *file, const char __user *buf,
 	return count;
 }
 
-static ssize_t cache_read_procfs(struct file *filp, char __user *buf,
-				 size_t count, loff_t *ppos)
+static ssize_t cache_read_procfs(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct cache_detail *cd = pde_data(file_inode(filp));
+	struct cache_detail *cd = pde_data(file_inode(iocb->ki_filp));
 
-	return cache_read(filp, buf, count, ppos, cd);
+	return cache_read(iocb->ki_filp, to, cd);
 }
 
 static ssize_t cache_write_procfs(struct file *filp, const char __user *buf,
@@ -1601,7 +1600,7 @@ static int cache_release_procfs(struct inode *inode, struct file *filp)
 }
 
 static const struct proc_ops cache_channel_proc_ops = {
-	.proc_read	= cache_read_procfs,
+	.proc_read_iter	= cache_read_procfs,
 	.proc_write	= cache_write_procfs,
 	.proc_poll	= cache_poll_procfs,
 	.proc_ioctl	= cache_ioctl_procfs, /* for FIONREAD */
@@ -1644,12 +1643,11 @@ static int release_flush_procfs(struct inode *inode, struct file *filp)
 	return release_flush(inode, filp, cd);
 }
 
-static ssize_t read_flush_procfs(struct file *filp, char __user *buf,
-			    size_t count, loff_t *ppos)
+static ssize_t read_flush_procfs(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct cache_detail *cd = pde_data(file_inode(filp));
+	struct cache_detail *cd = pde_data(file_inode(iocb->ki_filp));
 
-	return read_flush(filp, buf, count, ppos, cd);
+	return read_flush(iocb, to, cd);
 }
 
 static ssize_t write_flush_procfs(struct file *filp,
@@ -1663,7 +1661,7 @@ static ssize_t write_flush_procfs(struct file *filp,
 
 static const struct proc_ops cache_flush_proc_ops = {
 	.proc_open	= open_flush_procfs,
-	.proc_read	= read_flush_procfs,
+	.proc_read_iter	= read_flush_procfs,
 	.proc_write	= write_flush_procfs,
 	.proc_release	= release_flush_procfs,
 };
@@ -1765,14 +1763,12 @@ void cache_destroy_net(struct cache_detail *cd, struct net *net)
 }
 EXPORT_SYMBOL_GPL(cache_destroy_net);
 
-static ssize_t cache_read_pipefs(struct file *filp, char __user *buf,
-				 size_t count, loff_t *ppos)
+static ssize_t cache_read_pipefs(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct cache_detail *cd = RPC_I(file_inode(filp))->private;
+	struct cache_detail *cd = RPC_I(file_inode(iocb->ki_filp))->private;
 
-	return cache_read(filp, buf, count, ppos, cd);
+	return cache_read(iocb->ki_filp, to, cd);
 }
-FOPS_READ_ITER_HELPER(cache_read_pipefs);
 
 static ssize_t cache_write_pipefs(struct file *filp, const char __user *buf,
 				  size_t count, loff_t *ppos)
@@ -1815,7 +1811,7 @@ static int cache_release_pipefs(struct inode *inode, struct file *filp)
 
 const struct file_operations cache_file_operations_pipefs = {
 	.owner		= THIS_MODULE,
-	.read_iter	= cache_read_pipefs_iter,
+	.read_iter	= cache_read_pipefs,
 	.write_iter	= cache_write_pipefs_iter,
 	.poll		= cache_poll_pipefs,
 	.unlocked_ioctl	= cache_ioctl_pipefs, /* for FIONREAD */
@@ -1858,14 +1854,12 @@ static int release_flush_pipefs(struct inode *inode, struct file *filp)
 	return release_flush(inode, filp, cd);
 }
 
-static ssize_t read_flush_pipefs(struct file *filp, char __user *buf,
-			    size_t count, loff_t *ppos)
+static ssize_t read_flush_pipefs(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct cache_detail *cd = RPC_I(file_inode(filp))->private;
+	struct cache_detail *cd = RPC_I(file_inode(iocb->ki_filp))->private;
 
-	return read_flush(filp, buf, count, ppos, cd);
+	return read_flush(iocb, to, cd);
 }
-FOPS_READ_ITER_HELPER(read_flush_pipefs);
 
 static ssize_t write_flush_pipefs(struct file *filp,
 				  const char __user *buf,
@@ -1879,7 +1873,7 @@ FOPS_WRITE_ITER_HELPER(write_flush_pipefs);
 
 const struct file_operations cache_flush_operations_pipefs = {
 	.open		= open_flush_pipefs,
-	.read_iter	= read_flush_pipefs_iter,
+	.read_iter	= read_flush_pipefs,
 	.write_iter	= write_flush_pipefs_iter,
 	.release	= release_flush_pipefs,
 };
