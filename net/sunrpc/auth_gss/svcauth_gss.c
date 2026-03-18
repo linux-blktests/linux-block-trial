@@ -1427,32 +1427,22 @@ static ssize_t write_gssp(struct file *file, const char __user *buf,
 	return count;
 }
 
-static ssize_t read_gssp(struct file *file, char __user *buf,
-			 size_t count, loff_t *ppos)
+static ssize_t read_gssp_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct net *net = pde_data(file_inode(file));
+	struct net *net = pde_data(file_inode(iocb->ki_filp));
 	struct sunrpc_net *sn = net_generic(net, sunrpc_net_id);
-	unsigned long p = *ppos;
 	char tbuf[10];
 	size_t len;
 
 	snprintf(tbuf, sizeof(tbuf), "%d\n", sn->use_gss_proxy);
 	len = strlen(tbuf);
-	if (p >= len)
-		return 0;
-	len -= p;
-	if (len > count)
-		len = count;
-	if (copy_to_user(buf, (void *)(tbuf+p), len))
-		return -EFAULT;
-	*ppos += len;
-	return len;
+	return simple_copy_to_iter(tbuf, &iocb->ki_pos, len, to);
 }
 
 static const struct proc_ops use_gss_proxy_proc_ops = {
 	.proc_open	= nonseekable_open,
 	.proc_write	= write_gssp,
-	.proc_read	= read_gssp,
+	.proc_read_iter	= read_gssp_iter,
 };
 
 static int create_use_gss_proxy_proc_entry(struct net *net)
@@ -1480,8 +1470,8 @@ static void destroy_use_gss_proxy_proc_entry(struct net *net)
 	}
 }
 
-static ssize_t read_gss_krb5_enctypes(struct file *file, char __user *buf,
-				      size_t count, loff_t *ppos)
+static ssize_t read_gss_krb5_enctypes_iter(struct kiocb *iocb,
+					   struct iov_iter *to)
 {
 	struct rpcsec_gss_oid oid = {
 		.len	= 9,
@@ -1498,16 +1488,15 @@ static ssize_t read_gss_krb5_enctypes(struct file *file, char __user *buf,
 		return 0;
 	}
 
-	ret = simple_read_from_buffer(buf, count, ppos,
-				      mech->gm_upcall_enctypes,
-				      strlen(mech->gm_upcall_enctypes));
+	ret = simple_copy_to_iter(mech->gm_upcall_enctypes, &iocb->ki_pos,
+				  strlen(mech->gm_upcall_enctypes), to);
 	gss_mech_put(mech);
 	return ret;
 }
 
 static const struct proc_ops gss_krb5_enctypes_proc_ops = {
 	.proc_open	= nonseekable_open,
-	.proc_read	= read_gss_krb5_enctypes,
+	.proc_read_iter	= read_gss_krb5_enctypes_iter,
 };
 
 static int create_krb5_enctypes_proc_entry(struct net *net)
