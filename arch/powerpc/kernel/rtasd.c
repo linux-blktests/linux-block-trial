@@ -298,21 +298,18 @@ static int rtas_log_release(struct inode * inode, struct file * file)
  * know that we can safely clear the events in NVRAM.
  * Next we'll sit and wait for something else to log.
  */
-static ssize_t rtas_log_read(struct file * file, char __user * buf,
-			 size_t count, loff_t *ppos)
+static ssize_t rtas_log_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	int error;
 	char *tmp;
 	unsigned long s;
 	unsigned long offset;
+	size_t count = iov_iter_count(to);
 
-	if (!buf || count < rtas_error_log_buffer_max)
+	if (count < rtas_error_log_buffer_max)
 		return -EINVAL;
 
 	count = rtas_error_log_buffer_max;
-
-	if (!access_ok(buf, count))
-		return -EFAULT;
 
 	tmp = kmalloc(count, GFP_KERNEL);
 	if (!tmp)
@@ -322,7 +319,7 @@ static ssize_t rtas_log_read(struct file * file, char __user * buf,
 
 	/* if it's 0, then we know we got the last one (the one in NVRAM) */
 	while (rtas_log_size == 0) {
-		if (file->f_flags & O_NONBLOCK) {
+		if (iocb->ki_filp->f_flags & O_NONBLOCK) {
 			spin_unlock_irqrestore(&rtasd_log_lock, s);
 			error = -EAGAIN;
 			goto out;
@@ -351,7 +348,7 @@ static ssize_t rtas_log_read(struct file * file, char __user * buf,
 	rtas_log_size -= 1;
 	spin_unlock_irqrestore(&rtasd_log_lock, s);
 
-	error = copy_to_user(buf, tmp, count) ? -EFAULT : count;
+	error = copy_to_iter(tmp, count, to) != count ? -EFAULT : count;
 out:
 	kfree(tmp);
 	return error;
@@ -366,7 +363,7 @@ static __poll_t rtas_log_poll(struct file *file, poll_table * wait)
 }
 
 static const struct proc_ops rtas_log_proc_ops = {
-	.proc_read	= rtas_log_read,
+	.proc_read_iter	= rtas_log_read_iter,
 	.proc_poll	= rtas_log_poll,
 	.proc_open	= rtas_log_open,
 	.proc_release	= rtas_log_release,
