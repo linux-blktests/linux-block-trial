@@ -1126,16 +1126,17 @@ static int viafb_dvp0_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, viafb_dvp0_proc_show, NULL);
 }
 
-static ssize_t viafb_dvp0_proc_write(struct file *file,
-	const char __user *buffer, size_t count, loff_t *pos)
+static ssize_t viafb_dvp0_proc_write(struct kiocb *iocb,
+	struct iov_iter *from)
 {
 	char buf[20], *value, *pbuf;
 	u8 reg_val = 0;
+	size_t count = iov_iter_count(from);
 	unsigned long length, i;
 	if (count < 1)
 		return -EINVAL;
 	length = count > 20 ? 20 : count;
-	if (copy_from_user(&buf[0], buffer, length))
+	if (!copy_from_iter_full(&buf[0], length, from))
 		return -EFAULT;
 	buf[length - 1] = '\0';	/*Ensure end string */
 	pbuf = &buf[0];
@@ -1178,7 +1179,7 @@ static const struct proc_ops viafb_dvp0_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= viafb_dvp0_proc_write,
+	.proc_write_iter	= viafb_dvp0_proc_write,
 };
 
 static int viafb_dvp1_proc_show(struct seq_file *m, void *v)
@@ -1196,16 +1197,17 @@ static int viafb_dvp1_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, viafb_dvp1_proc_show, NULL);
 }
 
-static ssize_t viafb_dvp1_proc_write(struct file *file,
-	const char __user *buffer, size_t count, loff_t *pos)
+static ssize_t viafb_dvp1_proc_write(struct kiocb *iocb,
+	struct iov_iter *from)
 {
 	char buf[20], *value, *pbuf;
 	u8 reg_val = 0;
+	size_t count = iov_iter_count(from);
 	unsigned long length, i;
 	if (count < 1)
 		return -EINVAL;
 	length = count > 20 ? 20 : count;
-	if (copy_from_user(&buf[0], buffer, length))
+	if (!copy_from_iter_full(&buf[0], length, from))
 		return -EFAULT;
 	buf[length - 1] = '\0';	/*Ensure end string */
 	pbuf = &buf[0];
@@ -1242,7 +1244,7 @@ static const struct proc_ops viafb_dvp1_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= viafb_dvp1_proc_write,
+	.proc_write_iter	= viafb_dvp1_proc_write,
 };
 
 static int viafb_dfph_proc_show(struct seq_file *m, void *v)
@@ -1258,12 +1260,13 @@ static int viafb_dfph_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, viafb_dfph_proc_show, NULL);
 }
 
-static ssize_t viafb_dfph_proc_write(struct file *file,
-	const char __user *buffer, size_t count, loff_t *pos)
+static ssize_t viafb_dfph_proc_write(struct kiocb *iocb,
+	struct iov_iter *from)
 {
 	int err;
 	u8 reg_val;
-	err = kstrtou8_from_user(buffer, count, 0, &reg_val);
+	size_t count = iov_iter_count(from);
+	err = kstrtou8_from_iter(from, count, 0, &reg_val);
 	if (err)
 		return err;
 
@@ -1276,7 +1279,7 @@ static const struct proc_ops viafb_dfph_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= viafb_dfph_proc_write,
+	.proc_write_iter	= viafb_dfph_proc_write,
 };
 
 static int viafb_dfpl_proc_show(struct seq_file *m, void *v)
@@ -1292,12 +1295,13 @@ static int viafb_dfpl_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, viafb_dfpl_proc_show, NULL);
 }
 
-static ssize_t viafb_dfpl_proc_write(struct file *file,
-	const char __user *buffer, size_t count, loff_t *pos)
+static ssize_t viafb_dfpl_proc_write(struct kiocb *iocb,
+	struct iov_iter *from)
 {
 	int err;
 	u8 reg_val;
-	err = kstrtou8_from_user(buffer, count, 0, &reg_val);
+	size_t count = iov_iter_count(from);
+	err = kstrtou8_from_iter(from, count, 0, &reg_val);
 	if (err)
 		return err;
 
@@ -1310,7 +1314,7 @@ static const struct proc_ops viafb_dfpl_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= viafb_dfpl_proc_write,
+	.proc_write_iter	= viafb_dfpl_proc_write,
 };
 
 static int viafb_vt1636_proc_show(struct seq_file *m, void *v)
@@ -1350,16 +1354,17 @@ static int viafb_vt1636_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, viafb_vt1636_proc_show, NULL);
 }
 
-static ssize_t viafb_vt1636_proc_write(struct file *file,
-	const char __user *buffer, size_t count, loff_t *pos)
+static ssize_t viafb_vt1636_proc_write(struct kiocb *iocb,
+	struct iov_iter *from)
 {
 	char buf[30], *value, *pbuf;
 	struct IODATA reg_val;
+	size_t count = iov_iter_count(from);
 	unsigned long length, i;
 	if (count < 1)
 		return -EINVAL;
 	length = count > 30 ? 30 : count;
-	if (copy_from_user(&buf[0], buffer, length))
+	if (!copy_from_iter_full(&buf[0], length, from))
 		return -EFAULT;
 	buf[length - 1] = '\0';	/*Ensure end string */
 	pbuf = &buf[0];
@@ -1445,7 +1450,7 @@ static const struct proc_ops viafb_vt1636_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= viafb_vt1636_proc_write,
+	.proc_write_iter	= viafb_vt1636_proc_write,
 };
 
 #endif /* CONFIG_FB_VIA_DIRECT_PROCFS */
@@ -1457,7 +1462,7 @@ static int __maybe_unused viafb_sup_odev_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static ssize_t odev_update(const char __user *buffer, size_t count, u32 *odev)
+static ssize_t odev_update(const char *buffer, size_t count, u32 *odev)
 {
 	char buf[64], *ptr = buf;
 	u32 devices;
@@ -1465,8 +1470,7 @@ static ssize_t odev_update(const char __user *buffer, size_t count, u32 *odev)
 
 	if (count < 1 || count > 63)
 		return -EINVAL;
-	if (copy_from_user(&buf[0], buffer, count))
-		return -EFAULT;
+	memcpy(&buf[0], buffer, count);
 	buf[count] = '\0';
 	add = buf[0] == '+';
 	sub = buf[0] == '-';
@@ -1497,14 +1501,21 @@ static int viafb_iga1_odev_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, viafb_iga1_odev_proc_show, NULL);
 }
 
-static ssize_t viafb_iga1_odev_proc_write(struct file *file,
-	const char __user *buffer, size_t count, loff_t *pos)
+static ssize_t viafb_iga1_odev_proc_write(struct kiocb *iocb,
+	struct iov_iter *from)
 {
 	u32 dev_on, dev_off, dev_old, dev_new;
+	size_t count = iov_iter_count(from);
+	char buf[64];
 	ssize_t res;
 
+	if (count < 1 || count > 63)
+		return -EINVAL;
+	if (!copy_from_iter_full(buf, count, from))
+		return -EFAULT;
+
 	dev_old = dev_new = viaparinfo->shared->iga1_devices;
-	res = odev_update(buffer, count, &dev_new);
+	res = odev_update(buf, count, &dev_new);
 	if (res != count)
 		return res;
 	dev_off = dev_old & ~dev_new;
@@ -1522,7 +1533,7 @@ static const struct proc_ops viafb_iga1_odev_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= viafb_iga1_odev_proc_write,
+	.proc_write_iter	= viafb_iga1_odev_proc_write,
 };
 
 static int viafb_iga2_odev_proc_show(struct seq_file *m, void *v)
@@ -1536,14 +1547,21 @@ static int viafb_iga2_odev_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, viafb_iga2_odev_proc_show, NULL);
 }
 
-static ssize_t viafb_iga2_odev_proc_write(struct file *file,
-	const char __user *buffer, size_t count, loff_t *pos)
+static ssize_t viafb_iga2_odev_proc_write(struct kiocb *iocb,
+	struct iov_iter *from)
 {
 	u32 dev_on, dev_off, dev_old, dev_new;
+	size_t count = iov_iter_count(from);
+	char buf[64];
 	ssize_t res;
 
+	if (count < 1 || count > 63)
+		return -EINVAL;
+	if (!copy_from_iter_full(buf, count, from))
+		return -EFAULT;
+
 	dev_old = dev_new = viaparinfo->shared->iga2_devices;
-	res = odev_update(buffer, count, &dev_new);
+	res = odev_update(buf, count, &dev_new);
 	if (res != count)
 		return res;
 	dev_off = dev_old & ~dev_new;
@@ -1561,7 +1579,7 @@ static const struct proc_ops viafb_iga2_odev_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= viafb_iga2_odev_proc_write,
+	.proc_write_iter	= viafb_iga2_odev_proc_write,
 };
 
 #define IS_VT1636(lvds_chip)	((lvds_chip).lvds_chip_name == VT1636_LVDS)
