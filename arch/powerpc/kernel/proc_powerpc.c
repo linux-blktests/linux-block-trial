@@ -24,11 +24,10 @@ static loff_t page_map_seek(struct file *file, loff_t off, int whence)
 	return fixed_size_llseek(file, off, whence, PAGE_SIZE);
 }
 
-static ssize_t page_map_read( struct file *file, char __user *buf, size_t nbytes,
-			      loff_t *ppos)
+static ssize_t page_map_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	return simple_read_from_buffer(buf, nbytes, ppos,
-			pde_data(file_inode(file)), PAGE_SIZE);
+	return simple_copy_to_iter(pde_data(file_inode(iocb->ki_filp)),
+				   &iocb->ki_pos, PAGE_SIZE, to);
 }
 
 static int page_map_mmap( struct file *file, struct vm_area_struct *vma )
@@ -43,7 +42,7 @@ static int page_map_mmap( struct file *file, struct vm_area_struct *vma )
 
 static const struct proc_ops page_map_proc_ops = {
 	.proc_lseek	= page_map_seek,
-	.proc_read	= page_map_read,
+	.proc_read_iter	= page_map_read_iter,
 	.proc_mmap	= page_map_mmap,
 };
 
