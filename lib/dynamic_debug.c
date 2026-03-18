@@ -1002,9 +1002,9 @@ __setup("dyndbg=", dyndbg_setup);
  * command text from userspace, parses and executes it.
  */
 #define USER_BUF_PAGE 4096
-static ssize_t ddebug_proc_write(struct file *file, const char __user *ubuf,
-				  size_t len, loff_t *offp)
+static ssize_t ddebug_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t len = iov_iter_count(from);
 	char *tmpbuf;
 	int ret;
 
@@ -1014,9 +1014,9 @@ static ssize_t ddebug_proc_write(struct file *file, const char __user *ubuf,
 		pr_warn("expected <%d bytes into control\n", USER_BUF_PAGE);
 		return -E2BIG;
 	}
-	tmpbuf = memdup_user_nul(ubuf, len);
-	if (IS_ERR(tmpbuf))
-		return PTR_ERR(tmpbuf);
+	tmpbuf = iterdup_nul(from, len);
+	if (!tmpbuf)
+		return -ENOMEM;
 	v2pr_info("read %zu bytes from userspace\n", len);
 
 	ret = ddebug_exec_queries(tmpbuf, NULL);
@@ -1024,10 +1024,9 @@ static ssize_t ddebug_proc_write(struct file *file, const char __user *ubuf,
 	if (ret < 0)
 		return ret;
 
-	*offp += len;
+	iocb->ki_pos += len;
 	return len;
 }
-FOPS_WRITE_ITER_HELPER(ddebug_proc_write);
 
 /*
  * Set the iterator to point to the first _ddebug object
@@ -1191,7 +1190,7 @@ static const struct file_operations ddebug_proc_fops = {
 	.read_iter = seq_read_iter,
 	.llseek = seq_lseek,
 	.release = seq_release_private,
-	.write_iter = ddebug_proc_write_iter
+	.write_iter = ddebug_proc_write
 };
 
 static const struct proc_ops proc_fops = {
@@ -1199,7 +1198,7 @@ static const struct proc_ops proc_fops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek = seq_lseek,
 	.proc_release = seq_release_private,
-	.proc_write = ddebug_proc_write
+	.proc_write_iter = ddebug_proc_write
 };
 
 static void ddebug_attach_module_classes(struct ddebug_table *dt,
