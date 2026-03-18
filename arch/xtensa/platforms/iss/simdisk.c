@@ -206,26 +206,43 @@ static int simdisk_detach(struct simdisk *dev)
 	return err;
 }
 
-static ssize_t proc_read_simdisk(struct file *file, char __user *buf,
-			size_t size, loff_t *ppos)
+static ssize_t proc_read_simdisk_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	struct simdisk *dev = pde_data(file_inode(file));
+	struct simdisk *dev = pde_data(file_inode(iocb->ki_filp));
 	const char *s = dev->filename;
+	size_t count = iov_iter_count(to);
+	size_t available;
+	const char *data;
+	char *temp = NULL;
+	ssize_t ret;
+
 	if (s) {
 		ssize_t len = strlen(s);
-		char *temp = kmalloc(len + 2, GFP_KERNEL);
 
+		temp = kmalloc(len + 2, GFP_KERNEL);
 		if (!temp)
 			return -ENOMEM;
-
-		len = scnprintf(temp, len + 2, "%s\n", s);
-		len = simple_read_from_buffer(buf, size, ppos,
-					      temp, len);
-
-		kfree(temp);
-		return len;
+		available = scnprintf(temp, len + 2, "%s\n", s);
+		data = temp;
+	} else {
+		available = 1;
+		data = "\n";
 	}
-	return simple_read_from_buffer(buf, size, ppos, "\n", 1);
+
+	if (iocb->ki_pos >= available) {
+		ret = 0;
+		goto out;
+	}
+	count = min_t(size_t, count, available - iocb->ki_pos);
+	if (copy_to_iter(data + iocb->ki_pos, count, to) != count) {
+		ret = -EFAULT;
+		goto out;
+	}
+	iocb->ki_pos += count;
+	ret = count;
+out:
+	kfree(temp);
+	return ret;
 }
 
 static ssize_t proc_write_simdisk(struct file *file, const char __user *buf,
@@ -260,7 +277,7 @@ out_free:
 }
 
 static const struct proc_ops simdisk_proc_ops = {
-	.proc_read	= proc_read_simdisk,
+	.proc_read_iter	= proc_read_simdisk_iter,
 	.proc_write	= proc_write_simdisk,
 	.proc_lseek	= default_llseek,
 };
