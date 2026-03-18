@@ -128,26 +128,27 @@ static ssize_t fifo_write(struct file *file, const char __user *buf,
 	return copied;
 }
 
-static ssize_t fifo_read(struct file *file, char __user *buf,
-						size_t count, loff_t *ppos)
+static ssize_t fifo_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	int ret;
 	unsigned int copied;
+	unsigned char buf[FIFO_SIZE];
 
 	if (mutex_lock_interruptible(&read_access))
 		return -ERESTARTSYS;
 
-	ret = kfifo_to_user(&test, buf, count, &copied);
+	copied = kfifo_out(&test, buf, min_t(size_t, iov_iter_count(to),
+					     sizeof(buf)));
 
 	mutex_unlock(&read_access);
-	if (ret)
-		return ret;
+
+	if (copied && copy_to_iter(buf, copied, to) != copied)
+		return -EFAULT;
 
 	return copied;
 }
 
 static const struct proc_ops fifo_proc_ops = {
-	.proc_read	= fifo_read,
+	.proc_read_iter	= fifo_read_iter,
 	.proc_write	= fifo_write,
 	.proc_lseek	= noop_llseek,
 };
