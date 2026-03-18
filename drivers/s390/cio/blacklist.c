@@ -355,13 +355,13 @@ cio_ignore_proc_seq_show(struct seq_file *s, void *it)
 }
 
 static ssize_t
-cio_ignore_write(struct file *file, const char __user *user_buf,
-		 size_t user_len, loff_t *offset)
+cio_ignore_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t user_len = iov_iter_count(from);
 	char *buf;
 	ssize_t rc, ret, i;
 
-	if (*offset)
+	if (iocb->ki_pos)
 		return -EINVAL;
 	if (user_len > 65536)
 		user_len = 65536;
@@ -369,7 +369,7 @@ cio_ignore_write(struct file *file, const char __user *user_buf,
 	if (buf == NULL)
 		return -ENOMEM;
 
-	if (strncpy_from_user (buf, user_buf, user_len) < 0) {
+	if (copy_from_iter(buf, user_len, from) != user_len) {
 		rc = -EFAULT;
 		goto out_free;
 	}
@@ -409,7 +409,7 @@ static const struct proc_ops cio_ignore_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= seq_release_private,
-	.proc_write	= cio_ignore_write,
+	.proc_write_iter = cio_ignore_write,
 };
 
 static int
