@@ -65,17 +65,17 @@ static int led_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, led_proc_show, NULL);
 }
 
-static ssize_t led_proc_write(struct file *file, const char __user *buffer,
-			      size_t count, loff_t *ppos)
+static ssize_t led_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char *buf = NULL;
 
 	if (count > LED_MAX_LENGTH)
 		count = LED_MAX_LENGTH;
 
-	buf = memdup_user_nul(buffer, count);
-	if (IS_ERR(buf))
-		return PTR_ERR(buf);
+	buf = iterdup_nul(from, count);
+	if (!buf)
+		return -ENOMEM;
 
 	/* work around \n when echo'ing into proc */
 	if (buf[count - 1] == '\n')
@@ -110,7 +110,7 @@ static const struct proc_ops led_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= led_proc_write,
+	.proc_write_iter = led_proc_write,
 };
 #endif
 
