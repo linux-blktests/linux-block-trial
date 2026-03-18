@@ -516,10 +516,10 @@ static int pgctrl_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
-static ssize_t pgctrl_write(struct file *file, const char __user *buf,
-			    size_t count, loff_t *ppos)
+static ssize_t pgctrl_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	char data[128];
+	size_t count = iov_iter_count(from);
 	size_t max;
 	struct pktgen_net *pn = net_generic(current->nsproxy->net_ns, pg_net_id);
 
@@ -530,7 +530,7 @@ static ssize_t pgctrl_write(struct file *file, const char __user *buf,
 		return -EINVAL;
 
 	max = min(count, sizeof(data) - 1);
-	if (copy_from_user(data, buf, max))
+	if (!copy_from_iter_full(data, max, from))
 		return -EFAULT;
 
 	if (data[max - 1] == '\n')
@@ -559,7 +559,7 @@ static const struct proc_ops pktgen_proc_ops = {
 	.proc_open	= pgctrl_open,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= pgctrl_write,
+	.proc_write_iter	= pgctrl_write,
 	.proc_release	= single_release,
 };
 
@@ -748,8 +748,7 @@ static int pktgen_if_show(struct seq_file *seq, void *v)
 }
 
 
-static ssize_t hex32_arg(const char __user *user_buffer, size_t maxlen,
-			 __u32 *num)
+static ssize_t hex32_arg(const char *buffer, size_t maxlen, __u32 *num)
 {
 	size_t i = 0;
 
@@ -757,11 +756,8 @@ static ssize_t hex32_arg(const char __user *user_buffer, size_t maxlen,
 
 	for (; i < maxlen; i++) {
 		int value;
-		char c;
 
-		if (get_user(c, &user_buffer[i]))
-			return -EFAULT;
-		value = hex_to_bin(c);
+		value = hex_to_bin(buffer[i]);
 		if (value >= 0) {
 			*num <<= 4;
 			*num |= value;
@@ -772,16 +768,12 @@ static ssize_t hex32_arg(const char __user *user_buffer, size_t maxlen,
 	return i;
 }
 
-static ssize_t count_trail_chars(const char __user *user_buffer, size_t maxlen)
+static ssize_t count_trail_chars(const char *buffer, size_t maxlen)
 {
 	size_t i;
 
 	for (i = 0; i < maxlen; i++) {
-		char c;
-
-		if (get_user(c, &user_buffer[i]))
-			return -EFAULT;
-		switch (c) {
+		switch (buffer[i]) {
 		case '\"':
 		case '\n':
 		case '\r':
@@ -797,36 +789,27 @@ done:
 	return i;
 }
 
-static ssize_t num_arg(const char __user *user_buffer, size_t maxlen,
-		       unsigned long *num)
+static ssize_t num_arg(const char *buffer, size_t maxlen, unsigned long *num)
 {
 	size_t i;
 	*num = 0;
 
 	for (i = 0; i < maxlen; i++) {
-		char c;
-
-		if (get_user(c, &user_buffer[i]))
-			return -EFAULT;
-		if ((c >= '0') && (c <= '9')) {
+		if ((buffer[i] >= '0') && (buffer[i] <= '9')) {
 			*num *= 10;
-			*num += c - '0';
+			*num += buffer[i] - '0';
 		} else
 			break;
 	}
 	return i;
 }
 
-static ssize_t strn_len(const char __user *user_buffer, size_t maxlen)
+static ssize_t strn_len(const char *buffer, size_t maxlen)
 {
 	size_t i;
 
 	for (i = 0; i < maxlen; i++) {
-		char c;
-
-		if (get_user(c, &user_buffer[i]))
-			return -EFAULT;
-		switch (c) {
+		switch (buffer[i]) {
 		case '\"':
 		case '\n':
 		case '\r':
@@ -847,8 +830,7 @@ done_str:
  * where each entry consists of size and weight delimited by commas.
  * "size1,weight_1 size2,weight_2 ... size_n,weight_n" for example.
  */
-static ssize_t get_imix_entries(const char __user *buffer,
-				size_t maxlen,
+static ssize_t get_imix_entries(const char *buffer, size_t maxlen,
 				struct pktgen_dev *pkt_dev)
 {
 	size_t i = 0, max;
@@ -874,8 +856,7 @@ static ssize_t get_imix_entries(const char __user *buffer,
 		i += len;
 		if (i >= maxlen)
 			return -EINVAL;
-		if (get_user(c, &buffer[i]))
-			return -EFAULT;
+		c = buffer[i];
 		/* Check for comma between size_i and weight_i */
 		if (c != ',')
 			return -EINVAL;
@@ -901,16 +882,15 @@ static ssize_t get_imix_entries(const char __user *buffer,
 
 		if (i >= maxlen)
 			break;
-		if (get_user(c, &buffer[i]))
-			return -EFAULT;
+		c = buffer[i];
 		i++;
 	} while (c == ' ');
 
 	return i;
 }
 
-static ssize_t get_labels(const char __user *buffer,
-			  size_t maxlen, struct pktgen_dev *pkt_dev)
+static ssize_t get_labels(const char *buffer, size_t maxlen,
+			  struct pktgen_dev *pkt_dev)
 {
 	unsigned int n = 0;
 	size_t i = 0, max;
@@ -943,8 +923,7 @@ static ssize_t get_labels(const char __user *buffer,
 		n++;
 		if (i >= maxlen)
 			break;
-		if (get_user(c, &buffer[i]))
-			return -EFAULT;
+		c = buffer[i];
 		i++;
 	} while (c == ',');
 
@@ -981,12 +960,9 @@ static __u32 pktgen_read_flag(const char *f, bool *disable)
 	return 0;
 }
 
-static ssize_t pktgen_if_write(struct file *file,
-			       const char __user *user_buffer, size_t count,
-			       loff_t *offset)
+static ssize_t __pktgen_if_write(struct pktgen_dev *pkt_dev,
+				 const char *user_buffer, size_t count)
 {
-	struct seq_file *seq = file->private_data;
-	struct pktgen_dev *pkt_dev = seq->private;
 	size_t i, max;
 	ssize_t len;
 	char name[16], valstr[32];
@@ -1016,8 +992,7 @@ static ssize_t pktgen_if_write(struct file *file,
 		return len;
 
 	memset(name, 0, sizeof(name));
-	if (copy_from_user(name, &user_buffer[i], len))
-		return -EFAULT;
+	memcpy(name, &user_buffer[i], len);
 	i += len;
 
 	max = count - i;
@@ -1028,14 +1003,10 @@ static ssize_t pktgen_if_write(struct file *file,
 	i += len;
 
 	if (debug) {
-		size_t copy = min_t(size_t, count + 1, 1024);
-		char *tp = strndup_user(user_buffer, copy);
+		size_t copy = min_t(size_t, count, 1023);
 
-		if (IS_ERR(tp))
-			return PTR_ERR(tp);
-
-		pr_debug("%s,%zu  buffer -:%s:-\n", name, count, tp);
-		kfree(tp);
+		pr_debug("%s,%zu  buffer -:%.*s:-\n", name, count,
+			 (int)copy, user_buffer);
 	}
 
 	if (!strcmp(name, "min_pkt_size")) {
@@ -1329,8 +1300,7 @@ static ssize_t pktgen_if_write(struct file *file,
 			return len;
 
 		memset(f, 0, sizeof(f));
-		if (copy_from_user(f, &user_buffer[i], len))
-			return -EFAULT;
+		memcpy(f, &user_buffer[i], len);
 
 		if (strcmp(f, "start_xmit") == 0) {
 			pkt_dev->xmit_mode = M_START_XMIT;
@@ -1369,8 +1339,7 @@ static ssize_t pktgen_if_write(struct file *file,
 			return len;
 
 		memset(f, 0, 32);
-		if (copy_from_user(f, &user_buffer[i], len))
-			return -EFAULT;
+		memcpy(f, &user_buffer[i], len);
 
 		flag = pktgen_read_flag(f, &disable);
 		if (flag) {
@@ -1417,8 +1386,7 @@ static ssize_t pktgen_if_write(struct file *file,
 		if (len < 0)
 			return len;
 
-		if (copy_from_user(buf, &user_buffer[i], len))
-			return -EFAULT;
+		memcpy(buf, &user_buffer[i], len);
 		buf[len] = 0;
 		if (strcmp(buf, pkt_dev->dst_min) != 0) {
 			strscpy_pad(pkt_dev->dst_min, buf);
@@ -1437,8 +1405,7 @@ static ssize_t pktgen_if_write(struct file *file,
 		if (len < 0)
 			return len;
 
-		if (copy_from_user(buf, &user_buffer[i], len))
-			return -EFAULT;
+		memcpy(buf, &user_buffer[i], len);
 		buf[len] = 0;
 		if (strcmp(buf, pkt_dev->dst_max) != 0) {
 			strscpy_pad(pkt_dev->dst_max, buf);
@@ -1459,8 +1426,7 @@ static ssize_t pktgen_if_write(struct file *file,
 
 		pkt_dev->flags |= F_IPV6;
 
-		if (copy_from_user(buf, &user_buffer[i], len))
-			return -EFAULT;
+		memcpy(buf, &user_buffer[i], len);
 		buf[len] = 0;
 
 		in6_pton(buf, -1, pkt_dev->in6_daddr.s6_addr, -1, NULL);
@@ -1482,8 +1448,7 @@ static ssize_t pktgen_if_write(struct file *file,
 
 		pkt_dev->flags |= F_IPV6;
 
-		if (copy_from_user(buf, &user_buffer[i], len))
-			return -EFAULT;
+		memcpy(buf, &user_buffer[i], len);
 		buf[len] = 0;
 
 		in6_pton(buf, -1, pkt_dev->min_in6_daddr.s6_addr, -1, NULL);
@@ -1504,8 +1469,7 @@ static ssize_t pktgen_if_write(struct file *file,
 
 		pkt_dev->flags |= F_IPV6;
 
-		if (copy_from_user(buf, &user_buffer[i], len))
-			return -EFAULT;
+		memcpy(buf, &user_buffer[i], len);
 		buf[len] = 0;
 
 		in6_pton(buf, -1, pkt_dev->max_in6_daddr.s6_addr, -1, NULL);
@@ -1525,8 +1489,7 @@ static ssize_t pktgen_if_write(struct file *file,
 
 		pkt_dev->flags |= F_IPV6;
 
-		if (copy_from_user(buf, &user_buffer[i], len))
-			return -EFAULT;
+		memcpy(buf, &user_buffer[i], len);
 		buf[len] = 0;
 
 		in6_pton(buf, -1, pkt_dev->in6_saddr.s6_addr, -1, NULL);
@@ -1546,8 +1509,7 @@ static ssize_t pktgen_if_write(struct file *file,
 		if (len < 0)
 			return len;
 
-		if (copy_from_user(buf, &user_buffer[i], len))
-			return -EFAULT;
+		memcpy(buf, &user_buffer[i], len);
 		buf[len] = 0;
 		if (strcmp(buf, pkt_dev->src_min) != 0) {
 			strscpy_pad(pkt_dev->src_min, buf);
@@ -1566,8 +1528,7 @@ static ssize_t pktgen_if_write(struct file *file,
 		if (len < 0)
 			return len;
 
-		if (copy_from_user(buf, &user_buffer[i], len))
-			return -EFAULT;
+		memcpy(buf, &user_buffer[i], len);
 		buf[len] = 0;
 		if (strcmp(buf, pkt_dev->src_max) != 0) {
 			strscpy_pad(pkt_dev->src_max, buf);
@@ -1587,8 +1548,7 @@ static ssize_t pktgen_if_write(struct file *file,
 			return len;
 
 		memset(valstr, 0, sizeof(valstr));
-		if (copy_from_user(valstr, &user_buffer[i], len))
-			return -EFAULT;
+		memcpy(valstr, &user_buffer[i], len);
 
 		if (!mac_pton(valstr, pkt_dev->dst_mac))
 			return -EINVAL;
@@ -1605,8 +1565,7 @@ static ssize_t pktgen_if_write(struct file *file,
 			return len;
 
 		memset(valstr, 0, sizeof(valstr));
-		if (copy_from_user(valstr, &user_buffer[i], len))
-			return -EFAULT;
+		memcpy(valstr, &user_buffer[i], len);
 
 		if (!mac_pton(valstr, pkt_dev->src_mac))
 			return -EINVAL;
@@ -1869,6 +1828,27 @@ static ssize_t pktgen_if_write(struct file *file,
 	return -EINVAL;
 }
 
+static ssize_t pktgen_if_write(struct kiocb *iocb, struct iov_iter *from)
+{
+	struct seq_file *seq = iocb->ki_filp->private_data;
+	struct pktgen_dev *pkt_dev = seq->private;
+	size_t count = iov_iter_count(from);
+	ssize_t ret;
+	char *buf;
+
+	buf = kmalloc(count, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+	if (!copy_from_iter_full(buf, count, from)) {
+		kfree(buf);
+		return -EFAULT;
+	}
+
+	ret = __pktgen_if_write(pkt_dev, buf, count);
+	kfree(buf);
+	return ret;
+}
+
 static int pktgen_if_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, pktgen_if_show, pde_data(inode));
@@ -1878,7 +1858,7 @@ static const struct proc_ops pktgen_if_proc_ops = {
 	.proc_open	= pktgen_if_open,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= pktgen_if_write,
+	.proc_write_iter	= pktgen_if_write,
 	.proc_release	= single_release,
 };
 
@@ -1912,12 +1892,9 @@ static int pktgen_thread_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
-static ssize_t pktgen_thread_write(struct file *file,
-				   const char __user *user_buffer,
-				   size_t count, loff_t *offset)
+static ssize_t __pktgen_thread_write(struct pktgen_thread *t,
+				     const char *user_buffer, size_t count)
 {
-	struct seq_file *seq = file->private_data;
-	struct pktgen_thread *t = seq->private;
 	size_t i, max;
 	ssize_t len, ret;
 	char name[40];
@@ -1942,8 +1919,7 @@ static ssize_t pktgen_thread_write(struct file *file,
 		return len;
 
 	memset(name, 0, sizeof(name));
-	if (copy_from_user(name, &user_buffer[i], len))
-		return -EFAULT;
+	memcpy(name, &user_buffer[i], len);
 	i += len;
 
 	max = count - i;
@@ -1974,8 +1950,7 @@ static ssize_t pktgen_thread_write(struct file *file,
 			ret = len;
 			goto out;
 		}
-		if (copy_from_user(f, &user_buffer[i], len))
-			return -EFAULT;
+		memcpy(f, &user_buffer[i], len);
 
 		mutex_lock(&pktgen_thread_lock);
 		ret = pktgen_add_device(t, f);
@@ -2009,6 +1984,27 @@ out:
 	return ret;
 }
 
+static ssize_t pktgen_thread_write(struct kiocb *iocb, struct iov_iter *from)
+{
+	struct seq_file *seq = iocb->ki_filp->private_data;
+	struct pktgen_thread *t = seq->private;
+	size_t count = iov_iter_count(from);
+	ssize_t ret;
+	char *buf;
+
+	buf = kmalloc(count, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+	if (!copy_from_iter_full(buf, count, from)) {
+		kfree(buf);
+		return -EFAULT;
+	}
+
+	ret = __pktgen_thread_write(t, buf, count);
+	kfree(buf);
+	return ret;
+}
+
 static int pktgen_thread_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, pktgen_thread_show, pde_data(inode));
@@ -2018,7 +2014,7 @@ static const struct proc_ops pktgen_thread_proc_ops = {
 	.proc_open	= pktgen_thread_open,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= pktgen_thread_write,
+	.proc_write_iter	= pktgen_thread_write,
 	.proc_release	= single_release,
 };
 
