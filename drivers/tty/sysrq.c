@@ -1203,16 +1203,17 @@ EXPORT_SYMBOL(unregister_sysrq_key);
  * However, if the first character is an underscore,
  * all characters are processed.
  */
-static ssize_t write_sysrq_trigger(struct file *file, const char __user *buf,
-				   size_t count, loff_t *ppos)
+static ssize_t write_sysrq_trigger_iter(struct kiocb *iocb,
+					struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	bool bulk = false;
 	size_t i;
 
 	for (i = 0; i < count; i++) {
 		char c;
 
-		if (get_user(c, buf + i))
+		if (!copy_from_iter(&c, 1, from))
 			return -EFAULT;
 
 		if (c == '_')
@@ -1228,7 +1229,7 @@ static ssize_t write_sysrq_trigger(struct file *file, const char __user *buf,
 }
 
 static const struct proc_ops sysrq_trigger_proc_ops = {
-	.proc_write	= write_sysrq_trigger,
+	.proc_write_iter = write_sysrq_trigger_iter,
 	.proc_lseek	= noop_llseek,
 };
 
