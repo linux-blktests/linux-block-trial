@@ -151,30 +151,40 @@ void profile_tick(int type)
  * get meaningful info out of these data.
  */
 static ssize_t
-read_profile(struct file *file, char __user *buf, size_t count, loff_t *ppos)
+read_profile_iter(struct kiocb *iocb, struct iov_iter *to)
 {
-	unsigned long p = *ppos;
-	ssize_t read;
-	char *pnt;
+	unsigned long p = iocb->ki_pos;
+	size_t count = iov_iter_count(to);
+	ssize_t copied = 0;
 	unsigned long sample_step = 1UL << prof_shift;
 
 	if (p >= (prof_len+1)*sizeof(unsigned int))
 		return 0;
 	if (count > (prof_len+1)*sizeof(unsigned int) - p)
 		count = (prof_len+1)*sizeof(unsigned int) - p;
-	read = 0;
 
-	while (p < sizeof(unsigned int) && count > 0) {
-		if (put_user(*((char *)(&sample_step)+p), buf))
+	/* Copy the sample_step header if position is within it */
+	if (p < sizeof(unsigned int)) {
+		size_t hdr = min_t(size_t, count, sizeof(unsigned int) - p);
+
+		if (copy_to_iter((char *)(&sample_step) + p, hdr, to) != hdr)
 			return -EFAULT;
-		buf++; p++; count--; read++;
+		p += hdr;
+		count -= hdr;
+		copied += hdr;
 	}
-	pnt = (char *)prof_buffer + p - sizeof(atomic_t);
-	if (copy_to_user(buf, (void *)pnt, count))
-		return -EFAULT;
-	read += count;
-	*ppos += read;
-	return read;
+
+	/* Copy from prof_buffer */
+	if (count > 0) {
+		char *pnt = (char *)prof_buffer + p - sizeof(atomic_t);
+
+		if (copy_to_iter(pnt, count, to) != count)
+			return -EFAULT;
+		copied += count;
+	}
+
+	iocb->ki_pos += copied;
+	return copied;
 }
 
 /* default is to not implement this call */
@@ -208,7 +218,7 @@ static ssize_t write_profile(struct file *file, const char __user *buf,
 }
 
 static const struct proc_ops profile_proc_ops = {
-	.proc_read	= read_profile,
+	.proc_read_iter	= read_profile_iter,
 	.proc_write	= write_profile,
 	.proc_lseek	= default_llseek,
 };
