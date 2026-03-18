@@ -86,11 +86,11 @@ static int srm_env_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, srm_env_proc_show, pde_data(inode));
 }
 
-static ssize_t srm_env_proc_write(struct file *file, const char __user *buffer,
-				  size_t count, loff_t *pos)
+static ssize_t srm_env_proc_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int res;
-	unsigned long	id = (unsigned long)pde_data(file_inode(file));
+	unsigned long	id = (unsigned long)pde_data(file_inode(iocb->ki_filp));
+	size_t		count = iov_iter_count(from);
 	char		*buf = (char *) __get_free_page(GFP_USER);
 	unsigned long	ret1, ret2;
 
@@ -102,7 +102,7 @@ static ssize_t srm_env_proc_write(struct file *file, const char __user *buffer,
 		goto out;
 
 	res = -EFAULT;
-	if (copy_from_user(buf, buffer, count))
+	if (!copy_from_iter_full(buf, count, from))
 		goto out;
 	buf[count] = '\0';
 
@@ -124,7 +124,7 @@ static const struct proc_ops srm_env_proc_ops = {
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
-	.proc_write	= srm_env_proc_write,
+	.proc_write_iter = srm_env_proc_write,
 };
 
 static int __init
