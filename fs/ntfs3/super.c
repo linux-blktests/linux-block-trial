@@ -522,11 +522,11 @@ static int ntfs3_label_show(struct seq_file *m, void *o)
 }
 
 /* write /proc/fs/ntfs3/<dev>/label */
-static ssize_t ntfs3_label_write(struct file *file, const char __user *buffer,
-				 size_t count, loff_t *ppos)
+static ssize_t ntfs3_label_write(struct kiocb *iocb, struct iov_iter *from)
 {
 	int err;
-	struct super_block *sb = pde_data(file_inode(file));
+	struct super_block *sb = pde_data(file_inode(iocb->ki_filp));
+	size_t count = iov_iter_count(from);
 	ssize_t ret = count;
 	u8 *label;
 
@@ -538,7 +538,7 @@ static ssize_t ntfs3_label_write(struct file *file, const char __user *buffer,
 	if (!label)
 		return -ENOMEM;
 
-	if (copy_from_user(label, buffer, ret)) {
+	if (!copy_from_iter_full(label, count, from)) {
 		ret = -EFAULT;
 		goto out;
 	}
@@ -553,7 +553,7 @@ static ssize_t ntfs3_label_write(struct file *file, const char __user *buffer,
 		goto out;
 	}
 
-	*ppos += count;
+	iocb->ki_pos += count;
 	ret = count;
 out:
 	kfree(label);
@@ -577,7 +577,7 @@ static const struct proc_ops ntfs3_label_fops = {
 	.proc_lseek = seq_lseek,
 	.proc_release = single_release,
 	.proc_open = ntfs3_label_open,
-	.proc_write = ntfs3_label_write,
+	.proc_write_iter = ntfs3_label_write,
 };
 
 static void ntfs_create_procdir(struct super_block *sb)
