@@ -193,14 +193,13 @@ static const struct seq_operations seq_applstats_ops = {
 // ---------------------------------------------------------------------------
 
 /* /proc/capi/drivers is always empty */
-static ssize_t empty_read(struct file *file, char __user *buf,
-			  size_t size, loff_t *off)
+static ssize_t empty_read_iter(struct kiocb *iocb, struct iov_iter *to)
 {
 	return 0;
 }
 
 static const struct proc_ops empty_proc_ops = {
-	.proc_read	= empty_read,
+	.proc_read_iter	= empty_read_iter,
 	.proc_lseek	= default_llseek,
 };
 
