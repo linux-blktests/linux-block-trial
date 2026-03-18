@@ -2316,24 +2316,23 @@ sg_get_dev(int dev)
 static int sg_proc_seq_show_int(struct seq_file *s, void *v);
 
 static int sg_proc_single_open_adio(struct inode *inode, struct file *file);
-static ssize_t sg_proc_write_adio(struct file *filp, const char __user *buffer,
-			          size_t count, loff_t *off);
+static ssize_t sg_proc_write_adio(struct kiocb *iocb, struct iov_iter *from);
 static const struct proc_ops adio_proc_ops = {
 	.proc_open	= sg_proc_single_open_adio,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= sg_proc_write_adio,
+	.proc_write_iter = sg_proc_write_adio,
 	.proc_release	= single_release,
 };
 
 static int sg_proc_single_open_dressz(struct inode *inode, struct file *file);
-static ssize_t sg_proc_write_dressz(struct file *filp, 
-		const char __user *buffer, size_t count, loff_t *off);
+static ssize_t sg_proc_write_dressz(struct kiocb *iocb,
+		struct iov_iter *from);
 static const struct proc_ops dressz_proc_ops = {
 	.proc_open	= sg_proc_single_open_dressz,
 	.proc_read_iter	= seq_read_iter,
 	.proc_lseek	= seq_lseek,
-	.proc_write	= sg_proc_write_dressz,
+	.proc_write_iter = sg_proc_write_dressz,
 	.proc_release	= single_release,
 };
 
@@ -2397,16 +2396,16 @@ static int sg_proc_single_open_adio(struct inode *inode, struct file *file)
 	return single_open(file, sg_proc_seq_show_int, &sg_allow_dio);
 }
 
-static ssize_t 
-sg_proc_write_adio(struct file *filp, const char __user *buffer,
-		   size_t count, loff_t *off)
+static ssize_t
+sg_proc_write_adio(struct kiocb *iocb, struct iov_iter *from)
 {
 	int err;
 	unsigned long num;
+	size_t count = iov_iter_count(from);
 
 	if (!capable(CAP_SYS_ADMIN) || !capable(CAP_SYS_RAWIO))
 		return -EACCES;
-	err = kstrtoul_from_user(buffer, count, 0, &num);
+	err = kstrtoul_from_iter(from, count, 0, &num);
 	if (err)
 		return err;
 	sg_allow_dio = num ? 1 : 0;
@@ -2418,17 +2417,17 @@ static int sg_proc_single_open_dressz(struct inode *inode, struct file *file)
 	return single_open(file, sg_proc_seq_show_int, &sg_big_buff);
 }
 
-static ssize_t 
-sg_proc_write_dressz(struct file *filp, const char __user *buffer,
-		     size_t count, loff_t *off)
+static ssize_t
+sg_proc_write_dressz(struct kiocb *iocb, struct iov_iter *from)
 {
 	int err;
 	unsigned long k = ULONG_MAX;
+	size_t count = iov_iter_count(from);
 
 	if (!capable(CAP_SYS_ADMIN) || !capable(CAP_SYS_RAWIO))
 		return -EACCES;
 
-	err = kstrtoul_from_user(buffer, count, 0, &k);
+	err = kstrtoul_from_iter(from, count, 0, &k);
 	if (err)
 		return err;
 	if (k <= 1048576) {	/* limit "big buff" to 1 MB */
