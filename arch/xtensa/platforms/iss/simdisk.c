@@ -245,19 +245,19 @@ out:
 	return ret;
 }
 
-static ssize_t proc_write_simdisk(struct file *file, const char __user *buf,
-			size_t count, loff_t *ppos)
+static ssize_t proc_write_simdisk(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t count = iov_iter_count(from);
 	char *tmp;
-	struct simdisk *dev = pde_data(file_inode(file));
+	struct simdisk *dev = pde_data(file_inode(iocb->ki_filp));
 	int err;
 
 	if (count == 0 || count > PAGE_SIZE)
 		return -EINVAL;
 
-	tmp = memdup_user_nul(buf, count);
-	if (IS_ERR(tmp))
-		return PTR_ERR(tmp);
+	tmp = iterdup_nul(from, count);
+	if (!tmp)
+		return -ENOMEM;
 
 	err = simdisk_detach(dev);
 	if (err != 0)
@@ -277,9 +277,9 @@ out_free:
 }
 
 static const struct proc_ops simdisk_proc_ops = {
-	.proc_read_iter	= proc_read_simdisk_iter,
-	.proc_write	= proc_write_simdisk,
-	.proc_lseek	= default_llseek,
+	.proc_read_iter		= proc_read_simdisk_iter,
+	.proc_write_iter	= proc_write_simdisk,
+	.proc_lseek		= default_llseek,
 };
 
 static int __init simdisk_setup(struct simdisk *dev, int which,
