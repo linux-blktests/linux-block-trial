@@ -2957,15 +2957,15 @@ static int hdmi_cec_state_show(struct seq_file *m, void *data)
 /**
  * hdmi_cec_state_write_iter - Enable/Disable HDMI-CEC feature from driver side
  * @iocb: kiocb structure.
- * @from: iov_iter with userspace data. set to '1' to enable; '0' to disable cec feature.
+ * @from: iov_iter for userspace data. set to '1' to enable; '0' to disable cec feature.
  *
  * Return size on success, error code on failure
  */
 static ssize_t hdmi_cec_state_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	size_t size = iov_iter_count(from);
 	int ret;
 	bool enable;
+	size_t size = iov_iter_count(from);
 	struct amdgpu_dm_connector *aconnector = file_inode(iocb->ki_filp)->i_private;
 	struct drm_device *ddev = aconnector->base.dev;
 

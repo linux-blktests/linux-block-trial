@@ -238,11 +238,10 @@ static ssize_t write_to_gt_call(struct iov_iter *from, size_t count, loff_t *ppo
 
 static ssize_t stats_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	size_t count = iov_iter_count(from);
 	struct seq_file *s = iocb->ki_filp->private_data;
 	struct xe_gt *gt = s->private;
 
-	return write_to_gt_call(from, count, &iocb->ki_pos, xe_gt_stats_clear, gt);
+	return write_to_gt_call(from, iov_iter_count(from), &iocb->ki_pos, xe_gt_stats_clear, gt);
 }
 
 static int stats_show(struct seq_file *s, void *unused)
@@ -265,11 +264,10 @@ static void force_reset(struct xe_gt *gt)
 static ssize_t force_reset_write_iter(struct kiocb *iocb,
 				 struct iov_iter *from)
 {
-	size_t count = iov_iter_count(from);
 	struct seq_file *s = iocb->ki_filp->private_data;
 	struct xe_gt *gt = s->private;
 
-	return write_to_gt_call(from, count, &iocb->ki_pos, force_reset, gt);
+	return write_to_gt_call(from, iov_iter_count(from), &iocb->ki_pos, force_reset, gt);
 }
 
 static int force_reset_show(struct seq_file *s, void *unused)
@@ -292,11 +290,10 @@ static void force_reset_sync(struct xe_gt *gt)
 static ssize_t force_reset_sync_write_iter(struct kiocb *iocb,
 				      struct iov_iter *from)
 {
-	size_t count = iov_iter_count(from);
 	struct seq_file *s = iocb->ki_filp->private_data;
 	struct xe_gt *gt = s->private;
 
-	return write_to_gt_call(from, count, &iocb->ki_pos, force_reset_sync, gt);
+	return write_to_gt_call(from, iov_iter_count(from), &iocb->ki_pos, force_reset_sync, gt);
 }
 
 static int force_reset_sync_show(struct seq_file *s, void *unused)

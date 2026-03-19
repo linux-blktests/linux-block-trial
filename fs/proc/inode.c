@@ -291,69 +291,14 @@ static ssize_t proc_reg_read_iter(struct kiocb *iocb, struct iov_iter *iter)
 	struct proc_dir_entry *pde = PDE(file_inode(iocb->ki_filp));
 	ssize_t ret;
 
-	if (pde_is_permanent(pde)) {
-		if (!pde->proc_ops->proc_read_iter)
-			return vfs_read_iter(iocb, iter, pde->proc_ops->proc_read);
+	if (pde_is_permanent(pde))
 		return pde->proc_ops->proc_read_iter(iocb, iter);
-	}
 
 	if (!use_pde(pde))
 		return -EIO;
-	if (!pde->proc_ops->proc_read_iter)
-		ret = vfs_read_iter(iocb, iter, pde->proc_ops->proc_read);
-	else
-		ret = pde->proc_ops->proc_read_iter(iocb, iter);
+	ret = pde->proc_ops->proc_read_iter(iocb, iter);
 	unuse_pde(pde);
 	return ret;
-}
-
-static ssize_t pde_read(struct proc_dir_entry *pde, struct file *file, char __user *buf, size_t count, loff_t *ppos)
-{
-	const auto read = pde->proc_ops->proc_read;
-	if (read)
-		return read(file, buf, count, ppos);
-	return -EIO;
-}
-
-static ssize_t proc_reg_read(struct file *file, char __user *buf, size_t count, loff_t *ppos)
-{
-	struct proc_dir_entry *pde = PDE(file_inode(file));
-	ssize_t rv = -EIO;
-
-	if (pde_is_permanent(pde)) {
-		return pde_read(pde, file, buf, count, ppos);
-	} else if (use_pde(pde)) {
-		rv = pde_read(pde, file, buf, count, ppos);
-		unuse_pde(pde);
-	}
-	return rv;
-}
-
-static ssize_t __proc_reg_read_iter(struct kiocb *iocb, struct iov_iter *to)
-{
-	return vfs_read_iter(iocb, to, proc_reg_read);
-}
-
-static ssize_t pde_write(struct proc_dir_entry *pde, struct file *file, const char __user *buf, size_t count, loff_t *ppos)
-{
-	const auto write = pde->proc_ops->proc_write;
-	if (write)
-		return write(file, buf, count, ppos);
-	return -EIO;
-}
-
-static ssize_t proc_reg_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
-{
-	struct proc_dir_entry *pde = PDE(file_inode(file));
-	ssize_t rv = -EIO;
-
-	if (pde_is_permanent(pde)) {
-		return pde_write(pde, file, buf, count, ppos);
-	} else if (use_pde(pde)) {
-		rv = pde_write(pde, file, buf, count, ppos);
-		unuse_pde(pde);
-	}
-	return rv;
 }
 
 static ssize_t proc_reg_write_iter(struct kiocb *iocb, struct iov_iter *iter)
@@ -361,18 +306,12 @@ static ssize_t proc_reg_write_iter(struct kiocb *iocb, struct iov_iter *iter)
 	struct proc_dir_entry *pde = PDE(file_inode(iocb->ki_filp));
 	ssize_t ret;
 
-	if (pde_is_permanent(pde)) {
-		if (!pde->proc_ops->proc_write_iter)
-			return vfs_write_iter(iocb, iter, proc_reg_write);
+	if (pde_is_permanent(pde))
 		return pde->proc_ops->proc_write_iter(iocb, iter);
-	}
 
 	if (!use_pde(pde))
 		return -EIO;
-	if (!pde->proc_ops->proc_write_iter)
-		ret = vfs_write_iter(iocb, iter, proc_reg_write);
-	else
-		ret = pde->proc_ops->proc_write_iter(iocb, iter);
+	ret = pde->proc_ops->proc_write_iter(iocb, iter);
 	unuse_pde(pde);
 	return ret;
 }
@@ -585,7 +524,7 @@ static int proc_reg_release(struct inode *inode, struct file *file)
 
 static const struct file_operations proc_reg_file_ops = {
 	.llseek		= proc_reg_llseek,
-	.read_iter	= __proc_reg_read_iter,
+	.read_iter	= proc_reg_read_iter,
 	.write_iter	= proc_reg_write_iter,
 	.poll		= proc_reg_poll,
 	.unlocked_ioctl	= proc_reg_unlocked_ioctl,

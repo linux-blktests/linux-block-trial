@@ -403,9 +403,15 @@ static int user_str_to_fxp_q4_nonneg(struct iov_iter *from, size_t len, int *val
 	char *kbuf;
 	int err;
 
-	kbuf = iterdup_nul(from, len);
-	if (IS_ERR(kbuf))
-		return PTR_ERR(kbuf);
+	kbuf = kmalloc(len + 1, GFP_KERNEL);
+	if (!kbuf)
+		return -ENOMEM;
+
+	if (!copy_from_iter_full(kbuf, len, from)) {
+		kfree(kbuf);
+		return -EFAULT;
+	}
+	kbuf[len] = '\0';
 
 	err = str_to_fxp_q4_nonneg(kbuf, val_x16);
 
@@ -434,10 +440,10 @@ static bool connector_supports_dsc(struct intel_connector *connector)
 static ssize_t
 force_link_bpp_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	size_t len = iov_iter_count(from);
 	struct seq_file *m = iocb->ki_filp->private_data;
 	struct intel_connector *connector = m->private;
 	struct intel_display *display = to_intel_display(connector);
+	size_t len = iov_iter_count(from);
 	int min_bpp;
 	int bpp_x16;
 	int err;

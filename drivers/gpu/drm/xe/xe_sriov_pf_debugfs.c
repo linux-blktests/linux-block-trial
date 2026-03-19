@@ -57,9 +57,9 @@ static unsigned int extract_vfid(struct dentry *d)
 static ssize_t from_file_write_to_xe_call(struct kiocb *iocb, struct iov_iter *from,
 					  int (*call)(struct xe_device *))
 {
-	size_t count = iov_iter_count(from);
 	struct dentry *dent = file_dentry(iocb->ki_filp);
 	struct xe_device *xe = extract_xe(dent);
+	size_t count = iov_iter_count(from);
 	bool yes;
 	int ret;
 
@@ -193,10 +193,10 @@ static int from_file_read_to_vf_call(struct seq_file *s,
 static ssize_t from_file_write_to_vf_call(struct kiocb *iocb, struct iov_iter *from,
 					  int (*call)(struct xe_device *, unsigned int))
 {
-	size_t count = iov_iter_count(from);
 	struct dentry *dent = file_dentry(iocb->ki_filp)->d_parent;
 	struct xe_device *xe = extract_xe(dent);
 	unsigned int vfid = extract_vfid(dent);
+	size_t count = iov_iter_count(from);
 	bool yes;
 	int ret;
 

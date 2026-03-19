@@ -138,9 +138,9 @@ DEFINE_SHOW_ATTRIBUTE(iommu_cmdbuf);
 static ssize_t devid_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct amd_iommu_pci_seg *pci_seg;
-	size_t cnt = iov_iter_count(from);
 	int seg, bus, slot, func;
 	struct amd_iommu *iommu;
+	size_t cnt = iov_iter_count(from);
 	char *srcid_ptr;
 	u16 devid;
 	int i;
@@ -150,9 +150,15 @@ static ssize_t devid_write_iter(struct kiocb *iocb, struct iov_iter *from)
 	if (cnt >= DEVID_IN_SZ)
 		return -EINVAL;
 
-	srcid_ptr = iterdup_nul(from, cnt);
-	if (IS_ERR(srcid_ptr))
-		return PTR_ERR(srcid_ptr);
+	srcid_ptr = kmalloc(cnt + 1, GFP_KERNEL);
+	if (!srcid_ptr)
+		return -ENOMEM;
+
+	if (!copy_from_iter_full(srcid_ptr, cnt, from)) {
+		kfree(srcid_ptr);
+		return -EFAULT;
+	}
+	srcid_ptr[cnt] = '\0';
 
 	i = sscanf(srcid_ptr, "%x:%x:%x.%x", &seg, &bus, &slot, &func);
 	if (i != 4) {

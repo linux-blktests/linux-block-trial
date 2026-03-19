@@ -1771,9 +1771,15 @@ static int parse_link_rate(struct intel_dp *intel_dp, struct iov_iter *from, siz
 	int rate;
 	int ret = 0;
 
-	kbuf = iterdup_nul(from, len);
-	if (IS_ERR(kbuf))
-		return PTR_ERR(kbuf);
+	kbuf = kmalloc(len + 1, GFP_KERNEL);
+	if (!kbuf)
+		return -ENOMEM;
+
+	if (!copy_from_iter_full(kbuf, len, from)) {
+		kfree(kbuf);
+		return -EFAULT;
+	}
+	kbuf[len] = '\0';
 
 	p = strim(kbuf);
 
@@ -1799,11 +1805,11 @@ out_free:
 static ssize_t i915_dp_force_link_rate_write_iter(struct kiocb *iocb,
 					     struct iov_iter *from)
 {
-	size_t len = iov_iter_count(from);
 	struct seq_file *m = iocb->ki_filp->private_data;
 	struct intel_connector *connector = to_intel_connector(m->private);
 	struct intel_display *display = to_intel_display(connector);
 	struct intel_dp *intel_dp = intel_attached_dp(connector);
+	size_t len = iov_iter_count(from);
 	int rate;
 	int err;
 
@@ -1869,9 +1875,15 @@ static int parse_lane_count(struct iov_iter *from, size_t len)
 	int lane_count;
 	int ret = 0;
 
-	kbuf = iterdup_nul(from, len);
-	if (IS_ERR(kbuf))
-		return PTR_ERR(kbuf);
+	kbuf = kmalloc(len + 1, GFP_KERNEL);
+	if (!kbuf)
+		return -ENOMEM;
+
+	if (!copy_from_iter_full(kbuf, len, from)) {
+		kfree(kbuf);
+		return -EFAULT;
+	}
+	kbuf[len] = '\0';
 
 	p = strim(kbuf);
 
@@ -1901,11 +1913,11 @@ out_free:
 static ssize_t i915_dp_force_lane_count_write_iter(struct kiocb *iocb,
 					      struct iov_iter *from)
 {
-	size_t len = iov_iter_count(from);
 	struct seq_file *m = iocb->ki_filp->private_data;
 	struct intel_connector *connector = to_intel_connector(m->private);
 	struct intel_display *display = to_intel_display(connector);
 	struct intel_dp *intel_dp = intel_attached_dp(connector);
+	size_t len = iov_iter_count(from);
 	int lane_count;
 	int err;
 
