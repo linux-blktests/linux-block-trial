@@ -531,7 +531,7 @@ static ssize_t pmc_core_ltr_write(struct pmc_dev *pmcdev,
 	return err ?: count;
 }
 
-static ssize_t pmc_core_ltr_ignore_write(struct kiocb *iocb,
+static ssize_t pmc_core_ltr_ignore_write_iter(struct kiocb *iocb,
 					      struct iov_iter *from)
 {
 	struct seq_file *s = iocb->ki_filp->private_data;
@@ -544,21 +544,9 @@ static int pmc_core_ltr_ignore_show(struct seq_file *s, void *unused)
 {
 	return 0;
 }
-static int pmc_core_ltr_ignore_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, pmc_core_ltr_ignore_show, inode->i_private);
-}
+DEFINE_SHOW_STORE_ATTRIBUTE(pmc_core_ltr_ignore);
 
-static const struct file_operations pmc_core_ltr_ignore_fops = {
-	.owner		= THIS_MODULE,
-	.open		= pmc_core_ltr_ignore_open,
-	.read_iter	= seq_read_iter,
-	.write_iter	= pmc_core_ltr_ignore_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
-static ssize_t pmc_core_ltr_restore_write(struct kiocb *iocb,
+static ssize_t pmc_core_ltr_restore_write_iter(struct kiocb *iocb,
 					       struct iov_iter *from)
 {
 	struct seq_file *s = iocb->ki_filp->private_data;
@@ -571,19 +559,7 @@ static int pmc_core_ltr_restore_show(struct seq_file *s, void *unused)
 {
 	return 0;
 }
-static int pmc_core_ltr_restore_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, pmc_core_ltr_restore_show, inode->i_private);
-}
-
-static const struct file_operations pmc_core_ltr_restore_fops = {
-	.owner		= THIS_MODULE,
-	.open		= pmc_core_ltr_restore_open,
-	.read_iter	= seq_read_iter,
-	.write_iter	= pmc_core_ltr_restore_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
+DEFINE_SHOW_STORE_ATTRIBUTE(pmc_core_ltr_restore);
 
 static void pmc_core_slps0_dbg_latch(struct pmc_dev *pmcdev, bool reset)
 {

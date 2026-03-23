@@ -328,10 +328,10 @@ static void file_init_path(struct file *file, const struct path *path,
 	if (fop->llseek)
 		file->f_mode |= FMODE_LSEEK;
 	if ((file->f_mode & FMODE_READ) &&
-	     likely(fop->read || fop->read_iter))
+	     likely(fop->read_iter))
 		file->f_mode |= FMODE_CAN_READ;
 	if ((file->f_mode & FMODE_WRITE) &&
-	     likely(fop->write || fop->write_iter))
+	     likely(fop->write_iter))
 		file->f_mode |= FMODE_CAN_WRITE;
 	file->f_iocb_flags = iocb_flags(file);
 	file->f_mode |= FMODE_OPENED;

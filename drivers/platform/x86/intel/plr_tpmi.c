@@ -222,7 +222,7 @@ static int plr_status_show(struct seq_file *s, void *unused)
 	return 0;
 }
 
-static ssize_t plr_status_write(struct kiocb *iocb, struct iov_iter *from)
+static ssize_t plr_status_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct seq_file *s = iocb->ki_filp->private_data;
 	struct tpmi_plr_die *plr_die = s->private;
@@ -253,19 +253,7 @@ static ssize_t plr_status_write(struct kiocb *iocb, struct iov_iter *from)
 
 	return count;
 }
-static int plr_status_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, plr_status_show, inode->i_private);
-}
-
-static const struct file_operations plr_status_fops = {
-	.owner		= THIS_MODULE,
-	.open		= plr_status_open,
-	.read_iter	= seq_read_iter,
-	.write_iter	= plr_status_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
+DEFINE_SHOW_STORE_ATTRIBUTE(plr_status);
 
 static int intel_plr_probe(struct auxiliary_device *auxdev, const struct auxiliary_device_id *id)
 {

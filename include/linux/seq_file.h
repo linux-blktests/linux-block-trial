@@ -226,7 +226,7 @@ static const struct file_operations __name ## _fops = {			\
 	.owner		= THIS_MODULE,					\
 	.open		= __name ## _open,				\
 	.read_iter	= seq_read_iter,				\
-	.write		= __name ## _write,				\
+	.write_iter	= __name ## _write_iter,			\
 	.llseek		= seq_lseek,					\
 	.release	= single_release,				\
 }

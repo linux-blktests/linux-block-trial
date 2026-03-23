@@ -681,76 +681,6 @@ static inline loff_t *io_kiocb_ppos(struct kiocb *kiocb)
 }
 
 /*
- * For files that don't have ->read_iter() and ->write_iter(), handle them
- * by looping over ->read() or ->write() manually.
- */
-static ssize_t loop_rw_iter(int ddir, struct io_rw *rw, struct iov_iter *iter)
-{
-	struct io_kiocb *req = cmd_to_io_kiocb(rw);
-	struct kiocb *kiocb = &rw->kiocb;
-	struct file *file = kiocb->ki_filp;
-	ssize_t ret = 0;
-	loff_t *ppos;
-
-	/*
-	 * Don't support polled IO through this interface, and we can't
-	 * support non-blocking either. For the latter, this just causes
-	 * the kiocb to be handled from an async context.
-	 */
-	if (kiocb->ki_flags & IOCB_HIPRI)
-		return -EOPNOTSUPP;
-	if ((kiocb->ki_flags & IOCB_NOWAIT) &&
-	    !(kiocb->ki_filp->f_flags & O_NONBLOCK))
-		return -EAGAIN;
-	if ((req->flags & REQ_F_BUF_NODE) &&
-	     (req->buf_node->buf->flags & IO_REGBUF_F_KBUF))
-		return -EFAULT;
-
-	ppos = io_kiocb_ppos(kiocb);
-
-	while (iov_iter_count(iter)) {
-		void __user *addr;
-		size_t len;
-		ssize_t nr;
-
-		if (iter_is_ubuf(iter)) {
-			addr = iter->ubuf + iter->iov_offset;
-			len = iov_iter_count(iter);
-		} else if (!iov_iter_is_bvec(iter)) {
-			addr = iter_iov_addr(iter);
-			len = iter_iov_len(iter);
-		} else {
-			addr = u64_to_user_ptr(rw->addr);
-			len = rw->len;
-		}
-
-		if (ddir == READ)
-			nr = file->f_op->read(file, addr, len, ppos);
-		else
-			nr = file->f_op->write(file, addr, len, ppos);
-
-		if (nr < 0) {
-			if (!ret)
-				ret = nr;
-			break;
-		}
-		ret += nr;
-		if (!iov_iter_is_bvec(iter)) {
-			iov_iter_advance(iter, nr);
-		} else {
-			rw->addr += nr;
-			rw->len -= nr;
-			if (!rw->len)
-				break;
-		}
-		if (nr != len)
-			break;
-	}
-
-	return ret;
-}
-
-/*
  * This is our waitqueue callback handler, registered through __folio_lock_async()
  * when we initially tried to do the IO with the iocb armed our waitqueue.
  * This gets called when the page is unlocked, and we generally expect that to
@@ -833,10 +763,7 @@ static inline int io_iter_do_read(struct io_rw *rw, struct iov_iter *iter)
 
 	if (likely(file->f_op->read_iter))
 		return file->f_op->read_iter(&rw->kiocb, iter);
-	else if (file->f_op->read)
-		return loop_rw_iter(READ, rw, iter);
-	else
-		return -EINVAL;
+	return -EINVAL;
 }
 
 static bool need_complete_io(struct io_kiocb *req)
@@ -1170,12 +1097,9 @@ int io_write(struct io_kiocb *req, unsigned int issue_flags)
 		return -EAGAIN;
 	kiocb->ki_flags |= IOCB_WRITE;
 
+	ret2 = -EINVAL;
 	if (likely(req->file->f_op->write_iter))
 		ret2 = req->file->f_op->write_iter(kiocb, &io->iter);
-	else if (req->file->f_op->write)
-		ret2 = loop_rw_iter(WRITE, rw, &io->iter);
-	else
-		ret2 = -EINVAL;
 
 	/*
 	 * Raw bdev writes will return -EOPNOTSUPP for IOCB_NOWAIT. Just

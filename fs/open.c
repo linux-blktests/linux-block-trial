@@ -952,10 +952,10 @@ static int do_dentry_open(struct file *f,
 	}
 	f->f_mode |= FMODE_OPENED;
 	if ((f->f_mode & FMODE_READ) &&
-	     likely(f->f_op->read || f->f_op->read_iter))
+	     likely(f->f_op->read_iter))
 		f->f_mode |= FMODE_CAN_READ;
 	if ((f->f_mode & FMODE_WRITE) &&
-	     likely(f->f_op->write || f->f_op->write_iter))
+	     likely(f->f_op->write_iter))
 		f->f_mode |= FMODE_CAN_WRITE;
 	if ((f->f_mode & FMODE_LSEEK) && !f->f_op->llseek)
 		f->f_mode &= ~FMODE_LSEEK;

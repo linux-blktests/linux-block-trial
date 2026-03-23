@@ -413,7 +413,7 @@ static int tl_control_show(struct seq_file *s, void *unused)
 	return 0;
 }
 
-static ssize_t tl_control_write(struct kiocb *iocb, struct iov_iter *from)
+static ssize_t tl_control_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct seq_file *seq_f = iocb->ki_filp->private_data;
 	size_t count = iov_iter_count(from);
@@ -471,19 +471,7 @@ unlock_and_exit:
 	mutex_unlock(&telemetry->wr_lock);
 	return ret;
 }
-static int tl_control_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, tl_control_show, inode->i_private);
-}
-
-static const struct file_operations tl_control_fops = {
-	.owner		= THIS_MODULE,
-	.open		= tl_control_open,
-	.read_iter	= seq_read_iter,
-	.write_iter	= tl_control_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
+DEFINE_SHOW_STORE_ATTRIBUTE(tl_control);
 
 static int get_rp_index_from_file(const struct file *f, u8 *rp_id, u8 rp_num)
 {
@@ -639,7 +627,7 @@ static int tl_rp_data_show(struct seq_file *s, void *unused)
 	return tl_print_rp_data(accel_dev, s, rp_regs_index);
 }
 
-static ssize_t tl_rp_data_write(struct kiocb *iocb, struct iov_iter *from)
+static ssize_t tl_rp_data_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	struct seq_file *seq_f = iocb->ki_filp->private_data;
 	size_t count = iov_iter_count(from);
@@ -679,19 +667,7 @@ unlock_and_exit:
 	mutex_unlock(&telemetry->wr_lock);
 	return ret;
 }
-static int tl_rp_data_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, tl_rp_data_show, inode->i_private);
-}
-
-static const struct file_operations tl_rp_data_fops = {
-	.owner		= THIS_MODULE,
-	.open		= tl_rp_data_open,
-	.read_iter	= seq_read_iter,
-	.write_iter	= tl_rp_data_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
+DEFINE_SHOW_STORE_ATTRIBUTE(tl_rp_data);
 
 void adf_tl_dbgfs_add(struct adf_accel_dev *accel_dev)
 {

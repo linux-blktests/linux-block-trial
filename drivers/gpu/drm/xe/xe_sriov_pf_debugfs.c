@@ -54,18 +54,18 @@ static unsigned int extract_vfid(struct dentry *d)
  *      │   │   ├── ...
  */
 
-static ssize_t from_file_write_to_xe_call(struct file *file, const char __user *userbuf,
-					  size_t count, loff_t *ppos,
+static ssize_t from_file_write_to_xe_call(struct kiocb *iocb, struct iov_iter *from,
 					  int (*call)(struct xe_device *))
 {
-	struct dentry *dent = file_dentry(file);
+	size_t count = iov_iter_count(from);
+	struct dentry *dent = file_dentry(iocb->ki_filp);
 	struct xe_device *xe = extract_xe(dent);
 	bool yes;
 	int ret;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return -EINVAL;
-	ret = kstrtobool_from_user(userbuf, count, &yes);
+	ret = kstrtobool_from_iter(from, count, &yes);
 	if (ret < 0)
 		return ret;
 	if (yes) {
@@ -82,10 +82,9 @@ static int OP##_show(struct seq_file *s, void *unused)				\
 {										\
 	return 0;								\
 }										\
-static ssize_t OP##_write(struct file *file, const char __user *userbuf,	\
-			  size_t count, loff_t *ppos)				\
+static ssize_t OP##_write_iter(struct kiocb *iocb, struct iov_iter *from)	\
 {										\
-	return from_file_write_to_xe_call(file, userbuf, count, ppos,		\
+	return from_file_write_to_xe_call(iocb, from,				\
 					  xe_sriov_pf_##OP);			\
 }										\
 DEFINE_SHOW_STORE_ATTRIBUTE(OP)
@@ -191,19 +190,19 @@ static int from_file_read_to_vf_call(struct seq_file *s,
 	return 0;
 }
 
-static ssize_t from_file_write_to_vf_call(struct file *file, const char __user *userbuf,
-					  size_t count, loff_t *ppos,
+static ssize_t from_file_write_to_vf_call(struct kiocb *iocb, struct iov_iter *from,
 					  int (*call)(struct xe_device *, unsigned int))
 {
-	struct dentry *dent = file_dentry(file)->d_parent;
+	size_t count = iov_iter_count(from);
+	struct dentry *dent = file_dentry(iocb->ki_filp)->d_parent;
 	struct xe_device *xe = extract_xe(dent);
 	unsigned int vfid = extract_vfid(dent);
 	bool yes;
 	int ret;
 
-	if (*ppos)
+	if (iocb->ki_pos)
 		return -EINVAL;
-	ret = kstrtobool_from_user(userbuf, count, &yes);
+	ret = kstrtobool_from_iter(from, count, &yes);
 	if (ret < 0)
 		return ret;
 	if (yes) {
@@ -220,10 +219,9 @@ static int OP##_show(struct seq_file *s, void *unused)				\
 {										\
 	return 0;								\
 }										\
-static ssize_t OP##_write(struct file *file, const char __user *userbuf,	\
-			  size_t count, loff_t *ppos)				\
+static ssize_t OP##_write_iter(struct kiocb *iocb, struct iov_iter *from)	\
 {										\
-	return from_file_write_to_vf_call(file, userbuf, count, ppos,		\
+	return from_file_write_to_vf_call(iocb, from,				\
 					  xe_sriov_pf_control_##OP);		\
 }										\
 DEFINE_SHOW_STORE_ATTRIBUTE(OP)
@@ -234,10 +232,9 @@ static int OP##_show(struct seq_file *s, void *unused)				\
 	return from_file_read_to_vf_call(s,					\
 					 xe_sriov_pf_control_finish_##OP);	\
 }										\
-static ssize_t OP##_write(struct file *file, const char __user *userbuf,	\
-			  size_t count, loff_t *ppos)				\
+static ssize_t OP##_write_iter(struct kiocb *iocb, struct iov_iter *from)	\
 {										\
-	return from_file_write_to_vf_call(file, userbuf, count, ppos,		\
+	return from_file_write_to_vf_call(iocb, from,				\
 					  xe_sriov_pf_control_trigger_##OP);	\
 }										\
 DEFINE_SHOW_STORE_ATTRIBUTE(OP)

@@ -644,15 +644,16 @@ qla_dfs_naqp_show(struct seq_file *s, void *unused)
 		}							\
 	} while (0)
 
-static ssize_t qla_dfs_naqp_write(struct file *file,
-    const char __user *buffer, size_t count, loff_t *pos)
+static ssize_t qla_dfs_naqp_write_iter(struct kiocb *iocb,
+    struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct scsi_qla_host *vha = s->private;
 	struct qla_hw_data *ha = vha->hw;
 	char *buf;
 	int rc = 0;
 	unsigned long num_act_qp;
+	size_t count = iov_iter_count(from);
 
 	if (!(IS_QLA27XX(ha) || IS_QLA83XX(ha) || IS_QLA28XX(ha))) {
 		pr_err("host%ld: this adapter does not support Multi Q.",
@@ -665,7 +666,7 @@ static ssize_t qla_dfs_naqp_write(struct file *file,
 		    vha->host_no);
 		return -EINVAL;
 	}
-	buf = memdup_user_nul(buffer, count);
+	buf = iterdup_nul(from, count);
 	if (IS_ERR(buf)) {
 		pr_err("host%ld: fail to copy user buffer.",
 		    vha->host_no);

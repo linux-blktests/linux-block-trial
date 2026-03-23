@@ -523,7 +523,7 @@ ssize_t __kernel_read(struct file *file, void *buf, size_t count, loff_t *pos)
 	 * Also fail if ->read_iter and ->read are both wired up as that
 	 * implies very convoluted semantics.
 	 */
-	if (unlikely(!file->f_op->read_iter || file->f_op->read))
+	if (unlikely(!file->f_op->read_iter))
 		return warn_unsupported(file, "read");
 
 	init_sync_kiocb(&kiocb, file);
@@ -568,9 +568,7 @@ ssize_t vfs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
 	if (count > MAX_RW_COUNT)
 		count =  MAX_RW_COUNT;
 
-	if (file->f_op->read)
-		ret = file->f_op->read(file, buf, count, pos);
-	else if (file->f_op->read_iter)
+	if (file->f_op->read_iter)
 		ret = new_sync_read(file, buf, count, pos);
 	else
 		ret = -EINVAL;
@@ -613,7 +611,7 @@ ssize_t __kernel_write_iter(struct file *file, struct iov_iter *from, loff_t *po
 	 * Also fail if ->write_iter and ->write are both wired up as that
 	 * implies very convoluted semantics.
 	 */
-	if (unlikely(!file->f_op->write_iter || file->f_op->write))
+	if (unlikely(!file->f_op->write_iter))
 		return warn_unsupported(file, "write");
 
 	init_sync_kiocb(&kiocb, file);
@@ -682,9 +680,7 @@ ssize_t vfs_write(struct file *file, const char __user *buf, size_t count, loff_
 	if (count > MAX_RW_COUNT)
 		count =  MAX_RW_COUNT;
 	file_start_write(file);
-	if (file->f_op->write)
-		ret = file->f_op->write(file, buf, count, pos);
-	else if (file->f_op->write_iter)
+	if (file->f_op->write_iter)
 		ret = new_sync_write(file, buf, count, pos);
 	else
 		ret = -EINVAL;
@@ -1064,8 +1060,6 @@ static ssize_t vfs_readv(struct file *file, const struct iovec __user *vec,
 
 	if (file->f_op->read_iter)
 		ret = do_iter_readv_writev(file, &iter, pos, READ, flags);
-	else
-		ret = do_loop_readv(file, &iter, pos, flags, file->f_op->read);
 out:
 	if (ret >= 0)
 		fsnotify_access(file);
@@ -1103,8 +1097,6 @@ static ssize_t vfs_writev(struct file *file, const struct iovec __user *vec,
 	file_start_write(file);
 	if (file->f_op->write_iter)
 		ret = do_iter_readv_writev(file, &iter, pos, WRITE, flags);
-	else
-		ret = do_loop_writev(file, &iter, pos, flags, file->f_op->write);
 	if (ret > 0)
 		fsnotify_modify(file);
 	file_end_write(file);

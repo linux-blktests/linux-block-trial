@@ -398,12 +398,12 @@ static int str_to_fxp_q4_nonneg(char *str, int *val_x16)
 	return 0;
 }
 
-static int user_str_to_fxp_q4_nonneg(const char __user *ubuf, size_t len, int *val_x16)
+static int user_str_to_fxp_q4_nonneg(struct iov_iter *from, size_t len, int *val_x16)
 {
 	char *kbuf;
 	int err;
 
-	kbuf = memdup_user_nul(ubuf, len);
+	kbuf = iterdup_nul(from, len);
 	if (IS_ERR(kbuf))
 		return PTR_ERR(kbuf);
 
@@ -432,16 +432,17 @@ static bool connector_supports_dsc(struct intel_connector *connector)
 }
 
 static ssize_t
-force_link_bpp_write(struct file *file, const char __user *ubuf, size_t len, loff_t *offp)
+force_link_bpp_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	size_t len = iov_iter_count(from);
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct intel_connector *connector = m->private;
 	struct intel_display *display = to_intel_display(connector);
 	int min_bpp;
 	int bpp_x16;
 	int err;
 
-	err = user_str_to_fxp_q4_nonneg(ubuf, len, &bpp_x16);
+	err = user_str_to_fxp_q4_nonneg(from, len, &bpp_x16);
 	if (err)
 		return err;
 
@@ -464,7 +465,7 @@ force_link_bpp_write(struct file *file, const char __user *ubuf, size_t len, lof
 
 	drm_modeset_unlock(&display->drm->mode_config.connection_mutex);
 
-	*offp += len;
+	iocb->ki_pos += len;
 
 	return len;
 }

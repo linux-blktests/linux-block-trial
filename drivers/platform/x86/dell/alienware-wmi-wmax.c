@@ -1443,19 +1443,19 @@ static int awcc_gpio_pin_show(struct seq_file *seq, void *data)
 	return 0;
 }
 
-static ssize_t awcc_gpio_pin_write(struct file *file, const char __user *buf,
-				   size_t count, loff_t *ppos)
+static ssize_t awcc_gpio_pin_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	unsigned long pin = debugfs_get_aux_num(file);
-	struct seq_file *seq = file->private_data;
+	unsigned long pin = debugfs_get_aux_num(iocb->ki_filp);
+	struct seq_file *seq = iocb->ki_filp->private_data;
 	struct wmi_device *wdev = seq->private;
+	size_t count = iov_iter_count(from);
 	bool status;
 	int ret;
 
-	if (!ppos || *ppos)
+	if (iocb->ki_pos)
 		return -EINVAL;
 
-	ret = kstrtobool_from_user(buf, count, &status);
+	ret = kstrtobool_from_iter(from, count, &status);
 	if (ret)
 		return ret;
 

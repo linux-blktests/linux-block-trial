@@ -4045,7 +4045,7 @@ static int debugfs_bist_linkrate_v3_hw_show(struct seq_file *s, void *p)
 	return 0;
 }
 
-static ssize_t debugfs_bist_linkrate_v3_hw_write(struct kiocb *iocb,
+static ssize_t debugfs_bist_linkrate_v3_hw_write_iter(struct kiocb *iocb,
 						  struct iov_iter *from)
 {
 	struct seq_file *m = iocb->ki_filp->private_data;
@@ -4081,19 +4081,7 @@ static ssize_t debugfs_bist_linkrate_v3_hw_write(struct kiocb *iocb,
 
 	return count;
 }
-static int debugfs_bist_linkrate_v3_hw_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, debugfs_bist_linkrate_v3_hw_show, inode->i_private);
-}
-
-static const struct file_operations debugfs_bist_linkrate_v3_hw_fops = {
-	.owner		= THIS_MODULE,
-	.open		= debugfs_bist_linkrate_v3_hw_open,
-	.read_iter	= seq_read_iter,
-	.write_iter	= debugfs_bist_linkrate_v3_hw_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
+DEFINE_SHOW_STORE_ATTRIBUTE(debugfs_bist_linkrate_v3_hw);
 
 static const struct {
 	int		value;
@@ -4131,7 +4119,7 @@ static int debugfs_bist_code_mode_v3_hw_show(struct seq_file *s, void *p)
 	return 0;
 }
 
-static ssize_t debugfs_bist_code_mode_v3_hw_write(struct kiocb *iocb,
+static ssize_t debugfs_bist_code_mode_v3_hw_write_iter(struct kiocb *iocb,
 						   struct iov_iter *from)
 {
 	struct seq_file *m = iocb->ki_filp->private_data;
@@ -4167,21 +4155,9 @@ static ssize_t debugfs_bist_code_mode_v3_hw_write(struct kiocb *iocb,
 
 	return count;
 }
-static int debugfs_bist_code_mode_v3_hw_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, debugfs_bist_code_mode_v3_hw_show, inode->i_private);
-}
+DEFINE_SHOW_STORE_ATTRIBUTE(debugfs_bist_code_mode_v3_hw);
 
-static const struct file_operations debugfs_bist_code_mode_v3_hw_fops = {
-	.owner		= THIS_MODULE,
-	.open		= debugfs_bist_code_mode_v3_hw_open,
-	.read_iter	= seq_read_iter,
-	.write_iter	= debugfs_bist_code_mode_v3_hw_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
-static ssize_t debugfs_bist_phy_v3_hw_write(struct kiocb *iocb,
+static ssize_t debugfs_bist_phy_v3_hw_write_iter(struct kiocb *iocb,
 					     struct iov_iter *from)
 {
 	struct seq_file *m = iocb->ki_filp->private_data;
@@ -4222,21 +4198,9 @@ static int debugfs_bist_phy_v3_hw_show(struct seq_file *s, void *p)
 
 	return 0;
 }
-static int debugfs_bist_phy_v3_hw_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, debugfs_bist_phy_v3_hw_show, inode->i_private);
-}
+DEFINE_SHOW_STORE_ATTRIBUTE(debugfs_bist_phy_v3_hw);
 
-static const struct file_operations debugfs_bist_phy_v3_hw_fops = {
-	.owner		= THIS_MODULE,
-	.open		= debugfs_bist_phy_v3_hw_open,
-	.read_iter	= seq_read_iter,
-	.write_iter	= debugfs_bist_phy_v3_hw_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
-static ssize_t debugfs_bist_cnt_v3_hw_write(struct kiocb *iocb,
+static ssize_t debugfs_bist_cnt_v3_hw_write_iter(struct kiocb *iocb,
 					     struct iov_iter *from)
 {
 	struct seq_file *m = iocb->ki_filp->private_data;
@@ -4276,19 +4240,7 @@ static int debugfs_bist_cnt_v3_hw_show(struct seq_file *s, void *p)
 
 	return 0;
 }
-static int debugfs_bist_cnt_v3_hw_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, debugfs_bist_cnt_v3_hw_show, inode->i_private);
-}
-
-static const struct file_operations debugfs_bist_cnt_v3_hw_fops = {
-	.owner		= THIS_MODULE,
-	.open		= debugfs_bist_cnt_v3_hw_open,
-	.read_iter	= seq_read_iter,
-	.write_iter	= debugfs_bist_cnt_v3_hw_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
+DEFINE_SHOW_STORE_ATTRIBUTE(debugfs_bist_cnt_v3_hw);
 
 static const struct {
 	int		value;
@@ -4317,7 +4269,7 @@ static int debugfs_bist_mode_v3_hw_show(struct seq_file *s, void *p)
 	return 0;
 }
 
-static ssize_t debugfs_bist_mode_v3_hw_write(struct kiocb *iocb,
+static ssize_t debugfs_bist_mode_v3_hw_write_iter(struct kiocb *iocb,
 					      struct iov_iter *from)
 {
 	struct seq_file *m = iocb->ki_filp->private_data;
@@ -4353,21 +4305,9 @@ static ssize_t debugfs_bist_mode_v3_hw_write(struct kiocb *iocb,
 
 	return count;
 }
-static int debugfs_bist_mode_v3_hw_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, debugfs_bist_mode_v3_hw_show, inode->i_private);
-}
+DEFINE_SHOW_STORE_ATTRIBUTE(debugfs_bist_mode_v3_hw);
 
-static const struct file_operations debugfs_bist_mode_v3_hw_fops = {
-	.owner		= THIS_MODULE,
-	.open		= debugfs_bist_mode_v3_hw_open,
-	.read_iter	= seq_read_iter,
-	.write_iter	= debugfs_bist_mode_v3_hw_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
-static ssize_t debugfs_bist_enable_v3_hw_write(struct kiocb *iocb,
+static ssize_t debugfs_bist_enable_v3_hw_write_iter(struct kiocb *iocb,
 						struct iov_iter *from)
 {
 	struct seq_file *m = iocb->ki_filp->private_data;
@@ -4412,19 +4352,7 @@ static int debugfs_bist_enable_v3_hw_show(struct seq_file *s, void *p)
 
 	return 0;
 }
-static int debugfs_bist_enable_v3_hw_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, debugfs_bist_enable_v3_hw_show, inode->i_private);
-}
-
-static const struct file_operations debugfs_bist_enable_v3_hw_fops = {
-	.owner		= THIS_MODULE,
-	.open		= debugfs_bist_enable_v3_hw_open,
-	.read_iter	= seq_read_iter,
-	.write_iter	= debugfs_bist_enable_v3_hw_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
+DEFINE_SHOW_STORE_ATTRIBUTE(debugfs_bist_enable_v3_hw);
 
 static const struct {
 	char *name;
@@ -4439,7 +4367,7 @@ static const struct {
 	{ "SATA_6_0_GBPS" },
 };
 
-static ssize_t debugfs_v3_hw_write(struct kiocb *iocb,
+static ssize_t debugfs_v3_hw_write_iter(struct kiocb *iocb,
 				   struct iov_iter *from)
 {
 	struct seq_file *m = iocb->ki_filp->private_data;
@@ -4471,21 +4399,9 @@ static int debugfs_v3_hw_show(struct seq_file *s, void *p)
 
 	return 0;
 }
-static int debugfs_v3_hw_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, debugfs_v3_hw_show, inode->i_private);
-}
+DEFINE_SHOW_STORE_ATTRIBUTE(debugfs_v3_hw);
 
-static const struct file_operations debugfs_v3_hw_fops = {
-	.owner		= THIS_MODULE,
-	.open		= debugfs_v3_hw_open,
-	.read_iter	= seq_read_iter,
-	.write_iter	= debugfs_v3_hw_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
-static ssize_t debugfs_phy_down_cnt_v3_hw_write(struct kiocb *iocb,
+static ssize_t debugfs_phy_down_cnt_v3_hw_write_iter(struct kiocb *iocb,
 						 struct iov_iter *from)
 {
 	struct seq_file *s = iocb->ki_filp->private_data;
@@ -4523,19 +4439,7 @@ static int debugfs_phy_down_cnt_v3_hw_show(struct seq_file *s, void *p)
 
 	return 0;
 }
-static int debugfs_phy_down_cnt_v3_hw_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, debugfs_phy_down_cnt_v3_hw_show, inode->i_private);
-}
-
-static const struct file_operations debugfs_phy_down_cnt_v3_hw_fops = {
-	.owner		= THIS_MODULE,
-	.open		= debugfs_phy_down_cnt_v3_hw_open,
-	.read_iter	= seq_read_iter,
-	.write_iter	= debugfs_phy_down_cnt_v3_hw_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
+DEFINE_SHOW_STORE_ATTRIBUTE(debugfs_phy_down_cnt_v3_hw);
 
 enum fifo_dump_mode_v3_hw {
 	FIFO_DUMP_FORVER =		(1U << 0),

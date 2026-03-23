@@ -366,13 +366,12 @@ static void bnxt_re_debugfs_add_info(struct bnxt_re_dev *rdev)
 	debugfs_create_file("info", 0400, rdev->dbg_root, rdev, &info_fops);
 }
 
-static ssize_t cq_coal_cfg_write(struct file *file,
-				 const char __user *buf,
-				 size_t count, loff_t *pos)
+static ssize_t cq_coal_cfg_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct bnxt_re_cq_coal_param *param = s->private;
 	struct bnxt_re_dev *rdev = param->rdev;
+	size_t count = iov_iter_count(from);
 	int offset = param->offset;
 	char lbuf[16] = { };
 	u32 val;
@@ -380,7 +379,7 @@ static ssize_t cq_coal_cfg_write(struct file *file,
 	if (count > sizeof(lbuf))
 		return -EINVAL;
 
-	if (copy_from_user(lbuf, buf, count))
+	if (!copy_from_iter_full(lbuf, count, from))
 		return -EFAULT;
 
 	lbuf[sizeof(lbuf) - 1] = '\0';

@@ -1764,14 +1764,14 @@ static int i915_dp_force_link_rate_show(struct seq_file *m, void *data)
 	return 0;
 }
 
-static int parse_link_rate(struct intel_dp *intel_dp, const char __user *ubuf, size_t len)
+static int parse_link_rate(struct intel_dp *intel_dp, struct iov_iter *from, size_t len)
 {
 	char *kbuf;
 	const char *p;
 	int rate;
 	int ret = 0;
 
-	kbuf = memdup_user_nul(ubuf, len);
+	kbuf = iterdup_nul(from, len);
 	if (IS_ERR(kbuf))
 		return PTR_ERR(kbuf);
 
@@ -1796,18 +1796,18 @@ out_free:
 	return ret < 0 ? ret : rate;
 }
 
-static ssize_t i915_dp_force_link_rate_write(struct file *file,
-					     const char __user *ubuf,
-					     size_t len, loff_t *offp)
+static ssize_t i915_dp_force_link_rate_write_iter(struct kiocb *iocb,
+					     struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	size_t len = iov_iter_count(from);
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct intel_connector *connector = to_intel_connector(m->private);
 	struct intel_display *display = to_intel_display(connector);
 	struct intel_dp *intel_dp = intel_attached_dp(connector);
 	int rate;
 	int err;
 
-	rate = parse_link_rate(intel_dp, ubuf, len);
+	rate = parse_link_rate(intel_dp, from, len);
 	if (rate < 0)
 		return rate;
 
@@ -1820,7 +1820,7 @@ static ssize_t i915_dp_force_link_rate_write(struct file *file,
 
 	drm_modeset_unlock(&display->drm->mode_config.connection_mutex);
 
-	*offp += len;
+	iocb->ki_pos += len;
 
 	return len;
 }
@@ -1862,14 +1862,14 @@ static int i915_dp_force_lane_count_show(struct seq_file *m, void *data)
 	return 0;
 }
 
-static int parse_lane_count(const char __user *ubuf, size_t len)
+static int parse_lane_count(struct iov_iter *from, size_t len)
 {
 	char *kbuf;
 	const char *p;
 	int lane_count;
 	int ret = 0;
 
-	kbuf = memdup_user_nul(ubuf, len);
+	kbuf = iterdup_nul(from, len);
 	if (IS_ERR(kbuf))
 		return PTR_ERR(kbuf);
 
@@ -1898,18 +1898,18 @@ out_free:
 	return ret < 0 ? ret : lane_count;
 }
 
-static ssize_t i915_dp_force_lane_count_write(struct file *file,
-					      const char __user *ubuf,
-					      size_t len, loff_t *offp)
+static ssize_t i915_dp_force_lane_count_write_iter(struct kiocb *iocb,
+					      struct iov_iter *from)
 {
-	struct seq_file *m = file->private_data;
+	size_t len = iov_iter_count(from);
+	struct seq_file *m = iocb->ki_filp->private_data;
 	struct intel_connector *connector = to_intel_connector(m->private);
 	struct intel_display *display = to_intel_display(connector);
 	struct intel_dp *intel_dp = intel_attached_dp(connector);
 	int lane_count;
 	int err;
 
-	lane_count = parse_lane_count(ubuf, len);
+	lane_count = parse_lane_count(from, len);
 	if (lane_count < 0)
 		return lane_count;
 
@@ -1922,7 +1922,7 @@ static ssize_t i915_dp_force_lane_count_write(struct file *file,
 
 	drm_modeset_unlock(&display->drm->mode_config.connection_mutex);
 
-	*offp += len;
+	iocb->ki_pos += len;
 
 	return len;
 }

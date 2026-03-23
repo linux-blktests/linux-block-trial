@@ -2955,26 +2955,24 @@ static int hdmi_cec_state_show(struct seq_file *m, void *data)
 }
 
 /**
- * hdmi_cec_state_write - Enable/Disable HDMI-CEC feature from driver side
- * @f: file structure.
- * @buf: userspace buffer. set to '1' to enable; '0' to disable cec feature.
- * @size: size of buffer from userpsace.
- * @pos: unused.
+ * hdmi_cec_state_write_iter - Enable/Disable HDMI-CEC feature from driver side
+ * @iocb: kiocb structure.
+ * @from: iov_iter with userspace data. set to '1' to enable; '0' to disable cec feature.
  *
  * Return size on success, error code on failure
  */
-static ssize_t hdmi_cec_state_write(struct file *f, const char __user *buf,
-				    size_t size, loff_t *pos)
+static ssize_t hdmi_cec_state_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
+	size_t size = iov_iter_count(from);
 	int ret;
 	bool enable;
-	struct amdgpu_dm_connector *aconnector = file_inode(f)->i_private;
+	struct amdgpu_dm_connector *aconnector = file_inode(iocb->ki_filp)->i_private;
 	struct drm_device *ddev = aconnector->base.dev;
 
 	if (size == 0)
 		return -EINVAL;
 
-	ret = kstrtobool_from_user(buf, size, &enable);
+	ret = kstrtobool_from_iter(from, size, &enable);
 	if (ret) {
 		drm_dbg_driver(ddev, "invalid user data !\n");
 		return ret;

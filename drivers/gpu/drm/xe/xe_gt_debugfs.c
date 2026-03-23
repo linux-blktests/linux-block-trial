@@ -220,7 +220,7 @@ static const struct drm_info_list pf_only_debugfs_list[] = {
 	{ "steering", .show = xe_gt_debugfs_show_with_rpm, .data = steering },
 };
 
-static ssize_t write_to_gt_call(const char __user *userbuf, size_t count, loff_t *ppos,
+static ssize_t write_to_gt_call(struct iov_iter *from, size_t count, loff_t *ppos,
 				void (*call)(struct xe_gt *), struct xe_gt *gt)
 {
 	bool yes;
@@ -228,7 +228,7 @@ static ssize_t write_to_gt_call(const char __user *userbuf, size_t count, loff_t
 
 	if (*ppos)
 		return -EINVAL;
-	ret = kstrtobool_from_user(userbuf, count, &yes);
+	ret = kstrtobool_from_iter(from, count, &yes);
 	if (ret < 0)
 		return ret;
 	if (yes)
@@ -236,13 +236,13 @@ static ssize_t write_to_gt_call(const char __user *userbuf, size_t count, loff_t
 	return count;
 }
 
-static ssize_t stats_write(struct file *file, const char __user *userbuf,
-			   size_t count, loff_t *ppos)
+static ssize_t stats_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct xe_gt *gt = s->private;
 
-	return write_to_gt_call(userbuf, count, ppos, xe_gt_stats_clear, gt);
+	return write_to_gt_call(from, count, &iocb->ki_pos, xe_gt_stats_clear, gt);
 }
 
 static int stats_show(struct seq_file *s, void *unused)
@@ -262,14 +262,14 @@ static void force_reset(struct xe_gt *gt)
 	xe_gt_reset_async(gt);
 }
 
-static ssize_t force_reset_write(struct file *file,
-				 const char __user *userbuf,
-				 size_t count, loff_t *ppos)
+static ssize_t force_reset_write_iter(struct kiocb *iocb,
+				 struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct xe_gt *gt = s->private;
 
-	return write_to_gt_call(userbuf, count, ppos, force_reset, gt);
+	return write_to_gt_call(from, count, &iocb->ki_pos, force_reset, gt);
 }
 
 static int force_reset_show(struct seq_file *s, void *unused)
@@ -289,14 +289,14 @@ static void force_reset_sync(struct xe_gt *gt)
 	xe_gt_reset(gt);
 }
 
-static ssize_t force_reset_sync_write(struct file *file,
-				      const char __user *userbuf,
-				      size_t count, loff_t *ppos)
+static ssize_t force_reset_sync_write_iter(struct kiocb *iocb,
+				      struct iov_iter *from)
 {
-	struct seq_file *s = file->private_data;
+	size_t count = iov_iter_count(from);
+	struct seq_file *s = iocb->ki_filp->private_data;
 	struct xe_gt *gt = s->private;
 
-	return write_to_gt_call(userbuf, count, ppos, force_reset_sync, gt);
+	return write_to_gt_call(from, count, &iocb->ki_pos, force_reset_sync, gt);
 }
 
 static int force_reset_sync_show(struct seq_file *s, void *unused)

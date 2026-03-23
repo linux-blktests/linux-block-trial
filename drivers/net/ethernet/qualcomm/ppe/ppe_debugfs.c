@@ -712,12 +712,12 @@ static int ppe_packet_counter_show(struct seq_file *seq, void *v)
 }
 
 /* Flush the various packet counters of PPE. */
-static ssize_t ppe_packet_counter_write(struct file *file,
-					const char __user *buf,
-					size_t count, loff_t *pos)
+static ssize_t ppe_packet_counter_write_iter(struct kiocb *iocb,
+					struct iov_iter *from)
 {
-	struct ppe_debugfs_entry *entry = file_inode(file)->i_private;
+	struct ppe_debugfs_entry *entry = file_inode(iocb->ki_filp)->i_private;
 	struct ppe_device *ppe_dev = entry->ppe;
+	size_t count = iov_iter_count(from);
 	u32 reg;
 	int i;
 
