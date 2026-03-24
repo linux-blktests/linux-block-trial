@@ -355,7 +355,27 @@ static ssize_t proc_reg_write(struct file *file, const char __user *buf, size_t 
 	}
 	return rv;
 }
-FOPS_WRITE_ITER_HELPER(proc_reg_write);
+
+static ssize_t proc_reg_write_iter(struct kiocb *iocb, struct iov_iter *iter)
+{
+	struct proc_dir_entry *pde = PDE(file_inode(iocb->ki_filp));
+	ssize_t ret;
+
+	if (pde_is_permanent(pde)) {
+		if (!pde->proc_ops->proc_write_iter)
+			return vfs_write_iter(iocb, iter, proc_reg_write);
+		return pde->proc_ops->proc_write_iter(iocb, iter);
+	}
+
+	if (!use_pde(pde))
+		return -EIO;
+	if (!pde->proc_ops->proc_write_iter)
+		ret = vfs_write_iter(iocb, iter, proc_reg_write);
+	else
+		ret = pde->proc_ops->proc_write_iter(iocb, iter);
+	unuse_pde(pde);
+	return ret;
+}
 
 static __poll_t pde_poll(struct proc_dir_entry *pde, struct file *file, struct poll_table_struct *pts)
 {
