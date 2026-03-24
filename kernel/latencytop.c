@@ -267,12 +267,11 @@ static int lstats_show(struct seq_file *m, void *v)
 }
 
 static ssize_t
-lstats_write(struct file *file, const char __user *buf, size_t count,
-	     loff_t *offs)
+lstats_write_iter(struct kiocb *iocb, struct iov_iter *from)
 {
 	clear_global_latency_tracing();
 
-	return count;
+	return iov_iter_count(from);
 }
 
 static int lstats_open(struct inode *inode, struct file *filp)
@@ -283,7 +282,7 @@ static int lstats_open(struct inode *inode, struct file *filp)
 static const struct proc_ops lstats_proc_ops = {
 	.proc_open	= lstats_open,
 	.proc_read_iter	= seq_read_iter,
-	.proc_write	= lstats_write,
+	.proc_write_iter = lstats_write_iter,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 };
