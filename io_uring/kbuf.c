@@ -50,7 +50,7 @@ static bool io_kbuf_inc_commit(struct io_buffer_list *bl, int len)
 		if (buf_len || !this_len) {
 			WRITE_ONCE(buf->addr, READ_ONCE(buf->addr) + this_len);
 			WRITE_ONCE(buf->len, buf_len);
-			return false;
+			return bl->min_left > buf_len;
 		}
 		WRITE_ONCE(buf->len, 0);
 		bl->head++;
@@ -203,11 +203,35 @@ static struct io_br_sel io_ring_buffer_select(struct io_kiocb *req, size_t *len,
 	if (unlikely(tail == head))
 		return sel;
 
+	buf = io_ring_head_to_buf(br, head, bl->mask);
+	buf_len = READ_ONCE(buf->len);
+
+	/*
+	 * For incremental rings, if we run out of space and min_left is
+	 * set, peek at the next buffer. If it's big enough, consume the
+	 * current one and grab it. If not, just use the current short
+	 * buffer and let the caller handler the error.
+	 */
+	if (buf_len < bl->min_left) {
+		struct io_uring_buf *nxt;
+		u32 nxt_len;
+
+		if (unlikely(!buf_len || head + 1 == tail))
+			return sel;
+
+		nxt = io_ring_head_to_buf(br, head + 1, bl->mask);
+		nxt_len = READ_ONCE(nxt->len);
+		if (nxt_len >= bl->min_left) {
+			io_kbuf_inc_commit(bl, buf_len);
+			head = bl->head;
+			buf = nxt;
+			buf_len = nxt_len;
+		}
+	}
+
 	if (head + 1 == tail)
 		req->flags |= REQ_F_BL_EMPTY;
 
-	buf = io_ring_head_to_buf(br, head, bl->mask);
-	buf_len = READ_ONCE(buf->len);
 	if (*len == 0 || *len > buf_len)
 		*len = buf_len;
 	req->flags |= REQ_F_BUFFER_RING | REQ_F_BUFFERS_COMMIT;
@@ -637,6 +661,10 @@ int io_register_pbuf_ring(struct io_ring_ctx *ctx, void __user *arg)
 	if (reg.ring_entries >= 65536)
 		return -EINVAL;
 
+	/* minimum left byte count is a property of incremental buffers */
+	if (!(reg.flags & IOU_PBUF_RING_INC) && reg.min_left)
+		return -EINVAL;
+
 	bl = io_buffer_get_list(ctx, reg.bgid);
 	if (bl) {
 		/* if mapped buffer ring OR classic exists, don't allow */
@@ -683,6 +711,7 @@ int io_register_pbuf_ring(struct io_ring_ctx *ctx, void __user *arg)
 	bl->mask = reg.ring_entries - 1;
 	bl->flags |= IOBL_BUF_RING;
 	bl->buf_ring = br;
+	bl->min_left = reg.min_left;
 	if (reg.flags & IOU_PBUF_RING_INC)
 		bl->flags |= IOBL_INC;
 	ret = io_buffer_add_list(ctx, bl, reg.bgid);
