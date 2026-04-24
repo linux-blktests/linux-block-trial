@@ -1599,6 +1599,29 @@ void __tcp_cleanup_rbuf(struct sock *sk, int copied)
 		}
 	}
 	if (time_to_ack) {
+		/*
+		 * If the socket is owned by the user (we're inside
+		 * tcp_recvmsg_locked or a similar in-kernel recv loop),
+		 * defer the ACK to tcp_release_cb(). Sending it inline
+		 * here triggers __dev_queue_xmit() -> local_bh_enable()
+		 * which can fire a softirq cascade processing packets
+		 * for other unlocked sockets on this CPU. Deferring keeps
+		 * the ACK transmit under the spin_lock_bh() held by
+		 * release_sock(), so no inline softirq runs from within
+		 * the recv path.
+		 *
+		 * tcp_release_cb() only fires the deferred ACK if
+		 * inet_csk_ack_scheduled() also returns true, so make
+		 * sure ICSK_ACK_SCHED is set here -- the window-update
+		 * path in this function can otherwise reach the defer
+		 * with icsk_ack.pending cleared by a prior tcp_send_ack().
+		 */
+		if (sock_owned_by_user_nocheck(sk) &&
+		    READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_backlog_ack_defer)) {
+			inet_csk_schedule_ack(sk);
+			set_bit(TCP_ACK_DEFERRED, &sk->sk_tsq_flags);
+			return;
+		}
 		tcp_mstamp_refresh(tp);
 		tcp_send_ack(sk);
 	}
