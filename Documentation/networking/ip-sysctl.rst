@@ -927,6 +927,31 @@ tcp_backlog_ack_defer - BOOLEAN
 
 	Default: 1 (enabled)
 
+tcp_cleanup_ack_defer - BOOLEAN
+	If enabled, ACKs that would otherwise be sent inline from
+	tcp_cleanup_rbuf() (called from tcp_recvmsg_locked() and similar
+	in-kernel recv loops) are deferred to tcp_release_cb(), which
+	runs from release_sock() with bottom halves disabled.
+
+	Sending the ACK inline triggers __dev_queue_xmit() ->
+	local_bh_enable(), which can fire a softirq cascade that
+	processes incoming packets for other unlocked sockets on the
+	same CPU. This is most visible under io_uring multishot recv,
+	where each sock_recvmsg() can trigger a cascade and consume
+	substantial CPU in nested softirq processing.
+
+	Deferring keeps the ACK transmit under the spin_lock_bh() held
+	by release_sock(), so no inline softirq runs from within the
+	recv path; pending softirqs are processed once at the trailing
+	spin_unlock_bh().
+
+	Possible values:
+
+	- 0 (disabled)
+	- 1 (enabled)
+
+	Default: 1 (enabled)
+
 tcp_slow_start_after_idle - BOOLEAN
 	If enabled, provide RFC2861 behavior and time out the congestion
 	window after an idle period.  An idle period is defined at
