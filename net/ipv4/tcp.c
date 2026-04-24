@@ -1610,6 +1610,11 @@ void __tcp_cleanup_rbuf(struct sock *sk, int copied)
 		 * release_sock(), so no inline softirq runs from within
 		 * the recv path.
 		 *
+		 * Safety valve: if more than half the receive window has
+		 * been consumed since the last window update was sent,
+		 * force the ACK inline so the sender sees the window
+		 * advance promptly and does not stall.
+		 *
 		 * tcp_release_cb() only fires the deferred ACK if
 		 * inet_csk_ack_scheduled() also returns true, so make
 		 * sure ICSK_ACK_SCHED is set here -- the window-update
@@ -1617,7 +1622,8 @@ void __tcp_cleanup_rbuf(struct sock *sk, int copied)
 		 * with icsk_ack.pending cleared by a prior tcp_send_ack().
 		 */
 		if (sock_owned_by_user_nocheck(sk) &&
-		    READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_backlog_ack_defer)) {
+		    READ_ONCE(sock_net(sk)->ipv4.sysctl_tcp_backlog_ack_defer) &&
+		    (tp->rcv_nxt - tp->rcv_wup) <= (tp->rcv_wnd >> 1)) {
 			inet_csk_schedule_ack(sk);
 			set_bit(TCP_ACK_DEFERRED, &sk->sk_tsq_flags);
 			return;
