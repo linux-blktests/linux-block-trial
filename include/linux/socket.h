@@ -87,6 +87,10 @@ struct msghdr {
 	};
 	bool		msg_control_is_user : 1;
 	bool		msg_get_inq : 1;/* return INQ after receive */
+	/*
+	 * Socket already locked by a previous caller
+	 */
+	bool		msg_sock_locked : 1;
 	unsigned int	msg_flags;	/* flags on received message */
 	__kernel_size_t	msg_controllen;	/* ancillary data buffer length */
 	struct kiocb	*msg_iocb;	/* ptr to iocb for async requests */
@@ -341,7 +345,12 @@ struct ucred {
 #define MSG_SENDPAGE_DECRYPTED	0x100000 /* sendpage() internal : page may carry
 					  * plain text and require encryption
 					  */
-
+#define MSG_SOCK_LOCKSTATE 0x200000 /* recvmsg(): leave socket locked on return;
+				   * caller will release_sock when done. The
+				   * handler reports honoring this by setting
+				   * msg->msg_sock_locked on return. User must
+				   * call release_sock() once done with recvs.
+				   */
 #define MSG_SOCK_DEVMEM 0x2000000	/* Receive devmem skbs as cmsg */
 #define MSG_ZEROCOPY	0x4000000	/* Use user data in kernel path */
 #define MSG_SPLICE_PAGES 0x8000000	/* Splice the pages from the iterator in sendmsg() */
@@ -357,10 +366,11 @@ struct ucred {
 
 /* Flags to be cleared on entry by sendmsg and sendmmsg syscalls */
 #define MSG_INTERNAL_SENDMSG_FLAGS \
-	(MSG_SPLICE_PAGES | MSG_SENDPAGE_NOPOLICY | MSG_SENDPAGE_DECRYPTED)
+	(MSG_SPLICE_PAGES | MSG_SENDPAGE_NOPOLICY | MSG_SENDPAGE_DECRYPTED | \
+	 MSG_SOCK_LOCKSTATE)
 
 /* Flags to be cleared on entry by recvmsg syscalls */
-#define MSG_INTERNAL_RECVMSG_FLAGS	0
+#define MSG_INTERNAL_RECVMSG_FLAGS	MSG_SOCK_LOCKSTATE
 
 /* Setsockoptions(2) level. Thanks to BSD these must match IPPROTO_xxx */
 #define SOL_IP		0

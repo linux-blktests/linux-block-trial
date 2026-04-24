@@ -356,6 +356,8 @@ static int tcp_bpf_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
 	struct sk_psock *psock;
 	int copied, ret;
 
+	/* Don't propagate sock locking flag across nested recvmsg calls */
+	flags &= ~MSG_SOCK_LOCKSTATE;
 	if (unlikely(flags & MSG_ERRQUEUE))
 		return inet_recv_error(sk, msg, len);
 

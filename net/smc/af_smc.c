@@ -2856,6 +2856,8 @@ int smc_recvmsg(struct socket *sock, struct msghdr *msg, size_t len,
 		goto out;
 	}
 
+	/* Don't propagate sock locking flag across nested recvmsg calls */
+	flags &= ~MSG_SOCK_LOCKSTATE;
 	if (smc->use_fallback) {
 		rc = smc->clcsock->ops->recvmsg(smc->clcsock, msg, len, flags);
 	} else {
