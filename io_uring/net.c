@@ -1027,6 +1027,7 @@ int io_recvmsg(struct io_kiocb *req, unsigned int issue_flags)
 	int ret, min_ret = 0;
 	bool force_nonblock = issue_flags & IO_URING_F_NONBLOCK;
 	bool mshot_finished = true;
+	bool unlock_sock;
 
 	sock = sock_from_file(req->file);
 	if (unlikely(!sock))
@@ -1038,7 +1039,8 @@ int io_recvmsg(struct io_kiocb *req, unsigned int issue_flags)
 
 	flags = sr->msg_flags;
 	if (force_nonblock)
-		flags |= MSG_DONTWAIT;
+		flags |= MSG_DONTWAIT | MSG_SOCK_LOCKSTATE;
+	kmsg->msg.msg_sock_locked = unlock_sock = false;
 
 retry_multishot:
 	sel.buf_list = NULL;
@@ -1046,14 +1048,16 @@ retry_multishot:
 		size_t len = sr->len;
 
 		sel = io_buffer_select(req, &len, sr->buf_group, issue_flags);
-		if (!sel.addr)
-			return -ENOBUFS;
+		if (!sel.addr) {
+			ret = -ENOBUFS;
+			goto out;
+		}
 
 		if (req->flags & REQ_F_APOLL_MULTISHOT) {
 			ret = io_recvmsg_prep_multishot(kmsg, sr, &sel.addr, &len);
 			if (ret) {
 				io_kbuf_recycle(req, sel.buf_list, issue_flags);
-				return ret;
+				goto out;
 			}
 		}
 
@@ -1073,15 +1077,18 @@ retry_multishot:
 		ret = __sys_recvmsg_sock(sock, &kmsg->msg, sr->umsg,
 					 kmsg->uaddr, flags);
 	}
+	unlock_sock = kmsg->msg.msg_sock_locked;
 
 	if (ret < min_ret) {
 		if (ret == -EAGAIN && force_nonblock) {
 			io_kbuf_recycle(req, sel.buf_list, issue_flags);
-			return IOU_RETRY;
+			ret = IOU_RETRY;
+			goto out;
 		}
 		if (ret > 0 && io_net_retry(sock, flags)) {
 			sr->done_io += ret;
-			return io_net_kbuf_recyle(req, sel.buf_list, kmsg, ret);
+			ret = io_net_kbuf_recyle(req, sel.buf_list, kmsg, ret);
+			goto out;
 		}
 		if (ret == -ERESTARTSYS)
 			ret = -EINTR;
@@ -1101,7 +1108,11 @@ retry_multishot:
 	if (!io_recv_finish(req, kmsg, &sel, mshot_finished, issue_flags))
 		goto retry_multishot;
 
-	return sel.val;
+	ret = sel.val;
+out:
+	if (unlock_sock)
+		release_sock(sock->sk);
+	return ret;
 }
 
 static int io_recv_buf_select(struct io_kiocb *req, struct io_async_msghdr *kmsg,
