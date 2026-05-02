@@ -2298,6 +2298,8 @@ int __sys_recvfrom(int fd, void __user *ubuf, size_t size, unsigned int flags,
 	struct socket *sock;
 	int err, err2;
 
+	flags &= ~MSG_INTERNAL_RECVMSG_FLAGS;
+
 	err = import_ubuf(ITER_DEST, ubuf, size, &msg.msg_iter);
 	if (unlikely(err))
 		return err;
@@ -2982,6 +2984,8 @@ long __sys_recvmsg(int fd, struct user_msghdr __user *msg, unsigned int flags,
 	if (forbid_cmsg_compat && (flags & MSG_CMSG_COMPAT))
 		return -EINVAL;
 
+	flags &= ~MSG_INTERNAL_RECVMSG_FLAGS;
+
 	CLASS(fd, f)(fd);
 
 	if (fd_empty(f))
@@ -3118,6 +3122,8 @@ int __sys_recvmmsg(int fd, struct mmsghdr __user *mmsg,
 {
 	int datagrams;
 	struct timespec64 timeout_sys;
+
+	flags &= ~MSG_INTERNAL_RECVMSG_FLAGS;
 
 	if (timeout && get_timespec64(&timeout_sys, timeout))
 		return -EFAULT;

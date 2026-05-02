@@ -359,6 +359,9 @@ struct ucred {
 #define MSG_INTERNAL_SENDMSG_FLAGS \
 	(MSG_SPLICE_PAGES | MSG_SENDPAGE_NOPOLICY | MSG_SENDPAGE_DECRYPTED)
 
+/* Flags to be cleared on entry by recvmsg syscalls */
+#define MSG_INTERNAL_RECVMSG_FLAGS	0
+
 /* Setsockoptions(2) level. Thanks to BSD these must match IPPROTO_xxx */
 #define SOL_IP		0
 /* #define SOL_ICMP	1	No-no-no! Due to Linux :-) we cannot use SOL_ICMP=1 */
