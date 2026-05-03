@@ -1184,7 +1184,7 @@ int io_recv(struct io_kiocb *req, unsigned int issue_flags)
 	unsigned flags;
 	int ret, min_ret = 0;
 	bool force_nonblock = issue_flags & IO_URING_F_NONBLOCK;
-	bool mshot_finished;
+	bool sock_locked, mshot_finished;
 
 	if (!(req->flags & REQ_F_POLLED) &&
 	    (sr->flags & IORING_RECVSEND_POLL_FIRST))
@@ -1197,6 +1197,15 @@ int io_recv(struct io_kiocb *req, unsigned int issue_flags)
 	flags = sr->msg_flags;
 	if (force_nonblock)
 		flags |= MSG_DONTWAIT;
+
+	/*
+	 * Ask the protocol handler to keep lock_sock() held across the
+	 * multishot loop. The handler reports back via msg_sock_locked whether
+	 * it honored the request.
+	 */
+	kmsg->msg.msg_sock_keep_locked = force_nonblock &&
+					 !(issue_flags & IO_URING_F_UNLOCKED);
+	kmsg->msg.msg_sock_locked = sock_locked = false;
 
 retry_multishot:
 	sel.buf_list = NULL;
@@ -1217,16 +1226,19 @@ retry_multishot:
 		min_ret = iov_iter_count(&kmsg->msg.msg_iter);
 
 	ret = sock_recvmsg(sock, &kmsg->msg, flags);
+	sock_locked = kmsg->msg.msg_sock_locked;
 	if (ret < min_ret) {
 		if (ret == -EAGAIN && force_nonblock) {
 			io_kbuf_recycle(req, sel.buf_list, issue_flags);
-			return IOU_RETRY;
+			ret = IOU_RETRY;
+			goto out;
 		}
 		if (ret > 0 && io_net_retry(sock, flags)) {
 			sr->len -= ret;
 			sr->buf += ret;
 			sr->done_io += ret;
-			return io_net_kbuf_recyle(req, sel.buf_list, kmsg, ret);
+			ret = io_net_kbuf_recyle(req, sel.buf_list, kmsg, ret);
+			goto out;
 		}
 		if (ret == -ERESTARTSYS)
 			ret = -EINTR;
@@ -1248,7 +1260,11 @@ out_free:
 	if (!io_recv_finish(req, kmsg, &sel, mshot_finished, issue_flags))
 		goto retry_multishot;
 
-	return sel.val;
+	ret = sel.val;
+out:
+	if (sock_locked)
+		release_sock(sock->sk);
+	return ret;
 }
 
 int io_recvzc_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
