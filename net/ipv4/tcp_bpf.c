@@ -230,6 +230,8 @@ static int tcp_bpf_recvmsg_parser(struct sock *sk,
 	int copied = 0;
 	u32 seq;
 
+	sk_recvmsg_release_lock(sk, msg);
+
 	if (unlikely(flags & MSG_ERRQUEUE))
 		return inet_recv_error(sk, msg, len);
 
@@ -355,6 +357,8 @@ static int tcp_bpf_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
 {
 	struct sk_psock *psock;
 	int copied, ret;
+
+	sk_recvmsg_release_lock(sk, msg);
 
 	if (unlikely(flags & MSG_ERRQUEUE))
 		return inet_recv_error(sk, msg, len);

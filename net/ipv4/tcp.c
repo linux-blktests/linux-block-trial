@@ -2464,6 +2464,17 @@ static int tcp_inq_hint(struct sock *sk)
 	return inq;
 }
 
+/* Same as tcp_inq_hint() but the caller already holds lock_sock(sk). */
+static int tcp_inq_hint_locked(struct sock *sk)
+{
+	const struct tcp_sock *tp = tcp_sk(sk);
+	int inq = tp->rcv_nxt - tp->copied_seq;
+
+	if (inq == 0 && sock_flag(sk, SOCK_DONE))
+		inq = 1;
+	return inq;
+}
+
 /* batch __xa_alloc() calls and reduce xa_lock()/xa_unlock() overhead. */
 struct tcp_xa_pool {
 	u8		max; /* max <= MAX_SKB_FRAGS */
@@ -2968,20 +2979,38 @@ int tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int flags)
 	if (unlikely(flags & MSG_ERRQUEUE))
 		return inet_recv_error(sk, msg, len);
 
-	if (sk_can_busy_loop(sk) &&
-	    skb_queue_empty_lockless(&sk->sk_receive_queue) &&
-	    sk->sk_state == TCP_ESTABLISHED)
-		sk_busy_loop(sk, flags & MSG_DONTWAIT);
+	/*
+	 * Caller-managed socket lock: a previous recvmsg() may already
+	 * hold lock_sock() on our behalf (msg_sock_locked). Skip the
+	 * busy loop and lock_sock() in that case. If msg_sock_keep_locked
+	 * is set the caller wants the lock left held on return so a
+	 * subsequent recvmsg() can reuse it; otherwise release as usual.
+	 */
+	if (!msg->msg_sock_locked) {
+		if (sk_can_busy_loop(sk) &&
+		    skb_queue_empty_lockless(&sk->sk_receive_queue) &&
+		    sk->sk_state == TCP_ESTABLISHED)
+			sk_busy_loop(sk, flags & MSG_DONTWAIT);
 
-	lock_sock(sk);
+		lock_sock(sk);
+		msg->msg_sock_locked = true;
+	}
+
 	ret = tcp_recvmsg_locked(sk, msg, len, flags, &tss, &cmsg_flags);
-	release_sock(sk);
+
+	if (!msg->msg_sock_keep_locked) {
+		msg->msg_sock_locked = false;
+		release_sock(sk);
+	}
 
 	if ((cmsg_flags | msg->msg_get_inq) && ret >= 0) {
 		if (cmsg_flags & TCP_CMSG_TS)
 			tcp_recv_timestamp(msg, sk, &tss);
 		if ((cmsg_flags & TCP_CMSG_INQ) | msg->msg_get_inq) {
-			msg->msg_inq = tcp_inq_hint(sk);
+			if (msg->msg_sock_locked)
+				msg->msg_inq = tcp_inq_hint_locked(sk);
+			else
+				msg->msg_inq = tcp_inq_hint(sk);
 			if (cmsg_flags & TCP_CMSG_INQ)
 				put_cmsg(msg, SOL_TCP, TCP_CM_INQ,
 					 sizeof(msg->msg_inq), &msg->msg_inq);

@@ -2579,6 +2579,8 @@ int __copy_msghdr(struct msghdr *kmsg,
 
 	kmsg->msg_control_is_user = true;
 	kmsg->msg_get_inq = 0;
+	kmsg->msg_sock_keep_locked = false;
+	kmsg->msg_sock_locked = false;
 	kmsg->msg_control_user = msg->msg_control;
 	kmsg->msg_controllen = msg->msg_controllen;
 	kmsg->msg_flags = msg->msg_flags;

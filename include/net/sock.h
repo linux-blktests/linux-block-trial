@@ -3157,4 +3157,17 @@ static inline bool sk_is_readable(struct sock *sk)
 
 	return false;
 }
+/*
+ * Don't honor caller-managed socket locking across nested recvmsg calls. If a
+ * previous handler left lock_sock() held, hand the state back to the caller so
+ * we don't double-lock or double-release.
+ */
+static inline void sk_recvmsg_release_lock(struct sock *sk, struct msghdr *msg)
+{
+	msg->msg_sock_keep_locked = false;
+	if (msg->msg_sock_locked) {
+		msg->msg_sock_locked = false;
+		release_sock(sk);
+	}
+}
 #endif	/* _SOCK_H */

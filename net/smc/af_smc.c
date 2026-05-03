@@ -2839,6 +2839,8 @@ int smc_recvmsg(struct socket *sock, struct msghdr *msg, size_t len,
 	struct smc_sock *smc;
 	int rc = -ENOTCONN;
 
+	sk_recvmsg_release_lock(sk, msg);
+
 	smc = smc_sk(sk);
 	lock_sock(sk);
 	if (sk->sk_state == SMC_CLOSED && (sk->sk_shutdown & RCV_SHUTDOWN)) {

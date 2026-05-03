@@ -87,6 +87,22 @@ struct msghdr {
 	};
 	bool		msg_control_is_user : 1;
 	bool		msg_get_inq : 1;/* return INQ after receive */
+	/*
+	 * recvmsg socket-lock batching (kernel callers only).
+	 *
+	 * msg_sock_keep_locked (input): the caller asks the protocol
+	 * handler to leave lock_sock() held on return so a subsequent
+	 * recvmsg() can reuse it. The caller is then responsible for
+	 * release_sock() once it observes msg_sock_locked == true on
+	 * the final return.
+	 *
+	 * msg_sock_locked (state): set by the handler while it owns
+	 * the socket lock; cleared when the handler releases it.
+	 * Handlers that do not honor msg_sock_keep_locked never set
+	 * msg_sock_locked.
+	 */
+	bool		msg_sock_keep_locked : 1;
+	bool		msg_sock_locked : 1;
 	unsigned int	msg_flags;	/* flags on received message */
 	__kernel_size_t	msg_controllen;	/* ancillary data buffer length */
 	struct kiocb	*msg_iocb;	/* ptr to iocb for async requests */
