@@ -140,6 +140,7 @@ const struct io_issue_def io_issue_defs[] = {
 		.unbound_nonreg_file	= 1,
 		.pollout		= 1,
 		.ioprio			= 1,
+		.creds			= 1,
 #if defined(CONFIG_NET)
 		.async_size		= sizeof(struct io_async_msghdr),
 		.prep			= io_sendmsg_prep,
@@ -154,6 +155,7 @@ const struct io_issue_def io_issue_defs[] = {
 		.pollin			= 1,
 		.buffer_select		= 1,
 		.ioprio			= 1,
+		.creds			= 1,
 #if defined(CONFIG_NET)
 		.async_size		= sizeof(struct io_async_msghdr),
 		.prep			= io_recvmsg_prep,
@@ -202,6 +204,7 @@ const struct io_issue_def io_issue_defs[] = {
 		.needs_file		= 1,
 		.unbound_nonreg_file	= 1,
 		.pollout		= 1,
+		.creds			= 1,
 #if defined(CONFIG_NET)
 		.async_size		= sizeof(struct io_async_msghdr),
 		.prep			= io_connect_prep,
@@ -213,10 +216,12 @@ const struct io_issue_def io_issue_defs[] = {
 	[IORING_OP_FALLOCATE] = {
 		.needs_file		= 1,
 		.hash_reg_file          = 1,
+		.creds			= 1,
 		.prep			= io_fallocate_prep,
 		.issue			= io_fallocate,
 	},
 	[IORING_OP_OPENAT] = {
+		.creds			= 1,
 		.filter_pdu_size	= sizeof_field(struct io_uring_bpf_ctx, open),
 		.prep			= io_openat_prep,
 		.issue			= io_openat,
@@ -234,6 +239,7 @@ const struct io_issue_def io_issue_defs[] = {
 	},
 	[IORING_OP_STATX] = {
 		.audit_skip		= 1,
+		.creds			= 1,
 		.prep			= io_statx_prep,
 		.issue			= io_statx,
 	},
@@ -305,6 +311,7 @@ const struct io_issue_def io_issue_defs[] = {
 #endif
 	},
 	[IORING_OP_OPENAT2] = {
+		.creds			= 1,
 		.filter_pdu_size	= sizeof_field(struct io_uring_bpf_ctx, open),
 		.prep			= io_openat2_prep,
 		.issue			= io_openat2,
@@ -358,22 +365,27 @@ const struct io_issue_def io_issue_defs[] = {
 #endif
 	},
 	[IORING_OP_RENAMEAT] = {
+		.creds			= 1,
 		.prep			= io_renameat_prep,
 		.issue			= io_renameat,
 	},
 	[IORING_OP_UNLINKAT] = {
+		.creds			= 1,
 		.prep			= io_unlinkat_prep,
 		.issue			= io_unlinkat,
 	},
 	[IORING_OP_MKDIRAT] = {
+		.creds			= 1,
 		.prep			= io_mkdirat_prep,
 		.issue			= io_mkdirat,
 	},
 	[IORING_OP_SYMLINKAT] = {
+		.creds			= 1,
 		.prep			= io_symlinkat_prep,
 		.issue			= io_symlinkat,
 	},
 	[IORING_OP_LINKAT] = {
+		.creds			= 1,
 		.prep			= io_linkat_prep,
 		.issue			= io_linkat,
 	},
@@ -385,24 +397,29 @@ const struct io_issue_def io_issue_defs[] = {
 	},
 	[IORING_OP_FSETXATTR] = {
 		.needs_file = 1,
+		.creds			= 1,
 		.prep			= io_fsetxattr_prep,
 		.issue			= io_fsetxattr,
 	},
 	[IORING_OP_SETXATTR] = {
+		.creds			= 1,
 		.prep			= io_setxattr_prep,
 		.issue			= io_setxattr,
 	},
 	[IORING_OP_FGETXATTR] = {
 		.needs_file = 1,
+		.creds			= 1,
 		.prep			= io_fgetxattr_prep,
 		.issue			= io_fgetxattr,
 	},
 	[IORING_OP_GETXATTR] = {
+		.creds			= 1,
 		.prep			= io_getxattr_prep,
 		.issue			= io_getxattr,
 	},
 	[IORING_OP_SOCKET] = {
 		.audit_skip		= 1,
+		.creds			= 1,
 #if defined(CONFIG_NET)
 		.filter_pdu_size	= sizeof_field(struct io_uring_bpf_ctx, socket),
 		.prep			= io_socket_prep,
@@ -440,6 +457,7 @@ const struct io_issue_def io_issue_defs[] = {
 		.unbound_nonreg_file	= 1,
 		.pollout		= 1,
 		.ioprio			= 1,
+		.creds			= 1,
 #if defined(CONFIG_NET)
 		.async_size		= sizeof(struct io_async_msghdr),
 		.prep			= io_send_zc_prep,
@@ -459,6 +477,7 @@ const struct io_issue_def io_issue_defs[] = {
 		.issue			= io_read_mshot,
 	},
 	[IORING_OP_WAITID] = {
+		.creds			= 1,
 		.async_size		= sizeof(struct io_waitid_async),
 		.prep			= io_waitid_prep,
 		.issue			= io_waitid,
@@ -489,18 +508,21 @@ const struct io_issue_def io_issue_defs[] = {
 	},
 	[IORING_OP_FIXED_FD_INSTALL] = {
 		.needs_file		= 1,
+		.creds			= 1,
 		.prep			= io_install_fixed_fd_prep,
 		.issue			= io_install_fixed_fd,
 	},
 	[IORING_OP_FTRUNCATE] = {
 		.needs_file		= 1,
 		.hash_reg_file		= 1,
+		.creds			= 1,
 		.prep			= io_ftruncate_prep,
 		.issue			= io_ftruncate,
 	},
 	[IORING_OP_BIND] = {
 #if defined(CONFIG_NET)
 		.needs_file		= 1,
+		.creds			= 1,
 		.prep			= io_bind_prep,
 		.issue			= io_bind,
 		.async_size		= sizeof(struct io_async_msghdr),
@@ -511,6 +533,7 @@ const struct io_issue_def io_issue_defs[] = {
 	[IORING_OP_LISTEN] = {
 #if defined(CONFIG_NET)
 		.needs_file		= 1,
+		.creds			= 1,
 		.prep			= io_listen_prep,
 		.issue			= io_listen,
 		.async_size		= sizeof(struct io_async_msghdr),

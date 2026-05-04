@@ -29,6 +29,8 @@ struct io_issue_def {
 	unsigned		vectored : 1;
 	/* set to 1 if this opcode uses 128b sqes in a mixed sq */
 	unsigned		is_128 : 1;
+	/* opcode wants creds loaded from sqe->personality */
+	unsigned		creds : 1;
 
 	/* size of async data needed, if any */
 	unsigned short		async_size;
