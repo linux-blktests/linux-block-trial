@@ -31,6 +31,8 @@ struct io_issue_def {
 	unsigned		is_128 : 1;
 	/* opcode wants creds loaded from sqe->personality */
 	unsigned		creds : 1;
+	/* opcode interprets sqe->personality itself */
+	unsigned		personality : 1;
 
 	/* size of async data needed, if any */
 	unsigned short		async_size;

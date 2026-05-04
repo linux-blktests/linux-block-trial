@@ -1714,6 +1714,27 @@ static __cold int io_init_fail_req(struct io_kiocb *req, int err)
 	return err;
 }
 
+static int io_load_personality(struct io_ring_ctx *ctx, struct io_kiocb *req,
+			       const struct io_issue_def *def, int personality)
+{
+	int ret;
+
+	if (unlikely(!def->creds && !def->personality))
+		return -EINVAL;
+
+	req->creds = xa_load(&ctx->personalities, personality);
+	if (!req->creds)
+		return -EINVAL;
+	get_cred(req->creds);
+	ret = security_uring_override_creds(req->creds);
+	if (ret) {
+		put_cred(req->creds);
+		return ret;
+	}
+	req->flags |= REQ_F_CREDS;
+	return 0;
+}
+
 static int io_init_req(struct io_ring_ctx *ctx, struct io_kiocb *req,
 		       const struct io_uring_sqe *sqe, unsigned int *left)
 	__must_hold(&ctx->uring_lock)
@@ -1812,19 +1833,11 @@ static int io_init_req(struct io_ring_ctx *ctx, struct io_kiocb *req,
 	}
 
 	personality = READ_ONCE(sqe->personality);
-	if (personality) {
-		int ret;
+	if (unlikely(personality)) {
+		int ret = io_load_personality(ctx, req, def, personality);
 
-		req->creds = xa_load(&ctx->personalities, personality);
-		if (!req->creds)
-			return io_init_fail_req(req, -EINVAL);
-		get_cred(req->creds);
-		ret = security_uring_override_creds(req->creds);
-		if (ret) {
-			put_cred(req->creds);
+		if (unlikely(ret))
 			return io_init_fail_req(req, ret);
-		}
-		req->flags |= REQ_F_CREDS;
 	}
 
 	return def->prep(req, sqe);
