@@ -263,11 +263,24 @@ static int __io_prep_rw(struct io_kiocb *req, const struct io_uring_sqe *sqe,
 	struct io_async_rw *io;
 	unsigned ioprio;
 	u64 attr_type_mask;
-	int ret;
+	int flags, ret;
 
 	if (io_rw_alloc_async(req))
 		return -ENOMEM;
 	io = req->async_data;
+
+	flags = READ_ONCE(sqe->personality);
+	if (flags & ~IORING_RW_TIMESTAMP)
+		return -EINVAL;
+	io->flags = flags;
+	if (flags & IORING_RW_TIMESTAMP) {
+		struct io_ring_ctx *ctx = req->ctx;
+
+		/* need big CQE support for completion timestamps */
+		if (!(ctx->flags & (IORING_SETUP_CQE32|IORING_SETUP_CQE_MIXED)))
+			return -EINVAL;
+		io->timestamped = false;
+	}
 
 	rw->kiocb.ki_pos = READ_ONCE(sqe->off);
 	/* used for fixed read/write too - just read unconditionally */
@@ -531,13 +544,25 @@ static void io_req_end_write(struct io_kiocb *req)
 	}
 }
 
+static u32 io_req_timestamp(struct io_kiocb *req)
+{
+	struct io_async_rw *io = req->async_data;
+
+	if (io->flags & IORING_RW_TIMESTAMP && io->timestamped) {
+		req->big_cqe.extra1 = ktime_to_us(ktime_sub(ktime_get(), io->timestamp));
+		return ctx_cqe32_flags(req->ctx);
+	}
+	return 0;
+}
+
 /*
  * Trigger the notifications after having done some IO, and finish the write
- * accounting, if any.
+ * accounting, if any. Returns any cqe flags that should be set.
  */
-static void io_req_io_end(struct io_kiocb *req)
+static u32 io_req_io_end(struct io_kiocb *req)
 {
 	struct io_rw *rw = io_kiocb_to_cmd(req, struct io_rw);
+	u32 flags = io_req_timestamp(req);
 
 	if (rw->kiocb.ki_flags & IOCB_WRITE) {
 		io_req_end_write(req);
@@ -545,6 +570,7 @@ static void io_req_io_end(struct io_kiocb *req)
 	} else {
 		fsnotify_access(req->file);
 	}
+	return flags;
 }
 
 static void __io_complete_rw_common(struct io_kiocb *req, long res)
@@ -577,7 +603,7 @@ void io_req_rw_complete(struct io_tw_req tw_req, io_tw_token_t tw)
 {
 	struct io_kiocb *req = tw_req.req;
 
-	io_req_io_end(req);
+	req->cqe.flags |= io_req_io_end(req);
 
 	if (req->flags & (REQ_F_BUFFER_SELECTED|REQ_F_BUFFER_RING))
 		req->cqe.flags |= io_put_kbuf(req, max(req->cqe.res, 0), NULL);
@@ -610,6 +636,8 @@ static void io_complete_rw_iopoll(struct kiocb *kiocb, long res)
 		else
 			req->cqe.res = res;
 	}
+
+	io_req_timestamp(req);
 
 	/* order with io_iopoll_complete() checking ->iopoll_completed */
 	smp_store_release(&req->iopoll_completed, 1);
@@ -655,16 +683,16 @@ static int kiocb_done(struct io_kiocb *req, ssize_t ret,
 	if (ret >= 0 && req->flags & REQ_F_CUR_POS)
 		req->file->f_pos = rw->kiocb.ki_pos;
 	if (ret >= 0 && !(req->flags & REQ_F_IOPOLL)) {
-		u32 cflags = 0;
+		u32 cflags;
 
 		__io_complete_rw_common(req, ret);
 		/*
 		 * Safe to call io_end from here as we're inline
 		 * from the submission path.
 		 */
-		io_req_io_end(req);
+		cflags = io_req_io_end(req);
 		if (sel)
-			cflags = io_put_kbuf(req, ret, sel->buf_list);
+			cflags |= io_put_kbuf(req, ret, sel->buf_list);
 		io_req_set_res(req, final_ret, cflags);
 		io_req_rw_cleanup(req, issue_flags);
 		return IOU_COMPLETE;
@@ -919,6 +947,11 @@ static int __io_read(struct io_kiocb *req, struct io_br_sel *sel,
 	ssize_t ret;
 	loff_t *ppos;
 
+	if (io->flags & IORING_RW_TIMESTAMP && !io->timestamped) {
+		io->timestamped = true;
+		io->timestamp = ktime_get();
+	}
+
 	if (req->flags & REQ_F_IMPORT_BUFFER) {
 		ret = io_rw_import_reg_vec(req, io, ITER_DEST, issue_flags);
 		if (unlikely(ret))
@@ -960,6 +993,8 @@ static int __io_read(struct io_kiocb *req, struct io_br_sel *sel,
 		ret = -EAGAIN;
 
 	if (ret == -EAGAIN) {
+		/* reset for io-wq issue */
+		io->timestamped = false;
 		/* If we can poll, just do that. */
 		if (io_file_can_poll(req))
 			return ret;
@@ -1132,6 +1167,11 @@ int io_write(struct io_kiocb *req, unsigned int issue_flags)
 	ssize_t ret, ret2;
 	loff_t *ppos;
 
+	if (io->flags & IORING_RW_TIMESTAMP && !io->timestamped) {
+		io->timestamped = true;
+		io->timestamp = ktime_get();
+	}
+
 	if (req->flags & REQ_F_IMPORT_BUFFER) {
 		ret = io_rw_import_reg_vec(req, io, ITER_SOURCE, issue_flags);
 		if (unlikely(ret))
@@ -1211,6 +1251,8 @@ done:
 		return kiocb_done(req, ret2, NULL, issue_flags);
 	} else {
 ret_eagain:
+		/* reset for io-wq issue */
+		io->timestamped = false;
 		iov_iter_restore(&io->iter, &io->iter_state);
 		io_meta_restore(io, kiocb);
 		if (kiocb->ki_flags & IOCB_WRITE)

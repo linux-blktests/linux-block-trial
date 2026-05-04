@@ -495,6 +495,13 @@ enum io_uring_msg_ring_flags {
 #define IORING_NOP_CQE32		(1U << 5)
 
 /*
+ * IORING_OP_{READ,WRITE}* flags (sqe->personality)
+ *
+ * IORING_RW_TIMESTAMP		Report request duration
+ */
+#define IORING_RW_TIMESTAMP		(1U << 0)
+
+/*
  * IO completion data structure (Completion Queue Entry)
  */
 struct io_uring_cqe {

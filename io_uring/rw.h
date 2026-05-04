@@ -18,6 +18,12 @@ struct io_async_rw {
 		struct iovec			fast_iov;
 		unsigned			buf_group;
 
+		/* sqe->personality flags */
+		u16				flags;
+
+		bool				timestamped;
+		ktime_t				timestamp;
+
 		/*
 		 * wpq is for buffered io, while meta fields are used with
 		 * direct io
