@@ -1721,6 +1721,8 @@ static int io_load_personality(struct io_ring_ctx *ctx, struct io_kiocb *req,
 
 	if (unlikely(!def->creds && !def->personality))
 		return -EINVAL;
+	if (!def->creds)
+		return 0;
 
 	req->creds = xa_load(&ctx->personalities, personality);
 	if (!req->creds)
