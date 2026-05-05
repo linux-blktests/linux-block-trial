@@ -498,8 +498,10 @@ enum io_uring_msg_ring_flags {
  * IORING_OP_{READ,WRITE}* flags (sqe->personality)
  *
  * IORING_RW_TIMESTAMP		Report request duration
+ * IORING_RW_ASYNC_UNCACHED	Punt uncached buffered read to io-wq
  */
 #define IORING_RW_TIMESTAMP		(1U << 0)
+#define IORING_RW_ASYNC_UNCACHED	(1U << 1)
 
 /*
  * IO completion data structure (Completion Queue Entry)

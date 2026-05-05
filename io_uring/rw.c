@@ -270,7 +270,7 @@ static int __io_prep_rw(struct io_kiocb *req, const struct io_uring_sqe *sqe,
 	io = req->async_data;
 
 	flags = READ_ONCE(sqe->personality);
-	if (flags & ~IORING_RW_TIMESTAMP)
+	if (flags & ~(IORING_RW_TIMESTAMP|IORING_RW_ASYNC_UNCACHED))
 		return -EINVAL;
 	io->flags = flags;
 	if (flags & IORING_RW_TIMESTAMP) {
@@ -843,6 +843,10 @@ static bool io_rw_should_retry(struct io_kiocb *req)
 	 */
 	if (io_file_can_poll(req) ||
 	    !(req->file->f_op->fop_flags & FOP_BUFFER_RASYNC))
+		return false;
+
+	/* If IORING_RW_ASYNC_UNCACHED, punt read that isn't cached to io-wq */
+	if (io->flags & IORING_RW_ASYNC_UNCACHED)
 		return false;
 
 	wait->wait.func = io_async_buf_func;
