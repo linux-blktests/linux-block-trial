@@ -714,29 +714,20 @@ static int nvme_uring_cmd_iopoll_qid(struct request_queue *q,
 				 struct io_comp_batch *iob,
 				 unsigned int flags)
 {
-	long state = get_current_state();
 	int ret;
 
 	if (!(q->mq_ops && q->mq_ops->poll_uring_cmd))
 		return 0;
 	do {
 		ret = q->mq_ops->poll_uring_cmd(ioucmd, qid, iob);
-		if (ret > 0) {
-			__set_current_state(TASK_RUNNING);
+		if (ret > 0)
 			return ret;
-		}
-		if (signal_pending_state(state, current))
-			__set_current_state(TASK_RUNNING);
-		if (task_is_running(current))
-			return 1;
-
 		if (ret < 0 || (flags & BLK_POLL_ONESHOT))
 			break;
 		cpu_relax();
 
 	} while (!need_resched());
 
-	__set_current_state(TASK_RUNNING);
 	return 0;
 }
 
