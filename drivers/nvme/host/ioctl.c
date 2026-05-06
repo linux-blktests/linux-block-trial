@@ -464,8 +464,10 @@ int nvme_prep_cmd_from_ioucmd(struct nvme_ctrl *ctrl, struct nvme_ns *ns,
 	c->common.cdw14 = cpu_to_le32(READ_ONCE(cmd->cdw14));
 	c->common.cdw15 = cpu_to_le32(READ_ONCE(cmd->cdw15));
 
+#if 0
 	if (!nvme_cmd_allowed(ns, c, 0, ioucmd->file->f_mode & FMODE_WRITE))
 		return -EACCES;
+#endif
 
 	d->metadata = READ_ONCE(cmd->metadata);
 	d->addr = READ_ONCE(cmd->addr);

@@ -1181,8 +1181,8 @@ struct rq_list {
 struct blk_plug {
 	struct rq_list mq_list; /* blk-mq requests */
 
-	struct list_head direct_list;
-	void (*direct_fn)(struct blk_plug *);
+	void (*direct_fn)(void *data);
+	void *direct_data;
 
 	/* if ios_left is > 1, we can batch tag/rq allocations */
 	struct rq_list cached_rqs;
