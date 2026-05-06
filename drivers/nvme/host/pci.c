@@ -2373,7 +2373,7 @@ static int nvme_pci_get_rawq(struct nvme_dev *dev)
 	for (i = 0; i < nr_rawq; i++) {
 		if (rawqi->q_state[i] == Q_FREE) {
 			rawqi->q_state[i] = Q_ALLOC;
-			qid = dev->nr_allocated_queues - nr_rawq - i;
+			qid = dev->max_qid - i;
 			rawqi->nr_free--;
 			ret = qid;
 			goto unlock;
@@ -2394,7 +2394,7 @@ static int nvme_pci_put_rawq(struct nvme_dev *dev, int qid)
 	if (!nr_rawq || dev->rawqi == NULL)
 		return -EINVAL;
 
-	i = dev->nr_allocated_queues - nr_rawq - qid;
+	i = dev->max_qid - qid;
 	mutex_lock(&dev->rawq_lock);
 	rawqi = dev->rawqi;
 	if (rawqi->q_state[i] == Q_ALLOC) {
