@@ -1139,6 +1139,8 @@ void blk_start_plug_nr_ios(struct blk_plug *plug, unsigned short nr_ios)
 	plug->cur_ktime = 0;
 	rq_list_init(&plug->mq_list);
 	rq_list_init(&plug->cached_rqs);
+	INIT_LIST_HEAD(&plug->direct_list);
+	plug->direct_fn = NULL;
 	plug->nr_ios = min_t(unsigned short, nr_ios, BLK_MAX_REQUEST_COUNT);
 	plug->rq_count = 0;
 	plug->multiple_queues = false;
@@ -1227,6 +1229,8 @@ void __blk_flush_plug(struct blk_plug *plug, bool from_schedule)
 {
 	if (!list_empty(&plug->cb_list))
 		flush_plug_callbacks(plug, from_schedule);
+	if (!list_empty(&plug->direct_list))
+		plug->direct_fn(plug);
 	blk_mq_flush_plug_list(plug, from_schedule);
 	/*
 	 * Unconditionally flush out cached requests, even if the unplug

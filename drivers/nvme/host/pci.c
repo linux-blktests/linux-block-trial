@@ -461,6 +461,8 @@ struct nvme_iod {
 		struct io_uring_cmd *ioucmd;
 	};
 	struct nvme_command cmd;
+	struct list_head plug_list;
+	int qid;
 	u8 flags;
 	u8 nr_descriptors;
 
@@ -2557,18 +2559,59 @@ static int nvme_alloc_cmd_from_q(struct nvme_queue *nvmeq, int *cmdid,
 	return 0;
 }
 
+static void nvme_direct_submit(struct nvme_queue *nvmeq, struct list_head *list)
+{
+	struct nvme_iod *iod;
+
+	if (list_empty(list))
+		return;
+
+	spin_lock(&nvmeq->sq_lock);
+	while (!list_empty(list)) {
+		iod = list_first_entry(list, struct nvme_iod, plug_list);
+		list_del(&iod->plug_list);
+		nvme_sq_copy_cmd(nvmeq, &iod->cmd);
+	}
+	nvme_write_sq_db(nvmeq, true);
+	spin_unlock(&nvmeq->sq_lock);
+}
+
+static void nvme_plug_flush(struct blk_plug *plug)
+{
+	struct nvme_uring_direct_pdu *pdu;
+	struct nvme_queue *this_nvmeq, *nvmeq = NULL;
+	struct nvme_dev *dev;
+	struct nvme_iod *iod;
+	LIST_HEAD(list);
+
+	while (!list_empty(&plug->direct_list)) {
+		iod = list_first_entry(&plug->direct_list, struct nvme_iod, plug_list);
+		list_del(&iod->plug_list);
+		pdu = nvme_uring_cmd_direct_pdu(iod->ioucmd);
+		dev = to_nvme_dev(pdu->ns->ctrl);
+		this_nvmeq = &dev->queues[iod->qid];
+		if (nvmeq && nvmeq != this_nvmeq)
+			nvme_direct_submit(nvmeq, &list);
+		nvmeq = this_nvmeq;
+		list_add_tail(&iod->plug_list, &list);
+	}
+	if (nvmeq)
+		nvme_direct_submit(nvmeq, &list);
+}
+
 static int nvme_pci_queue_ucmd(struct io_uring_cmd *ioucmd, int qid,
 			       unsigned int issue_flags)
 {
 	struct nvme_uring_direct_pdu *pdu = nvme_uring_cmd_direct_pdu(ioucmd);
+	struct blk_plug *plug = current->plug;
 	struct nvme_ns *ns = pdu->ns;
 	struct nvme_ctrl *ctrl = ns->ctrl;
 	struct nvme_dev *dev = to_nvme_dev(ctrl);
+	struct nvme_queue *nvmeq = &dev->queues[qid];
 	struct nvme_command *nvme_cmd;
 	struct nvme_uring_data d;
 	int ret, cmdid;
 	struct nvme_iod *iod;
-	struct nvme_queue *nvmeq = &dev->queues[qid];
 
 	ret = nvme_alloc_cmd_from_q(nvmeq, &cmdid, &iod);
 	if (ret)
@@ -2581,6 +2624,7 @@ static int nvme_pci_queue_ucmd(struct io_uring_cmd *ioucmd, int qid,
 		goto out;
 
 	nvme_cmd->common.command_id = cmdid;
+	iod->qid = qid;
 	iod->flags = 0;
 	iod->nr_descriptors = 0;
 	iod->total_len = 0;
@@ -2590,21 +2634,15 @@ static int nvme_pci_queue_ucmd(struct io_uring_cmd *ioucmd, int qid,
 	if  (ret)
 		goto out;
 
-	/*
-	 * since this nvmeq is exclusive to single submitter (io_uring
-	 * follows one-thread-per-ring model), we do not need the lock
-	 * ideally. But we have lifetime difference between io_uring
-	 * and nvme sqe. io_uring SQE can be reused just after submission
-	 * but for nvme we have to wait until completion.
-	 * So if we run out of space, submission will be deferred to
-	 * io_uring worker. So we can't skip the lock.
-	 * But not all is lost! Due to one-thread-per-ring model and
-	 * polled-completion, contention is not common in most cases.
-	 */
-	spin_lock(&nvmeq->sq_lock);
-	nvme_sq_copy_cmd(nvmeq, &iod->cmd);
-	nvme_write_sq_db(nvmeq, true);
-	spin_unlock(&nvmeq->sq_lock);
+	if (plug) {
+		list_add_tail(&iod->plug_list, &plug->direct_list);
+		plug->direct_fn = nvme_plug_flush;
+	} else {
+		spin_lock(&nvmeq->sq_lock);
+		nvme_sq_copy_cmd(nvmeq, &iod->cmd);
+		nvme_write_sq_db(nvmeq, true);
+		spin_unlock(&nvmeq->sq_lock);
+	}
 	return -EIOCBQUEUED;
 out:
 	nvme_pci_put_cmdid(nvmeq, cmdid);
