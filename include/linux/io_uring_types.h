@@ -780,6 +780,13 @@ struct io_kiocb {
 	void				*async_data;
 	/* linked requests, IFF REQ_F_HARDLINK or REQ_F_LINK are set */
 	atomic_t			poll_refs;
+	/*
+	 * Temporary storage, used for poll wakeup gating BPF programs.
+	 * Currently fills a hole, could share with io_task_work for more
+	 * storage too.
+	 */
+	u32				poll_bpf_val;
+
 	struct io_kiocb			*link;
 	/* custom credentials, valid IFF REQ_F_CREDS is set */
 	const struct cred		*creds;
