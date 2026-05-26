@@ -10,8 +10,20 @@ enum {
 	IOU_REGION_SQ,
 };
 
+struct io_uring_poll_event_priv {
+	struct io_uring_poll_event	pub;
+	struct io_kiocb			*req;
+};
+
 struct io_uring_bpf_ops {
 	int (*loop_step)(struct io_ring_ctx *ctx, struct iou_loop_params *lp);
+
+	/*
+	 * Invoked from io_poll_wake when a poll-armed request with
+	 * REQ_F_POLL_BPF wakes. Returns 1 if no action should be taken,
+	 * 0 otherwise to let the request proceed.
+	 */
+	int (*poll_gate)(struct io_uring_poll_event *ev);
 
 	__u32 ring_fd;
 	void *priv;

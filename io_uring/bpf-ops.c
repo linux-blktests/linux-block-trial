@@ -11,6 +11,7 @@
 
 static DEFINE_MUTEX(io_bpf_ctrl_mutex);
 static const struct btf_type *loop_params_type;
+static const struct btf_type *poll_event_type;
 
 __bpf_kfunc_start_defs();
 
@@ -64,8 +65,14 @@ static int io_bpf_ops__loop_step(struct io_ring_ctx *ctx,
 	return IOU_LOOP_STOP;
 }
 
+static int io_bpf_ops__poll_gate(struct io_uring_poll_event *ev)
+{
+	return 0;
+}
+
 static struct io_uring_bpf_ops io_bpf_ops_stubs = {
 	.loop_step = io_bpf_ops__loop_step,
+	.poll_gate = io_bpf_ops__poll_gate,
 };
 
 static bool bpf_io_is_valid_access(int off, int size,
@@ -91,6 +98,10 @@ static int bpf_io_btf_struct_access(struct bpf_verifier_log *log,
 
 	if (t == loop_params_type) {
 		if (off + size <= offsetofend(struct iou_loop_params, cq_wait_idx))
+			return SCALAR_VALUE;
+	}
+	if (t == poll_event_type) {
+		if (off + size <= sizeof(struct io_uring_poll_event))
 			return SCALAR_VALUE;
 	}
 
@@ -124,6 +135,12 @@ static int bpf_io_init(struct btf *btf)
 		return -EINVAL;
 	}
 
+	poll_event_type = io_lookup_struct_type(btf, "io_uring_poll_event");
+	if (!poll_event_type) {
+		pr_err("io_uring: Failed to locate io_uring_poll_event\n");
+		return -EINVAL;
+	}
+
 	ret = register_btf_kfunc_id_set(BPF_PROG_TYPE_STRUCT_OPS,
 					&bpf_io_uring_kfunc_set);
 	if (ret) {
@@ -137,6 +154,12 @@ static int bpf_io_check_member(const struct btf_type *t,
 				const struct btf_member *member,
 				const struct bpf_prog *prog)
 {
+	u32 moff = __btf_member_bit_offset(t, member) / 8;
+
+	/* Runs from wakeup context, hence cannot be sleepable */
+	if (moff == offsetof(struct io_uring_bpf_ops, poll_gate) &&
+	    prog->sleepable)
+		return -EINVAL;
 	return 0;
 }
 
@@ -165,12 +188,13 @@ static int io_install_bpf(struct io_ring_ctx *ctx, struct io_uring_bpf_ops *ops)
 
 	if (ctx->bpf_ops)
 		return -EBUSY;
-	if (WARN_ON_ONCE(!ops->loop_step))
+	if (WARN_ON_ONCE(!ops->loop_step && !ops->poll_gate))
 		return -EINVAL;
 
 	ops->priv = ctx;
 	ctx->bpf_ops = ops;
 	ctx->loop_step = ops->loop_step;
+	rcu_assign_pointer(ctx->poll_gate, ops->poll_gate);
 	return 0;
 }
 
@@ -207,6 +231,9 @@ static void io_eject_bpf(struct io_ring_ctx *ctx)
 	ops->priv = NULL;
 	ctx->bpf_ops = NULL;
 	ctx->loop_step = NULL;
+
+	rcu_assign_pointer(ctx->poll_gate, NULL);
+	synchronize_rcu();
 }
 
 static void bpf_io_unreg(void *kdata, struct bpf_link *link)

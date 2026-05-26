@@ -369,6 +369,8 @@ struct io_ring_ctx {
 		int (*loop_step)(struct io_ring_ctx *ctx,
 				 struct iou_loop_params *);
 
+		int (__rcu *poll_gate)(struct io_uring_poll_event *);
+
 		/*
 		 * Any cancelable uring_cmd is added to this list in
 		 * ->uring_cmd() by io_uring_cmd_insert_cancelable()

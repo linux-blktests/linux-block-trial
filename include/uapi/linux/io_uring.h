@@ -11,6 +11,7 @@
 #include <linux/fs.h>
 #include <linux/types.h>
 #include <linux/io_uring/zcrx.h>
+#include <linux/io_uring/bpf_ops.h>
 
 /*
  * this file is shared with liburing and that has to autodetect
