@@ -21,6 +21,7 @@
 #include "kbuf.h"
 #include "poll.h"
 #include "cancel.h"
+#include "bpf-ops.h"
 
 struct io_poll_update {
 	struct file			*file;
@@ -397,6 +398,38 @@ static __cold int io_pollfree_wake(struct io_kiocb *req, struct io_poll *poll)
 	return 1;
 }
 
+static int __io_bpf_poll_gate(struct io_kiocb *req, __poll_t mask)
+{
+	int (*fn)(struct io_uring_poll_event *);
+	struct io_ring_ctx *ctx = req->ctx;
+	struct io_uring_poll_event_priv ev = {
+		.pub.user_data	= req->cqe.user_data,
+		.pub.gate_state	= req->poll_bpf_val,
+		.pub.mask	= (__force __u32) mask,
+		.pub.opcode	= req->opcode,
+		.req		= req,
+	};
+	int ret = 0;
+
+	guard(rcu)();
+	fn = rcu_dereference(ctx->poll_gate);
+	if (fn)
+		ret = fn(&ev.pub);
+
+	req->poll_bpf_val = ev.pub.gate_state;
+	return ret;
+}
+
+static inline int io_bpf_poll_gate(struct io_kiocb *req, __poll_t mask)
+{
+	if (!(req->flags & REQ_F_POLL_BPF))
+		return 0;
+	if (mask & (EPOLLERR|EPOLLHUP|EPOLLRDHUP))
+		return 0;
+
+	return __io_bpf_poll_gate(req, mask);
+}
+
 static int io_poll_wake(struct wait_queue_entry *wait, unsigned mode, int sync,
 			void *key)
 {
@@ -409,6 +442,9 @@ static int io_poll_wake(struct wait_queue_entry *wait, unsigned mode, int sync,
 
 	/* for instances that support it check for an event match first */
 	if (mask && !(mask & (poll->events & ~IO_ASYNC_POLL_COMMON)))
+		return 0;
+
+	if (io_bpf_poll_gate(req, mask))
 		return 0;
 
 	if (io_poll_get_ownership(req)) {
