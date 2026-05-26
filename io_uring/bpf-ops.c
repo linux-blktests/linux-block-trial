@@ -133,12 +133,75 @@ __bpf_kfunc int bpf_io_uring_sock_state(struct io_uring_poll_event *ev,
 	return 0;
 }
 
+/*
+ * Peek into a TCP socket's receive queue. Walks sk_receive_queue under its
+ * spinlock and copies up to buf__sz bytes starting from the consumer offset
+ * (copied_seq) without consuming them.
+ * Returns bytes copied, or negative errno. -EAGAIN if the queue is empty.
+ */
+__bpf_kfunc int bpf_io_uring_sock_peek(struct io_uring_poll_event *ev,
+				       void *buf, u32 buf__sz)
+{
+	struct io_uring_poll_event_priv *priv;
+	struct socket *sock;
+	struct sock *sk;
+	struct sk_buff *skb;
+	unsigned long flags;
+	u32 copied_seq, off, copied = 0;
+	int ret;
+
+	if (!ev || !buf || !buf__sz)
+		return -EINVAL;
+	priv = container_of(ev, struct io_uring_poll_event_priv, pub);
+	if (!priv->req->file)
+		return -EINVAL;
+	sock = sock_from_file(priv->req->file);
+	if (!sock || !sock->sk)
+		return -ENOTSOCK;
+	sk = sock->sk;
+	if (sk->sk_family != AF_INET && sk->sk_family != AF_INET6)
+		return -EOPNOTSUPP;
+	if (sk->sk_protocol != IPPROTO_TCP)
+		return -EOPNOTSUPP;
+
+	copied_seq = READ_ONCE(tcp_sk(sk)->copied_seq);
+
+	spin_lock_irqsave(&sk->sk_receive_queue.lock, flags);
+	if (skb_queue_empty(&sk->sk_receive_queue)) {
+		spin_unlock_irqrestore(&sk->sk_receive_queue.lock, flags);
+		return -EAGAIN;
+	}
+	skb = skb_peek(&sk->sk_receive_queue);
+	off = copied_seq - TCP_SKB_CB(skb)->seq;
+
+	skb_queue_walk(&sk->sk_receive_queue, skb) {
+		u32 avail, want;
+
+		if (off >= skb->len) {
+			off -= skb->len;
+			continue;
+		}
+		avail = skb->len - off;
+		want = min(avail, buf__sz - copied);
+		ret = skb_copy_bits(skb, off, (u8 *)buf + copied, want);
+		if (ret < 0)
+			break;
+		copied += want;
+		off = 0;
+		if (copied >= buf__sz)
+			break;
+	}
+	spin_unlock_irqrestore(&sk->sk_receive_queue.lock, flags);
+	return copied;
+}
+
 __bpf_kfunc_end_defs();
 
 BTF_KFUNCS_START(io_uring_kfunc_set)
 BTF_ID_FLAGS(func, bpf_io_uring_submit_sqes, KF_SLEEPABLE);
 BTF_ID_FLAGS(func, bpf_io_uring_get_region, KF_RET_NULL);
 BTF_ID_FLAGS(func, bpf_io_uring_sock_state);
+BTF_ID_FLAGS(func, bpf_io_uring_sock_peek);
 BTF_KFUNCS_END(io_uring_kfunc_set)
 
 static const struct btf_kfunc_id_set bpf_io_uring_kfunc_set = {
