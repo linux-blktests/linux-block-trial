@@ -21,4 +21,25 @@ struct io_uring_poll_event {
 	__u8		resv[7];
 };
 
+/*
+ * Lockless snapshot of TCP socket state, populated by the
+ * bpf_io_uring_sock_state() kfunc.
+ *
+ * inq:        bytes available to read (rcv_nxt - copied_seq).
+ * rcvbuf:     current socket receive-buffer cap.
+ * rmem_alloc: bytes accounted to sk->sk_rmem_alloc (truesize sum;
+ *             includes per-skb overhead, so always >= inq).
+ * mss:        receiver's tracked peer MSS (icsk_ack.rcv_mss). Used
+ *             to mirror TCP's zero-window threshold of
+ *             max(rcvbuf/16, mss) - the gate must fire when free
+ *             space drops below that or the connection will deadlock
+ *             with a partial frame buffered.
+ */
+struct io_uring_sock_state {
+	__u32		inq;
+	__u32		rcvbuf;
+	__u32		rmem_alloc;
+	__u32		mss;
+};
+
 #endif

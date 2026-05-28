@@ -2,6 +2,10 @@
 #include <linux/mutex.h>
 #include <linux/bpf.h>
 #include <linux/bpf_verifier.h>
+#include <linux/net.h>
+#include <net/inet_connection_sock.h>
+#include <net/sock.h>
+#include <net/tcp.h>
 
 #include "io_uring.h"
 #include "register.h"
@@ -47,11 +51,94 @@ __u8 *bpf_io_uring_get_region(struct io_ring_ctx *ctx, __u32 region_id,
 	return io_region_get_ptr(r);
 }
 
+/**
+ * bpf_io_uring_sock_state - snapshot TCP receive-queue state for a poll_gate
+ * @ev: poll event passed to the struct_ops callback
+ * @out: output buffer (must be of type struct io_uring_sock_state)
+ * @out__sz: size of the output buffer
+ *
+ * Fills @out with four lockless fields from the underlying TCP socket:
+ *
+ *   - inq:        bytes available to read, i.e. tcp_inq() == rcv_nxt -
+ *                 copied_seq. Use this to decide whether enough data
+ *                 has buffered to satisfy the wire-level protocol frame.
+ *
+ *   - rcvbuf:     the socket's current receive-buffer cap. May grow
+ *                 over time if TCP receive autotuning is enabled (i.e.
+ *                 the application did not pin it via setsockopt
+ *                 SO_RCVBUF). Note that while a gate is parking the
+ *                 recv no copy occurs, so autotuning will not run.
+ *
+ *   - rmem_alloc: bytes accounted to sk->sk_rmem_alloc - the sum of
+ *                 skb->truesize for queued skbs (plus a small amount
+ *                 of out-of-order overhead). Includes per-skb meta,
+ *                 so always >= inq and can exceed it considerably.
+ *
+ *   - mss:        receiver's tracked MSS estimate for the peer
+ *                 (icsk_ack.rcv_mss), needed to mirror TCP's exact
+ *                 zero-window threshold.
+ *
+ * Deadlock guard (REQUIRED):
+ *
+ *   A gate that defers until inq >= frame_size will livelock if the
+ *   frame is larger than what the socket can buffer: TCP advertises
+ *   a zero window when free space drops below max(rcvbuf/16, mss),
+ *   the sender stops, and no further poll wakes arrive to re-enter
+ *   the gate. The canonical guard mirrors that exact threshold:
+ *
+ *       __u32 free   = st.rcvbuf - st.rmem_alloc;
+ *       __u32 thresh = st.rcvbuf >> 4;
+ *       if (st.mss > thresh)
+ *           thresh = st.mss;
+ *       if (st.inq < target && free < thresh)
+ *           return 0;   // fire, frame won't fit
+ *
+ * Restricted to AF_INET/AF_INET6 + IPPROTO_TCP; other families
+ * return -EOPNOTSUPP and the program should fall through.
+ *
+ * Return: 0 on success with @out populated, negative errno otherwise.
+ */
+__bpf_kfunc int bpf_io_uring_sock_state(struct io_uring_poll_event *ev,
+					void *out, u32 out__sz)
+{
+	struct io_uring_poll_event_priv *priv;
+	struct inet_connection_sock *icsk;
+	struct io_uring_sock_state st;
+	struct socket *sock;
+	struct sock *sk;
+
+	if (!ev || !out)
+		return -EINVAL;
+	if (out__sz < sizeof(st))
+		return -EINVAL;
+	priv = container_of(ev, struct io_uring_poll_event_priv, pub);
+	if (!priv->req->file)
+		return -EINVAL;
+	sock = sock_from_file(priv->req->file);
+	if (!sock || !sock->sk)
+		return -ENOTSOCK;
+	sk = sock->sk;
+	if (sk->sk_family != AF_INET && sk->sk_family != AF_INET6)
+		return -EOPNOTSUPP;
+	if (sk->sk_protocol != IPPROTO_TCP)
+		return -EOPNOTSUPP;
+	icsk = inet_csk(sk);
+
+	st.inq        = tcp_inq(sk);
+	st.rcvbuf     = READ_ONCE(sk->sk_rcvbuf);
+	st.rmem_alloc = atomic_read(&sk->sk_rmem_alloc);
+	st.mss        = READ_ONCE(icsk->icsk_ack.rcv_mss);
+
+	memcpy(out, &st, sizeof(st));
+	return 0;
+}
+
 __bpf_kfunc_end_defs();
 
 BTF_KFUNCS_START(io_uring_kfunc_set)
 BTF_ID_FLAGS(func, bpf_io_uring_submit_sqes, KF_SLEEPABLE);
 BTF_ID_FLAGS(func, bpf_io_uring_get_region, KF_RET_NULL);
+BTF_ID_FLAGS(func, bpf_io_uring_sock_state);
 BTF_KFUNCS_END(io_uring_kfunc_set)
 
 static const struct btf_kfunc_id_set bpf_io_uring_kfunc_set = {
