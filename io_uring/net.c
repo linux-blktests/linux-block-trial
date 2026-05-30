@@ -1019,6 +1019,11 @@ static int io_recvmsg_multishot(struct socket *sock, struct io_sr_msg *io,
 			kmsg->controllen + err;
 }
 
+static inline bool io_recv_poll_first(struct io_kiocb *req)
+{
+	return (req->flags & (REQ_F_POLLED | REQ_F_POLL_FIRST)) == REQ_F_POLL_FIRST;
+}
+
 int io_recvmsg(struct io_kiocb *req, unsigned int issue_flags)
 {
 	struct io_sr_msg *sr = io_kiocb_to_cmd(req, struct io_sr_msg);
@@ -1034,7 +1039,7 @@ int io_recvmsg(struct io_kiocb *req, unsigned int issue_flags)
 	if (unlikely(!sock))
 		return -ENOTSOCK;
 
-	if ((req->flags & (REQ_F_POLLED | REQ_F_POLL_FIRST)) == REQ_F_POLL_FIRST)
+	if (io_recv_poll_first(req))
 		return -EAGAIN;
 
 	flags = sr->msg_flags;
@@ -1192,7 +1197,7 @@ int io_recv(struct io_kiocb *req, unsigned int issue_flags)
 	if (unlikely(!sock))
 		return -ENOTSOCK;
 
-	if ((req->flags & (REQ_F_POLLED | REQ_F_POLL_FIRST)) == REQ_F_POLL_FIRST)
+	if (io_recv_poll_first(req))
 		return -EAGAIN;
 
 	flags = sr->msg_flags;
@@ -1293,7 +1298,7 @@ int io_recvzc(struct io_kiocb *req, unsigned int issue_flags)
 	if (unlikely(!sock))
 		return -ENOTSOCK;
 
-	if ((req->flags & (REQ_F_POLLED | REQ_F_POLL_FIRST)) == REQ_F_POLL_FIRST)
+	if (io_recv_poll_first(req))
 		return -EAGAIN;
 
 	len = zc->len;
