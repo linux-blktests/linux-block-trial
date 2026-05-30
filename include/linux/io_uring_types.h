@@ -568,6 +568,7 @@ enum {
 	REQ_F_SQE_COPIED_BIT,
 	REQ_F_IOPOLL_BIT,
 	REQ_F_POLL_BPF_BIT,
+	REQ_F_POLL_FIRST_BIT,
 
 	/* not a real bit, just to check we're not overflowing the space */
 	__REQ_F_LAST_BIT,
@@ -665,6 +666,8 @@ enum {
 	REQ_F_IOPOLL		= IO_REQ_FLAG(REQ_F_IOPOLL_BIT),
 	/* gate poll-driven trigger via BPF poll_gate */
 	REQ_F_POLL_BPF		= IO_REQ_FLAG(REQ_F_POLL_BPF_BIT),
+	/* arm poll before first issue rather than attempt a sync receive */
+	REQ_F_POLL_FIRST	= IO_REQ_FLAG(REQ_F_POLL_FIRST_BIT),
 };
 
 struct io_tw_req {

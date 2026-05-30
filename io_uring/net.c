@@ -803,6 +803,8 @@ int io_recvmsg_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 	sr->flags = READ_ONCE(sqe->ioprio);
 	if (sr->flags & ~RECVMSG_FLAGS)
 		return -EINVAL;
+	if (sr->flags & IORING_RECVSEND_POLL_FIRST)
+		req->flags |= REQ_F_POLL_FIRST;
 	sr->msg_flags = READ_ONCE(sqe->msg_flags);
 	if (sr->msg_flags & MSG_DONTWAIT)
 		req->flags |= REQ_F_NOWAIT;
@@ -1032,8 +1034,7 @@ int io_recvmsg(struct io_kiocb *req, unsigned int issue_flags)
 	if (unlikely(!sock))
 		return -ENOTSOCK;
 
-	if (!(req->flags & REQ_F_POLLED) &&
-	    (sr->flags & IORING_RECVSEND_POLL_FIRST))
+	if ((req->flags & (REQ_F_POLLED | REQ_F_POLL_FIRST)) == REQ_F_POLL_FIRST)
 		return -EAGAIN;
 
 	flags = sr->msg_flags;
@@ -1191,8 +1192,7 @@ int io_recv(struct io_kiocb *req, unsigned int issue_flags)
 	if (unlikely(!sock))
 		return -ENOTSOCK;
 
-	if (!(req->flags & REQ_F_POLLED) &&
-	    (sr->flags & IORING_RECVSEND_POLL_FIRST))
+	if ((req->flags & (REQ_F_POLLED | REQ_F_POLL_FIRST)) == REQ_F_POLL_FIRST)
 		return -EAGAIN;
 
 	flags = sr->msg_flags;
@@ -1274,6 +1274,8 @@ int io_recvzc_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 	/* multishot required */
 	if (!(zc->flags & IORING_RECV_MULTISHOT))
 		return -EINVAL;
+	if (zc->flags & IORING_RECVSEND_POLL_FIRST)
+		req->flags |= REQ_F_POLL_FIRST;
 	/* All data completions are posted as aux CQEs. */
 	req->flags |= REQ_F_APOLL_MULTISHOT;
 
@@ -1291,8 +1293,7 @@ int io_recvzc(struct io_kiocb *req, unsigned int issue_flags)
 	if (unlikely(!sock))
 		return -ENOTSOCK;
 
-	if (!(req->flags & REQ_F_POLLED) &&
-	    (zc->flags & IORING_RECVSEND_POLL_FIRST))
+	if ((req->flags & (REQ_F_POLLED | REQ_F_POLL_FIRST)) == REQ_F_POLL_FIRST)
 		return -EAGAIN;
 
 	len = zc->len;
