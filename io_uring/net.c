@@ -785,7 +785,7 @@ static int io_recvmsg_prep_setup(struct io_kiocb *req)
 }
 
 #define RECVMSG_FLAGS (IORING_RECVSEND_POLL_FIRST | IORING_RECV_MULTISHOT | \
-			IORING_RECVSEND_BUNDLE)
+			IORING_RECVSEND_BUNDLE | IORING_RECV_POLL_BPF)
 
 int io_recvmsg_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 {
@@ -803,7 +803,13 @@ int io_recvmsg_prep(struct io_kiocb *req, const struct io_uring_sqe *sqe)
 	sr->flags = READ_ONCE(sqe->ioprio);
 	if (sr->flags & ~RECVMSG_FLAGS)
 		return -EINVAL;
-	if (sr->flags & IORING_RECVSEND_POLL_FIRST)
+	if (sr->flags & IORING_RECV_POLL_BPF) {
+		if (!rcu_access_pointer(req->ctx->poll_gate))
+			return -EINVAL;
+		req->flags |= REQ_F_POLL_BPF;
+		req->poll_bpf_val = 0;
+	}
+	if (sr->flags & (IORING_RECVSEND_POLL_FIRST | IORING_RECV_POLL_BPF))
 		req->flags |= REQ_F_POLL_FIRST;
 	sr->msg_flags = READ_ONCE(sqe->msg_flags);
 	if (sr->msg_flags & MSG_DONTWAIT)

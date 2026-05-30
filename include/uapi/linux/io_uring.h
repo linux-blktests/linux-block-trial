@@ -434,6 +434,15 @@ enum io_uring_op {
  *
  * IORING_SEND_VECTORIZED	If set, SEND[_ZC] will take a pointer to a io_vec
  *				to allow vectorized send operations.
+ *
+ * IORING_RECV_POLL_BPF		Defer the poll-driven trigger of a recv until a
+ *				BPF program registered as
+ *				io_uring_bpf_ops::poll_gate returns 0. The
+ *				program runs each time the socket waitqueue
+ *				wakes the request; non-zero return means
+ *				"wait for another wake". Returns -EINVAL at
+ *				prep time if no poll_gate is installed on the
+ *				ring.
  */
 #define IORING_RECVSEND_POLL_FIRST	(1U << 0)
 #define IORING_RECV_MULTISHOT		(1U << 1)
@@ -441,6 +450,7 @@ enum io_uring_op {
 #define IORING_SEND_ZC_REPORT_USAGE	(1U << 3)
 #define IORING_RECVSEND_BUNDLE		(1U << 4)
 #define IORING_SEND_VECTORIZED		(1U << 5)
+#define IORING_RECV_POLL_BPF		(1U << 6)
 
 /*
  * cqe.res for IORING_CQE_F_NOTIF if
