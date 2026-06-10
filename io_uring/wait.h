@@ -5,12 +5,24 @@
 #include <linux/io_uring_types.h>
 
 /*
- * No waiters. It's larger than any valid value of the tw counter
- * so that tests against ->cq_wait_nr would fail and skip wake_up().
+ * No waiters. ->cq_wait_nr holds this when no task is waiting, and is
+ * reset back to it by the task work add side when it claims a wake up,
+ * so that only one wake up is issued per arming of the wait.
  */
 #define IO_CQ_WAKE_INIT		(-1U)
-/* Forced wake up if there is a waiter regardless of ->cq_wait_nr */
-#define IO_CQ_WAKE_FORCE	(IO_CQ_WAKE_INIT >> 1)
+
+/*
+ * A waiter only sleeps on an empty work list (it checks for pending work after
+ * arming), hence the number of lazy adds since arming is the full pending
+ * count. The release pairs with the acquire in io_req_local_work_add(), hence
+ * a producer observing the armed ->cq_wait_nr also observes the zeroed
+ * ->cq_wait_added.
+ */
+static inline void io_cq_wait_arm(struct io_ring_ctx *ctx, int nr_wait)
+{
+	atomic_set(&ctx->cq_wait_added, 0);
+	atomic_set_release(&ctx->cq_wait_nr, nr_wait);
+}
 
 struct ext_arg {
 	size_t argsz;
