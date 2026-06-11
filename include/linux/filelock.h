@@ -198,6 +198,7 @@ static inline bool locks_can_async_lock(const struct file_operations *fops)
 void locks_free_lock_context(struct inode *inode);
 void locks_free_lock(struct file_lock *fl);
 void locks_init_lock(struct file_lock *);
+void flock_make_lock(struct file *filp, struct file_lock *fl, int type);
 struct file_lock *locks_alloc_lock(void);
 void locks_copy_lock(struct file_lock *, struct file_lock *);
 void locks_copy_conflock(struct file_lock *, struct file_lock *);
@@ -211,6 +212,7 @@ int vfs_test_lock(struct file *, struct file_lock *);
 int vfs_lock_file(struct file *, unsigned int, struct file_lock *, struct file_lock *);
 int vfs_cancel_lock(struct file *filp, struct file_lock *fl);
 bool vfs_inode_has_locks(struct inode *inode);
+int locks_lock_inode(struct inode *inode, struct file_lock *fl);
 int locks_lock_inode_wait(struct inode *inode, struct file_lock *fl);
 
 void locks_init_lease(struct file_lease *);
@@ -388,6 +390,11 @@ static inline int vfs_cancel_lock(struct file *filp, struct file_lock *fl)
 static inline bool vfs_inode_has_locks(struct inode *inode)
 {
 	return false;
+}
+
+static inline int locks_lock_inode(struct inode *inode, struct file_lock *fl)
+{
+	return -ENOLCK;
 }
 
 static inline int locks_lock_inode_wait(struct inode *inode, struct file_lock *fl)

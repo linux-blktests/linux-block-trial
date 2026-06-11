@@ -481,7 +481,7 @@ static inline int flock_translate_cmd(int cmd) {
 }
 
 /* Fill in a file_lock structure with an appropriate FLOCK lock. */
-static void flock_make_lock(struct file *filp, struct file_lock *fl, int type)
+void flock_make_lock(struct file *filp, struct file_lock *fl, int type)
 {
 	locks_init_lock(fl);
 
@@ -1462,30 +1462,6 @@ int posix_lock_file(struct file *filp, struct file_lock *fl,
 }
 EXPORT_SYMBOL(posix_lock_file);
 
-/**
- * posix_lock_inode_wait - Apply a POSIX-style lock to a file
- * @inode: inode of file to which lock request should be applied
- * @fl: The lock to be applied
- *
- * Apply a POSIX style lock request to an inode.
- */
-static int posix_lock_inode_wait(struct inode *inode, struct file_lock *fl)
-{
-	int error;
-	might_sleep ();
-	for (;;) {
-		error = posix_lock_inode(inode, fl, NULL);
-		if (error != FILE_LOCK_DEFERRED)
-			break;
-		error = wait_event_interruptible(fl->c.flc_wait,
-						 list_empty(&fl->c.flc_blocked_member));
-		if (error)
-			break;
-	}
-	locks_delete_block(fl);
-	return error;
-}
-
 static void lease_clear_pending(struct file_lease *fl, int arg)
 {
 	switch (arg) {
@@ -2149,27 +2125,27 @@ int fcntl_setdeleg(unsigned int fd, struct file *filp, struct delegation *deleg)
 }
 
 /**
- * flock_lock_inode_wait - Apply a FLOCK-style lock to a file
+ * locks_lock_inode - Apply a lock to an inode, without blocking
  * @inode: inode of the file to apply to
  * @fl: The lock to be applied
  *
- * Apply a FLOCK style lock request to an inode.
+ * Make a single attempt at applying a POSIX or FLOCK style lock request
+ * to an inode. If a conflicting lock is held and @fl has FL_SLEEP set,
+ * @fl is queued on the blocking lock and FILE_LOCK_DEFERRED is returned.
+ * The caller is then responsible for waiting (or for setting
+ * ->lm_notify() to get a callback) and retrying, and must call
+ * locks_delete_block() once the request is granted, aborted, or
+ * cancelled.
  */
-static int flock_lock_inode_wait(struct inode *inode, struct file_lock *fl)
+int locks_lock_inode(struct inode *inode, struct file_lock *fl)
 {
-	int error;
-	might_sleep();
-	for (;;) {
-		error = flock_lock_inode(inode, fl);
-		if (error != FILE_LOCK_DEFERRED)
-			break;
-		error = wait_event_interruptible(fl->c.flc_wait,
-						 list_empty(&fl->c.flc_blocked_member));
-		if (error)
-			break;
+	switch (fl->c.flc_flags & (FL_POSIX|FL_FLOCK)) {
+	case FL_POSIX:
+		return posix_lock_inode(inode, fl, NULL);
+	case FL_FLOCK:
+		return flock_lock_inode(inode, fl);
 	}
-	locks_delete_block(fl);
-	return error;
+	BUG();
 }
 
 /**
@@ -2181,18 +2157,20 @@ static int flock_lock_inode_wait(struct inode *inode, struct file_lock *fl)
  */
 int locks_lock_inode_wait(struct inode *inode, struct file_lock *fl)
 {
-	int res = 0;
-	switch (fl->c.flc_flags & (FL_POSIX|FL_FLOCK)) {
-		case FL_POSIX:
-			res = posix_lock_inode_wait(inode, fl);
+	int error;
+
+	might_sleep();
+	for (;;) {
+		error = locks_lock_inode(inode, fl);
+		if (error != FILE_LOCK_DEFERRED)
 			break;
-		case FL_FLOCK:
-			res = flock_lock_inode_wait(inode, fl);
+		error = wait_event_interruptible(fl->c.flc_wait,
+						 list_empty(&fl->c.flc_blocked_member));
+		if (error)
 			break;
-		default:
-			BUG();
 	}
-	return res;
+	locks_delete_block(fl);
+	return error;
 }
 EXPORT_SYMBOL(locks_lock_inode_wait);
 
