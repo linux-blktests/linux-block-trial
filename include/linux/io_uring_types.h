@@ -462,6 +462,10 @@ struct io_ring_ctx {
 	struct io_alloc_cache	futex_cache;
 #endif
 
+#ifdef CONFIG_FILE_LOCKING
+	struct hlist_head	filelock_list;
+#endif
+
 	const struct cred	*sq_creds;	/* cred used for __io_sq_thread() */
 	struct io_sq_data	*sq_data;	/* if using sq thread polling */
 
