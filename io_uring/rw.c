@@ -594,7 +594,8 @@ static void io_complete_rw(struct kiocb *kiocb, long res)
 	__io_complete_rw_common(req, res);
 	io_req_set_res(req, io_fixup_rw_res(req, res), 0);
 	req->io_task_work.func = io_req_rw_complete;
-	__io_req_task_work_add(req, IOU_F_TWQ_LAZY_WAKE);
+	if (!io_req_local_work_add_batched(req))
+		__io_req_task_work_add(req, IOU_F_TWQ_LAZY_WAKE);
 }
 
 static void io_complete_rw_iopoll(struct kiocb *kiocb, long res)

@@ -34,6 +34,14 @@ __cold void io_cancel_local_task_work(struct io_ring_ctx *ctx);
 int io_run_local_work_locked(struct io_ring_ctx *ctx, int min_events);
 
 void io_req_local_work_add(struct io_kiocb *req, unsigned flags);
+#ifdef CONFIG_BLOCK
+bool io_req_local_work_add_batched(struct io_kiocb *req);
+#else
+static inline bool io_req_local_work_add_batched(struct io_kiocb *req)
+{
+	return false;
+}
+#endif
 void io_req_normal_work_add(struct io_kiocb *req);
 void tctx_task_work_run(struct io_uring_task *tctx, unsigned int max_entries, unsigned int *count);
 

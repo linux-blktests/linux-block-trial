@@ -7,6 +7,7 @@
 #include <linux/sched/signal.h>
 #include <linux/io_uring.h>
 #include <linux/indirect_call_wrapper.h>
+#include <linux/blk-mq.h>
 
 #include "io_uring.h"
 #include "tctx.h"
@@ -146,6 +147,135 @@ static void io_ctx_mark_taskrun(struct io_ring_ctx *ctx)
 		atomic_or(IORING_SQ_TASKRUN, &rings->sq_flags);
 	}
 }
+
+#ifdef CONFIG_BLOCK
+/*
+ * Batching of local task_work additions for block completion batches: a
+ * single device interrupt completes a whole io_comp_batch of requests, and
+ * each one would otherwise pay the tail xchg() in mpscq_push() on its own.
+ * While the per-CPU block batch window is open, stage the entries in
+ * per-ring chains instead, and push each chain with a single xchg() once
+ * the batch is done. Chain order is completion order, so this batching
+ * costs no ordering at all.
+ *
+ * The staging area is per-CPU, only ever used inside a batch window
+ * (which holds preemption off), and protected against a nested window
+ * staging from (hard) interrupt context by disabling local interrupts.
+ */
+#define IO_LOCAL_TW_BATCH_NR	4
+
+struct io_tw_comp_ctx {
+	struct io_ring_ctx	*ctx;
+	struct llist_node	*head;
+	struct llist_node	*tail;
+	unsigned int		nr;
+};
+
+struct io_tw_comp_batch {
+	struct io_tw_comp_ctx	ctxs[IO_LOCAL_TW_BATCH_NR];
+	unsigned int		used;
+};
+static DEFINE_PER_CPU(struct io_tw_comp_batch, io_tw_comp_batch);
+
+static void io_req_local_work_add_chain(struct io_ring_ctx *ctx,
+					struct llist_node *first,
+					struct llist_node *last, int nr)
+{
+	int nr_wait;
+
+	/*
+	 * Barrier pairing and wake gating as in io_req_local_work_add(),
+	 * with the whole chain accounted in one operation. All staged
+	 * entries are lazy adds, the decrement crossing zero issues the
+	 * wake up.
+	 */
+	if (mpscq_push_chain(&ctx->work_list, first, last)) {
+		io_ctx_mark_taskrun(ctx);
+		if (data_race(ctx->int_flags) & IO_RING_F_HAS_EVFD)
+			io_eventfd_signal(ctx, false);
+	}
+
+	nr_wait = atomic_read(&ctx->cq_wait_nr);
+	if (nr_wait <= 0)
+		return;
+	nr_wait = atomic_sub_return(nr, &ctx->cq_wait_nr);
+	if (nr_wait <= 0 && nr_wait + nr > 0)
+		wake_up_state(ctx->submitter_task, TASK_INTERRUPTIBLE);
+}
+
+static void io_local_work_flush_batch(void)
+{
+	struct io_tw_comp_batch *b;
+	unsigned long iflags;
+	int i;
+
+	local_irq_save(iflags);
+	b = this_cpu_ptr(&io_tw_comp_batch);
+	for (i = 0; i < b->used; i++) {
+		struct io_tw_comp_ctx *tc = &b->ctxs[i];
+
+		io_req_local_work_add_chain(tc->ctx, tc->head, tc->tail, tc->nr);
+		tc->ctx = NULL;
+	}
+	b->used = 0;
+	local_irq_restore(iflags);
+}
+
+bool io_req_local_work_add_batched(struct io_kiocb *req)
+{
+	struct llist_node *node = &req->io_task_work.node;
+	struct io_ring_ctx *ctx = req->ctx;
+	struct io_tw_comp_batch *b;
+	struct io_tw_comp_ctx *tc;
+	unsigned long iflags;
+	bool ret = false;
+	int i;
+
+	if (!(ctx->flags & IORING_SETUP_DEFER_TASKRUN))
+		return false;
+	/* lazy accounting only, see io_req_local_work_add() */
+	if (req->flags & IO_REQ_LINK_FLAGS)
+		return false;
+	if (!blk_comp_batch_active())
+		return false;
+
+	local_irq_save(iflags);
+	/*
+	 * Re-check with interrupts disabled: a preemptible caller (eg a
+	 * task context completion batch) may have migrated CPUs after the
+	 * optimistic check above, and staging is only valid on the CPU
+	 * holding the open window, as that's where the flush will run.
+	 */
+	if (!blk_comp_batch_active())
+		goto out;
+	b = this_cpu_ptr(&io_tw_comp_batch);
+	for (i = 0; i < b->used; i++) {
+		tc = &b->ctxs[i];
+		if (tc->ctx == ctx)
+			goto add;
+	}
+	if (b->used == IO_LOCAL_TW_BATCH_NR)
+		goto out;
+	tc = &b->ctxs[b->used++];
+	tc->ctx = ctx;
+	tc->head = tc->tail = NULL;
+	tc->nr = 0;
+	if (tc == b->ctxs)
+		blk_comp_batch_set_flush(io_local_work_flush_batch);
+add:
+	node->next = NULL;
+	if (tc->tail)
+		tc->tail->next = node;
+	else
+		tc->head = node;
+	tc->tail = node;
+	tc->nr++;
+	ret = true;
+out:
+	local_irq_restore(iflags);
+	return ret;
+}
+#endif /* CONFIG_BLOCK */
 
 void io_req_local_work_add(struct io_kiocb *req, unsigned flags)
 {
