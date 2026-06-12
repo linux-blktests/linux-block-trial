@@ -3642,7 +3642,17 @@ static int ublk_walk_cmd_buf(struct ublk_batch_io_iter *iter,
 			return -EFAULT;
 		}
 
+		/*
+		 * Element processing doesn't sleep, and commit elements
+		 * complete requests - ending the bios eagerly, see
+		 * __ublk_complete_rq(). Open a completion batch window so
+		 * the per-bio completion handlers (eg io_uring task_work
+		 * queueing) can coalesce across the chunk. The user copy
+		 * above can fault, hence the window is per chunk.
+		 */
+		blk_comp_batch_start();
 		ret = __ublk_walk_cmd_buf(ubq, iter, data, len, cb);
+		blk_comp_batch_finish();
 		if (ret)
 			return ret;
 	}
