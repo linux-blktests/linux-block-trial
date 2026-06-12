@@ -60,24 +60,34 @@ static inline bool mpscq_empty(struct mpscq *q)
 }
 
 /*
- * Push a node onto the queue. Safe against concurrent pushes from any context,
- * and against the (single) consumer. Returns true if the queue was empty
- * before this push.
+ * Push a pre-linked chain of nodes onto the queue, with 'first' being the
+ * oldest entry and 'last' the newest, and the in-between links already set
+ * up by the caller. One xchg() publishes the whole chain, and the entries
+ * are handed out in exact chain order - producing a chain locally and
+ * pushing it once costs a single tail acquisition rather than one per
+ * entry. Safe against concurrent pushes from any context, and against the
+ * (single) consumer. Returns true if the queue was empty before this push.
  */
-static inline bool mpscq_push(struct mpscq *q, struct llist_node *node)
+static inline bool mpscq_push_chain(struct mpscq *q, struct llist_node *first,
+				    struct llist_node *last)
 {
 	struct llist_node *prev;
 
-	node->next = NULL;
+	last->next = NULL;
 	/*
 	 * xchg() implies a full barrier, so the initialization of the
-	 * entry (including ->next above) is visible before the node can
-	 * be reached, either via ->tail or via ->next chasing from the
-	 * head once the store below has linked it.
+	 * entries is visible before the chain can be reached, either via
+	 * ->tail or via ->next chasing from the head once the store below
+	 * has linked it.
 	 */
-	prev = xchg(&q->tail, node);
-	WRITE_ONCE(prev->next, node);
+	prev = xchg(&q->tail, last);
+	WRITE_ONCE(prev->next, first);
 	return prev == &q->stub;
+}
+
+static inline bool mpscq_push(struct mpscq *q, struct llist_node *node)
+{
+	return mpscq_push_chain(q, node, node);
 }
 
 /*
