@@ -132,6 +132,13 @@ void __io_uring_cmd_do_in_task(struct io_uring_cmd *ioucmd,
 		return;
 
 	req->io_task_work.func = task_work_cb;
+	/*
+	 * Lazy adds (one CQE per entry) can be coalesced if a block
+	 * completion batch is being processed, eg nvme passthrough
+	 * completions, which run from inside the batch loop.
+	 */
+	if ((flags & IOU_F_TWQ_LAZY_WAKE) && io_req_local_work_add_batched(req))
+		return;
 	__io_req_task_work_add(req, flags);
 }
 EXPORT_SYMBOL_GPL(__io_uring_cmd_do_in_task);
