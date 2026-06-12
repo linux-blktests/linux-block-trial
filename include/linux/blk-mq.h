@@ -867,6 +867,55 @@ void __blk_mq_end_request(struct request *rq, blk_status_t error);
 void blk_mq_end_request_batch(struct io_comp_batch *ib);
 
 /*
+ * Batched completion notification. While blk_mq_end_request_batch() is
+ * completing requests, a per-CPU window is open (with preemption off),
+ * allowing the per-request completion handlers to defer and coalesce
+ * work across the whole batch: stash it locally, register a flush
+ * callback with blk_comp_batch_set_flush(), and the callback is invoked
+ * once the batch is done. Only one callback per window is supported.
+ */
+struct blk_comp_batch_notify {
+	void (*flush)(void);
+	int depth;
+};
+DECLARE_PER_CPU(struct blk_comp_batch_notify, blk_comp_batch_notify);
+
+static inline bool blk_comp_batch_active(void)
+{
+	return raw_cpu_read(blk_comp_batch_notify.depth) != 0;
+}
+
+static inline void blk_comp_batch_set_flush(void (*fn)(void))
+{
+	raw_cpu_write(blk_comp_batch_notify.flush, fn);
+}
+
+/*
+ * Open/close a completion batch window directly, for completing a run of
+ * requests outside of blk_mq_end_request_batch() - eg a driver finishing
+ * a batch of requests from its own context. The section between start and
+ * finish runs with preemption disabled and must not sleep.
+ */
+static inline void blk_comp_batch_start(void)
+{
+	preempt_disable();
+	raw_cpu_inc(blk_comp_batch_notify.depth);
+}
+
+static inline void blk_comp_batch_finish(void)
+{
+	void (*batch_flush)(void);
+
+	raw_cpu_dec(blk_comp_batch_notify.depth);
+	batch_flush = raw_cpu_read(blk_comp_batch_notify.flush);
+	if (unlikely(batch_flush)) {
+		raw_cpu_write(blk_comp_batch_notify.flush, NULL);
+		batch_flush();
+	}
+	preempt_enable();
+}
+
+/*
  * Only need start/end time stamping if we have iostat or
  * blk stats enabled, or using an IO scheduler.
  */

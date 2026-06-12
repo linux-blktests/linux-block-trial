@@ -1194,6 +1194,9 @@ static inline void blk_mq_flush_tag_batch(struct blk_mq_hw_ctx *hctx,
 	percpu_ref_put_many(&q->q_usage_counter, nr_tags);
 }
 
+DEFINE_PER_CPU(struct blk_comp_batch_notify, blk_comp_batch_notify);
+EXPORT_SYMBOL_GPL(blk_comp_batch_notify);
+
 void blk_mq_end_request_batch(struct io_comp_batch *iob)
 {
 	int tags[TAG_COMP_BATCH], nr_tags = 0;
@@ -1203,6 +1206,8 @@ void blk_mq_end_request_batch(struct io_comp_batch *iob)
 
 	if (iob->need_ts)
 		now = blk_time_get_ns();
+
+	blk_comp_batch_start();
 
 	while ((rq = rq_list_pop(&iob->req_list)) != NULL) {
 		prefetch(rq->bio);
@@ -1241,6 +1246,8 @@ void blk_mq_end_request_batch(struct io_comp_batch *iob)
 
 	if (nr_tags)
 		blk_mq_flush_tag_batch(cur_hctx, tags, nr_tags);
+
+	blk_comp_batch_finish();
 }
 EXPORT_SYMBOL_GPL(blk_mq_end_request_batch);
 
