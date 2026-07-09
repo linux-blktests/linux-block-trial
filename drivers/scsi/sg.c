@@ -1621,7 +1621,33 @@ sg_remove_device(struct device *cl_dev)
 	kref_put(&sdp->d_ref, sg_device_destroy);
 }
 
-module_param_named(scatter_elem_sz, scatter_elem_sz, int, S_IRUGO | S_IWUSR);
+static int scatter_elem_sz_set(const char *val, const struct kernel_param *kp)
+{
+	int ret, new_val, order;
+
+	ret = kstrtoint(val, 0, &new_val);
+	if (ret)
+		return ret;
+
+	if (new_val <= 0) {
+		pr_err("sg: scatter_elem_sz must be positive, got %d\n", new_val);
+		return -EINVAL;
+	}
+
+	order = get_order(new_val);
+	if (order > MAX_PAGE_ORDER) {
+		pr_err("sg: scatter_elem_sz too large (order %d > MAX_PAGE_ORDER %d)\n",
+			order, MAX_PAGE_ORDER);
+		return -EINVAL;
+	}
+
+	scatter_elem_sz = 1 << (PAGE_SHIFT + order);
+	return 0;
+}
+
+module_param_call(scatter_elem_sz, scatter_elem_sz_set, param_get_int,
+		  &scatter_elem_sz, 0644);
+
 module_param_named(allow_dio, sg_allow_dio, int, S_IRUGO | S_IWUSR);
 
 static int def_reserved_size_set(const char *val, const struct kernel_param *kp)
