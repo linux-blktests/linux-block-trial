@@ -853,12 +853,23 @@ static bool _badblocks_set(struct badblocks *bb, sector_t s, sector_t sectors,
 		/* Invalid sectors number */
 		return false;
 
+	if (s > ULLONG_MAX - sectors)
+		/* Range wraps past the end of sector_t */
+		return false;
+
 	if (bb->shift) {
 		/* round the start down, and the end up */
 		sector_t next = s + sectors;
 
-		s = round_down(s, 1 << bb->shift);
-		next = round_up(next, 1 << bb->shift);
+		if (bb->shift >= BITS_PER_LONG_LONG)
+			/* Corrupt/unsanitised shift value */
+			return false;
+
+		s = round_down(s, (sector_t)1 << bb->shift);
+		next = round_up(next, (sector_t)1 << bb->shift);
+		if (next <= s)
+			/* Rounding wrapped past the end of sector_t */
+			return false;
 		sectors = next - s;
 	}
 
@@ -1061,7 +1072,12 @@ static bool _badblocks_clear(struct badblocks *bb, sector_t s, sector_t sectors)
 		/* Invalid sectors number */
 		return false;
 
+	if (s > ULLONG_MAX - sectors)
+		/* Range wraps past the end of sector_t */
+		return false;
+
 	if (bb->shift) {
+		sector_t orig_s = s;
 		sector_t target;
 
 		/* When clearing we round the start up and the end down.
@@ -1070,10 +1086,21 @@ static bool _badblocks_clear(struct badblocks *bb, sector_t s, sector_t sectors)
 		 * However it is better the think a block is bad when it
 		 * isn't than to think a block is not bad when it is.
 		 */
+		if (bb->shift >= BITS_PER_LONG_LONG)
+			/* Corrupt/unsanitised shift value */
+			return false;
+
 		target = s + sectors;
-		s = round_up(s, 1 << bb->shift);
-		target = round_down(target, 1 << bb->shift);
-		sectors = target - s;
+		s = round_up(s, (sector_t)1 << bb->shift);
+		target = round_down(target, (sector_t)1 << bb->shift);
+		if (s < orig_s || target < s)
+			/* Rounding wrapped, or range collapsed */
+			sectors = 0;
+		else
+			sectors = target - s;
+
+		if (sectors == 0)
+			return false;
 	}
 
 	write_seqlock_irq(&bb->lock);
@@ -1303,12 +1330,23 @@ int badblocks_check(struct badblocks *bb, sector_t s, sector_t sectors,
 
 	WARN_ON(bb->shift < 0 || sectors == 0);
 
+	if (s > ULLONG_MAX - sectors)
+		/* Range wraps past the end of sector_t */
+		return -EINVAL;
+
 	if (bb->shift > 0) {
 		/* round the start down, and the end up */
 		sector_t target = s + sectors;
 
-		s = round_down(s, 1 << bb->shift);
-		target = round_up(target, 1 << bb->shift);
+		if (bb->shift >= BITS_PER_LONG_LONG)
+			/* Corrupt/unsanitised shift value */
+			return -EINVAL;
+
+		s = round_down(s, (sector_t)1 << bb->shift);
+		target = round_up(target, (sector_t)1 << bb->shift);
+		if (target <= s)
+			/* Rounding wrapped past the end of sector_t */
+			return 0;
 		sectors = target - s;
 	}
 
