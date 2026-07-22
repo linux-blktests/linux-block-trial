@@ -3192,6 +3192,72 @@ xfs_bmap_select_minlen(
 	return args->maxlen;
 }
 
+#define	GENERIC_AG_SET_SZ	(2)
+
+static inline xfs_agnumber_t
+xfs_default_ag_set_size(
+	struct xfs_inode	*ip)
+{
+	struct xfs_mount	*mp = ip->i_mount;
+
+	return min_t(xfs_agnumber_t, GENERIC_AG_SET_SZ, mp->m_sb.sb_agcount);
+}
+
+static xfs_agnumber_t
+xfs_inode_write_stream_ag_set(
+	struct xfs_inode	*ip,
+	xfs_agnumber_t		*target_agno)
+{
+	struct xfs_mount	*mp = ip->i_mount;
+	uint32_t		nr_streams = xfs_inode_max_write_streams(ip);
+	uint32_t		stream_id = ip->i_write_stream;
+	uint32_t		nr_ags = mp->m_sb.sb_agcount;
+	xfs_agnumber_t		set_size;
+
+
+	if (!nr_streams)
+		return xfs_default_ag_set_size(ip);
+
+	stream_id -= 1; /* For 0-based math; stream-ids are 1-based */
+	set_size = nr_ags / nr_streams;
+
+	if (set_size) {
+		*target_agno = stream_id * set_size;
+		/* uneven distribution, last stream will cover extra AGs */
+		if (stream_id == nr_streams - 1)
+			set_size = nr_ags - *target_agno;
+	} else {
+		/* for the case when we have fewer AGs than streams */
+		*target_agno = stream_id % nr_ags;
+		set_size = 1;
+	}
+
+	return set_size;
+}
+
+static xfs_agnumber_t
+xfs_ag_to_ag_set(
+	struct xfs_bmalloca	*ap,
+	xfs_agnumber_t		base_agno)
+{
+	struct xfs_inode	*ip = ap->ip;
+	struct xfs_mount	*mp = ip->i_mount;
+	xfs_agnumber_t		set_size;
+
+	/* Apply fanning only for regular file data */
+	if (!(ap->datatype & XFS_ALLOC_USERDATA))
+		return base_agno;
+
+	if (ip->i_write_stream)
+		set_size = xfs_inode_write_stream_ag_set(ip, &base_agno);
+	else
+		set_size = xfs_default_ag_set_size(ip);
+
+	/* Fan out within the AG set using low bits of the inode */
+	return (base_agno + (XFS_INO_TO_AGINO(mp, I_INO(ip)) % set_size)) %
+		mp->m_sb.sb_agcount;
+}
+
 static int
 xfs_bmap_btalloc_select_lengths(
 	struct xfs_bmalloca	*ap,
@@ -3587,8 +3653,16 @@ xfs_bmap_btalloc_best_length(
 {
 	xfs_extlen_t		blen = 0;
 	int			error;
+	xfs_agnumber_t		target_ag, start_ag;
 
 	ap->blkno = XFS_INODE_TO_FSB(ap->ip);
+
+	/* fan out initial AG across the generic AG set */
+	start_ag = XFS_FSB_TO_AGNO(args->mp, ap->blkno);
+	target_ag = xfs_ag_to_ag_set(ap, start_ag);
+	if (target_ag != start_ag)
+		ap->blkno = XFS_AGB_TO_FSB(args->mp, target_ag, 0);
+
 	if (!xfs_bmap_adjacent(ap))
 		ap->eof = false;
 
