@@ -523,7 +523,7 @@ static enum blk_eh_timer_return nbd_xmit_timeout(struct request *req)
 			blk_rq_bytes(req), (req->timeout / HZ) * cmd->retries);
 
 		mutex_lock(&nsock->tx_lock);
-		if (cmd->cookie != nsock->cookie) {
+		if (cmd->cookie != nsock->cookie || nsock->dead) {
 			nbd_requeue_cmd(cmd);
 			mutex_unlock(&nsock->tx_lock);
 			mutex_unlock(&cmd->lock);
@@ -2172,7 +2172,7 @@ again:
 		nbd_put(nbd);
 		if (index == -1)
 			goto again;
-		pr_err("nbd%d already in use\n", index);
+		pr_err_ratelimited("nbd%d already in use\n", index);
 		return -EBUSY;
 	}
 
