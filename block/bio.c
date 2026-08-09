@@ -553,6 +553,11 @@ struct bio *bio_alloc_bioset(struct block_device *bdev, unsigned short nr_vecs,
 		 */
 		opf |= REQ_ALLOC_CACHE;
 		bio = bio_alloc_percpu_cache(bs);
+		if (!bio) {
+			p = kmem_cache_alloc(bs->bio_slab, gfp);
+			if (p)
+				bio = p + bs->front_pad;
+		}
 	} else {
 		opf &= ~REQ_ALLOC_CACHE;
 	}
