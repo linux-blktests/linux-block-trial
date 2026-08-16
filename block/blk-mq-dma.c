@@ -319,7 +319,7 @@ EXPORT_SYMBOL(__blk_rq_map_sg);
 #ifdef CONFIG_BLK_DEV_INTEGRITY
 /**
  * blk_rq_integrity_dma_map_iter_start - map the first integrity DMA segment
- * 					 for a request
+ *                                       for a request
  * @req:	request to map
  * @dma_dev:	device to map to
  * @state:	DMA IOVA state
@@ -360,7 +360,7 @@ EXPORT_SYMBOL_GPL(blk_rq_integrity_dma_map_iter_start);
 
 /**
  * blk_rq_integrity_dma_map_iter_next - map the next integrity DMA segment for
- * 					 a request
+ *                                       a request
  * @req:	request to map
  * @dma_dev:	device to map to
  * @iter:	block layer DMA iterator
