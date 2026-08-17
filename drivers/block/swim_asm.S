@@ -42,6 +42,8 @@
 	.equ	max_retry, 40
 	.equ	sector_size, 512
 
+	.equ	.Lhr_crc_error,		0x02
+
 	.global swim_read_sector_header
 swim_read_sector_header:
 	link	%a6, #0
@@ -128,11 +130,15 @@ crc0:	tstb	%a2@
 
 	moveq	#max_retry, %d2
 
-crc1:	tstb	%a2@
+crc1:	moveb	%a2@, %d5
 	dbmi	%d2, crc1
 	bpl	signal_nonyb
 
 	moveb	%a3@, %a4@(o_crc1)
+
+	moveb	%a2@, %d5
+	andb	#.Lhr_crc_error, %d5
+	bne	signal_nonyb
 
 	tstb	%a3@(read_error - read_mark)
 
@@ -212,17 +218,21 @@ data_crc0:
 	dbmi	%d2, data_crc0
 	bpl	data_exit
 
-	moveb	%a3@, %d5
+	moveb	%a3@, %d2
 
 	moveq	#max_retry, %d2
 
 data_crc1:
 
-	tstb	%a2@
+	moveb	%a2@, %d5
 	dbmi	%d2, data_crc1
 	bpl	data_exit
 
-	moveb	%a3@, %d5
+	moveb	%a3@, %d2
+
+	moveb	%a2@, %d5
+	andb	#.Lhr_crc_error, %d5
+	bne	data_exit
 
 	tstb	%a3@(read_error - read_mark)
 
