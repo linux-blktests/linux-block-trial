@@ -560,7 +560,7 @@ static int blkdev_writepages(struct address_space *mapping,
 }
 
 const struct address_space_operations def_blk_aops = {
-	.dirty_folio	= filemap_dirty_folio,
+	.dirty_folio		= iomap_dirty_folio,
 	.release_folio		= iomap_release_folio,
 	.invalidate_folio	= iomap_invalidate_folio,
 	.read_folio		= blkdev_read_folio,
@@ -765,9 +765,14 @@ static ssize_t blkdev_write_iter(struct kiocb *iocb, struct iov_iter *from)
 
 	if (iocb->ki_flags & IOCB_DIRECT) {
 		ret = blkdev_direct_write(iocb, from);
-		if (ret >= 0 && iov_iter_count(from))
-			ret = direct_write_fallback(iocb, from, ret,
-					blkdev_buffered_write(iocb, from));
+		if (ret >= 0 && iov_iter_count(from)) {
+			ssize_t ret2;
+
+			inode_lock_shared(bd_inode);
+			ret2 = blkdev_buffered_write(iocb, from);
+			inode_unlock_shared(bd_inode);
+			ret = direct_write_fallback(iocb, from, ret, ret2);
+		}
 	} else {
 		/*
 		 * Take i_rwsem and invalidate_lock to avoid racing with
