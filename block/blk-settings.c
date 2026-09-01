@@ -726,8 +726,14 @@ static bool blk_stack_atomic_writes_head(struct queue_limits *t,
 	return true;
 }
 
-static void blk_stack_atomic_writes_limits(struct queue_limits *t,
-				struct queue_limits *b, sector_t start)
+/**
+ * blk_stack_atomic_writes_limits - stack atomic write limits
+ * @t: the stacking driver limits (top device)
+ * @b: the underlying queue limits (bottom device)
+ * @start: first data sector within bottom device
+ */
+void blk_stack_atomic_writes_limits(struct queue_limits *t,
+		struct queue_limits *b, sector_t start)
 {
 	if (!(b->features & BLK_FEAT_ATOMIC_WRITES))
 		goto unsupported;
@@ -755,39 +761,23 @@ unsupported:
 	t->atomic_write_hw_unit_min = 0;
 	t->atomic_write_hw_boundary = 0;
 }
+EXPORT_SYMBOL_GPL(blk_stack_atomic_writes_limits);
 
 /**
- * blk_stack_limits - adjust queue_limits for stacked devices
- * @t:	the stacking driver limits (top device)
- * @b:  the underlying queue limits (bottom, component device)
- * @start:  first data sector within component device
+ * blk_stack_path_limits - update limits that must hold for every I/O path
+ * @t: the queue limits to update
+ * @b: the queue limits for an I/O path
  *
- * Description:
- *    This function is used by stacking drivers like MD and DM to ensure
- *    that all component devices have compatible block sizes and
- *    alignments.  The stacking driver must provide a queue_limits
- *    struct (top) and then iteratively call the stacking function for
- *    all component (bottom) devices.  The stacking function will
- *    attempt to combine the values and ensure proper alignment.
- *
- *    Returns 0 if the top and bottom queue_limits are compatible.  The
- *    top device's block sizes and alignment offsets may be adjusted to
- *    ensure alignment with the bottom device. If no compatible sizes
- *    and alignments exist, -1 is returned and the resulting top
- *    queue_limits will have the misaligned flag set to indicate that
- *    the alignment_offset is undefined.
+ * Clear BLK_FEAT_NOWAIT, BLK_FEAT_POLL and BLK_FEAT_PCI_P2PDMA when they
+ * are not set in @b. Stack the sector, segment, integrity segment and DMA
+ * alignment limits that every path must support.
  */
-int blk_stack_limits(struct queue_limits *t, struct queue_limits *b,
-		     sector_t start)
+void blk_stack_path_limits(struct queue_limits *t,
+		const struct queue_limits *b)
 {
-	unsigned int top, bottom, alignment;
-	int ret = 0;
-
-	t->features |= (b->features & BLK_FEAT_INHERIT_MASK);
-
 	/*
-	 * Some feaures need to be supported both by the stacking driver and all
-	 * underlying devices.  The stacking driver sets these flags before
+	 * Some features need to be supported both by the stacking driver and all
+	 * underlying devices. The stacking driver sets these flags before
 	 * stacking the limits, and this will clear the flags if any of the
 	 * underlying devices does not support it.
 	 */
@@ -798,51 +788,46 @@ int blk_stack_limits(struct queue_limits *t, struct queue_limits *b,
 	if (!(b->features & BLK_FEAT_PCI_P2PDMA))
 		t->features &= ~BLK_FEAT_PCI_P2PDMA;
 
-	t->flags |= (b->flags & BLK_FLAG_MISALIGNED);
-
-	t->max_sectors = min_not_zero(t->max_sectors, b->max_sectors);
-	t->max_user_sectors = min_not_zero(t->max_user_sectors,
-			b->max_user_sectors);
 	t->max_hw_sectors = min_not_zero(t->max_hw_sectors, b->max_hw_sectors);
 	t->max_dev_sectors = min_not_zero(t->max_dev_sectors, b->max_dev_sectors);
-	t->max_write_zeroes_sectors = min(t->max_write_zeroes_sectors,
-					b->max_write_zeroes_sectors);
-	t->max_user_wzeroes_unmap_sectors =
-			min(t->max_user_wzeroes_unmap_sectors,
-			    b->max_user_wzeroes_unmap_sectors);
-	t->max_hw_wzeroes_unmap_sectors =
-			min(t->max_hw_wzeroes_unmap_sectors,
-			    b->max_hw_wzeroes_unmap_sectors);
-
-	t->max_hw_zone_append_sectors = min(t->max_hw_zone_append_sectors,
-					b->max_hw_zone_append_sectors);
-
 	t->seg_boundary_mask = min_not_zero(t->seg_boundary_mask,
 					    b->seg_boundary_mask);
 	t->virt_boundary_mask = min_not_zero(t->virt_boundary_mask,
-					    b->virt_boundary_mask);
-
+					     b->virt_boundary_mask);
 	t->max_segments = min_not_zero(t->max_segments, b->max_segments);
-	t->max_discard_segments = min_not_zero(t->max_discard_segments,
-					       b->max_discard_segments);
 	t->max_integrity_segments = min_not_zero(t->max_integrity_segments,
 						 b->max_integrity_segments);
-
 	t->max_segment_size = min_not_zero(t->max_segment_size,
 					   b->max_segment_size);
+	t->dma_alignment = max(t->dma_alignment, b->dma_alignment);
+}
+EXPORT_SYMBOL_GPL(blk_stack_path_limits);
+
+/*
+ * Stack and check logical_block_size, physical_block_size, io_min, io_opt,
+ * chunk_sectors and alignment_offset for a bottom-device range, then round
+ * max_sectors, max_hw_sectors and max_dev_sectors to logical_block_size.
+ */
+static int blk_stack_topology_limits(struct queue_limits *t,
+		const struct queue_limits *b, sector_t start)
+{
+	unsigned int top, bottom, alignment;
+	int ret = 0;
+
+	t->flags |= b->flags & BLK_FLAG_MISALIGNED;
 
 	alignment = queue_limit_alignment_offset(b, start);
 
-	/* Bottom device has different alignment.  Check that it is
+	/*
+	 * The bottom device has a different alignment. Check that it is
 	 * compatible with the current top alignment.
 	 */
 	if (t->alignment_offset != alignment) {
-
-		top = max(t->physical_block_size, t->io_min)
-			+ t->alignment_offset;
+		top = max(t->physical_block_size, t->io_min) +
+			t->alignment_offset;
 		bottom = max(b->physical_block_size, b->io_min) + alignment;
 
-		/* Verify that top and bottom intervals line up */
+		/* Verify that top and bottom intervals line up. */
 		if (max(top, bottom) % min(top, bottom)) {
 			t->flags |= BLK_FLAG_MISALIGNED;
 			ret = -1;
@@ -851,15 +836,12 @@ int blk_stack_limits(struct queue_limits *t, struct queue_limits *b,
 
 	t->logical_block_size = max(t->logical_block_size,
 				    b->logical_block_size);
-
 	t->physical_block_size = max(t->physical_block_size,
 				     b->physical_block_size);
-
 	t->io_min = max(t->io_min, b->io_min);
 	t->io_opt = lcm_not_zero(t->io_opt, b->io_opt);
-	t->dma_alignment = max(t->dma_alignment, b->dma_alignment);
 
-	/* Set non-power-of-2 compatible chunk_sectors boundary */
+	/* Set non-power-of-2 compatible chunk_sectors boundary. */
 	if (b->chunk_sectors)
 		t->chunk_sectors = gcd(t->chunk_sectors, b->chunk_sectors);
 
@@ -891,19 +873,74 @@ int blk_stack_limits(struct queue_limits *t, struct queue_limits *b,
 		ret = -1;
 	}
 
-	/* Find lowest common alignment_offset */
-	t->alignment_offset = lcm_not_zero(t->alignment_offset, alignment)
-		% max(t->physical_block_size, t->io_min);
+	/* Find lowest common alignment_offset. */
+	t->alignment_offset = lcm_not_zero(t->alignment_offset, alignment) %
+		max(t->physical_block_size, t->io_min);
 
-	/* Verify that new alignment_offset is on a logical block boundary */
+	/* Verify that new alignment_offset is on a logical block boundary. */
 	if (t->alignment_offset & (t->logical_block_size - 1)) {
 		t->flags |= BLK_FLAG_MISALIGNED;
 		ret = -1;
 	}
 
-	t->max_sectors = blk_round_down_sectors(t->max_sectors, t->logical_block_size);
-	t->max_hw_sectors = blk_round_down_sectors(t->max_hw_sectors, t->logical_block_size);
-	t->max_dev_sectors = blk_round_down_sectors(t->max_dev_sectors, t->logical_block_size);
+	t->max_sectors = blk_round_down_sectors(t->max_sectors,
+						t->logical_block_size);
+	t->max_hw_sectors = blk_round_down_sectors(t->max_hw_sectors,
+						   t->logical_block_size);
+	t->max_dev_sectors = blk_round_down_sectors(t->max_dev_sectors,
+						    t->logical_block_size);
+
+	return ret;
+}
+
+/**
+ * blk_stack_limits - adjust queue_limits for stacked devices
+ * @t:	the stacking driver limits (top device)
+ * @b:  the underlying queue limits (bottom, component device)
+ * @start:  first data sector within component device
+ *
+ * Description:
+ *    This function is used by stacking drivers like MD and DM to ensure
+ *    that all component devices have compatible block sizes and
+ *    alignments.  The stacking driver must provide a queue_limits
+ *    struct (top) and then iteratively call the stacking function for
+ *    all component (bottom) devices.  The stacking function will
+ *    attempt to combine the values and ensure proper alignment.
+ *
+ *    Returns 0 if the top and bottom queue_limits are compatible.  The
+ *    top device's block sizes and alignment offsets may be adjusted to
+ *    ensure alignment with the bottom device. If no compatible sizes
+ *    and alignments exist, -1 is returned and the resulting top
+ *    queue_limits will have the misaligned flag set to indicate that
+ *    the alignment_offset is undefined.
+ */
+int blk_stack_limits(struct queue_limits *t, struct queue_limits *b,
+		     sector_t start)
+{
+	unsigned int alignment;
+	int ret;
+
+	t->features |= (b->features & BLK_FEAT_INHERIT_MASK);
+	blk_stack_path_limits(t, b);
+
+	t->max_sectors = min_not_zero(t->max_sectors, b->max_sectors);
+	t->max_user_sectors = min_not_zero(t->max_user_sectors,
+			b->max_user_sectors);
+	t->max_write_zeroes_sectors = min(t->max_write_zeroes_sectors,
+					b->max_write_zeroes_sectors);
+	t->max_user_wzeroes_unmap_sectors =
+			min(t->max_user_wzeroes_unmap_sectors,
+			    b->max_user_wzeroes_unmap_sectors);
+	t->max_hw_wzeroes_unmap_sectors =
+			min(t->max_hw_wzeroes_unmap_sectors,
+			    b->max_hw_wzeroes_unmap_sectors);
+
+	t->max_hw_zone_append_sectors = min(t->max_hw_zone_append_sectors,
+					b->max_hw_zone_append_sectors);
+	t->max_discard_segments = min_not_zero(t->max_discard_segments,
+					       b->max_discard_segments);
+
+	ret = blk_stack_topology_limits(t, b, start);
 
 	/* Discard alignment and granularity */
 	if (b->discard_granularity) {
