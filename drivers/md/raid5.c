@@ -7979,7 +7979,8 @@ static int raid5_create_ctx_pool(struct r5conf *conf)
 	return conf->ctx_pool ? 0 : -ENOMEM;
 }
 
-static int raid5_set_limits(struct mddev *mddev)
+static int raid5_set_limits(struct mddev *mddev,
+			    struct queue_limits *caller_lim)
 {
 	struct r5conf *conf = mddev->private;
 	struct queue_limits lim;
@@ -8031,10 +8032,19 @@ static int raid5_set_limits(struct mddev *mddev)
 	/* No restrictions on the number of segments in the request */
 	lim.max_segments = USHRT_MAX;
 
+	/*
+	 * The caller owns an update and commits it itself; taking
+	 * q->limits_lock here would take it a second time.
+	 */
+	if (caller_lim) {
+		*caller_lim = lim;
+		return 0;
+	}
+
 	return queue_limits_set(mddev->gendisk->queue, &lim);
 }
 
-static int raid5_run(struct mddev *mddev)
+static int raid5_run(struct mddev *mddev, struct queue_limits *lim)
 {
 	struct r5conf *conf;
 	int dirty_parity_disks = 0;
@@ -8313,7 +8323,7 @@ static int raid5_run(struct mddev *mddev)
 	md_set_array_sectors(mddev, raid5_size(mddev, 0, 0));
 
 	if (!mddev_is_dm(mddev)) {
-		ret = raid5_set_limits(mddev);
+		ret = raid5_set_limits(mddev, lim);
 		if (ret)
 			goto abort;
 	}
