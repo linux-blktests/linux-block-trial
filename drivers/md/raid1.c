@@ -1880,7 +1880,8 @@ static bool raid1_remove_conf(struct r1conf *conf, int disk)
 	return true;
 }
 
-static int raid1_add_disk(struct mddev *mddev, struct md_rdev *rdev)
+static int raid1_add_disk(struct mddev *mddev, struct md_rdev *rdev,
+			  struct queue_limits *lim)
 {
 	struct r1conf *conf = mddev->private;
 	int err = -EEXIST;
@@ -1905,7 +1906,12 @@ static int raid1_add_disk(struct mddev *mddev, struct md_rdev *rdev)
 	for (mirror = first; mirror <= last; mirror++) {
 		p = conf->mirrors + mirror;
 		if (!p->rdev) {
-			err = mddev_stack_new_rdev(mddev, rdev);
+			if (lim == MDDEV_STACK_SKIP)
+				err = 0;
+			else if (lim)
+				err = mddev_stack_rdev_into(mddev, rdev, lim);
+			else
+				err = mddev_stack_new_rdev(mddev, rdev);
 			if (err)
 				return err;
 
@@ -3134,7 +3140,8 @@ static struct r1conf *setup_conf(struct mddev *mddev)
 	return ERR_PTR(err);
 }
 
-static int raid1_set_limits(struct mddev *mddev)
+static int raid1_set_limits(struct mddev *mddev,
+			    struct queue_limits *caller_lim)
 {
 	struct queue_limits lim;
 	int err;
@@ -3149,10 +3156,19 @@ static int raid1_set_limits(struct mddev *mddev)
 	err = mddev_stack_rdev_limits(mddev, &lim, MDDEV_STACK_INTEGRITY);
 	if (err)
 		return err;
+	/*
+	 * The caller owns an update and commits it itself; taking
+	 * q->limits_lock here would take it a second time.
+	 */
+	if (caller_lim) {
+		*caller_lim = lim;
+		return 0;
+	}
+
 	return queue_limits_set(mddev->gendisk->queue, &lim);
 }
 
-static int raid1_run(struct mddev *mddev)
+static int raid1_run(struct mddev *mddev, struct queue_limits *lim)
 {
 	struct r1conf *conf;
 	int i;
@@ -3183,7 +3199,7 @@ static int raid1_run(struct mddev *mddev)
 		return PTR_ERR(conf);
 
 	if (!mddev_is_dm(mddev)) {
-		ret = raid1_set_limits(mddev);
+		ret = raid1_set_limits(mddev, lim);
 		if (ret) {
 			md_unregister_thread(mddev, &conf->thread);
 			if (!mddev->private)
